@@ -48,7 +48,8 @@ jobs:
     - name: Create PyUEFI package
       run: |
         cd edk2/AppPkg/Applications/Python/Python-3.6.8/
-        sudo ./create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
+        ls
+        sudo . create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
         cd -
         
     - name: List build artifacts
