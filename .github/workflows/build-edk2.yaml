@@ -38,3 +38,11 @@ jobs:
         . edksetup.sh
         make -C BaseTools
         build -t GCC5 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: edk2-build-artifacts
+        path: |
+          edk2/Build/*  # Replace with the actual path to your build artifacts
+        
