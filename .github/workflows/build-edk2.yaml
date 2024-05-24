@@ -56,10 +56,8 @@ jobs:
       run: |
         ls -R edk2/myUEFIPy
 
-    - name: Archive build artifacts
+    - name: Upload build output as artifact
       uses: actions/upload-artifact@v2
       with:
-        name: edk2-build-artifacts
-        path: |
-          edk2/myUEFIPy/**/*  # Replace with the actual path to your build artifacts
-        
+        name: myUEFIPy-build-output
+        path: edk2/myUEFIPy/**/*
