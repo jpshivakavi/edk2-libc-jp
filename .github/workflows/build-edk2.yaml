@@ -45,17 +45,17 @@ jobs:
         cd -
         build -t GCC5 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc
         cd AppPkg/Applications/Python/Python-3.6.8/
-        ./create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
+        ./create_python_pkg.sh GCC5 RELEASE X64 ../../../../../myUEFIPy
         cd -
         
     - name: List build artifacts
       run: |
-        ls -R edk2/Build
+        ls -R edk2/myUEFIPy
 
     - name: Archive build artifacts
       uses: actions/upload-artifact@v2
       with:
         name: edk2-build-artifacts
         path: |
-          edk2/Build/AppPkg/**/*  # Replace with the actual path to your build artifacts
+          edk2/myUEFIPy/**/*  # Replace with the actual path to your build artifacts
         
