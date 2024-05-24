@@ -44,5 +44,5 @@ jobs:
       with:
         name: edk2-build-artifacts
         path: |
-          edk2/Build/*  # Replace with the actual path to your build artifacts
+          edk2/Build/**/*  # Replace with the actual path to your build artifacts
         
