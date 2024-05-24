@@ -26,10 +26,11 @@ jobs:
         cd edk2
         git submodule update --init
 
-    - name: Clone edk2-libc
+    - name: Copy edk2-libc contents to edk2
       run: |
-        git clone https://github.com/jpshivakavi/edk2-libc-jp.git
-        cd edk2-libc-jp
+        #git clone https://github.com/jpshivakavi/edk2-libc-jp.git
+        #cd edk2-libc-jp
+        ls -al
         cp -rf * ../edk2/.
 
     - name: Build EDK2
@@ -37,8 +38,12 @@ jobs:
         cd edk2
         . edksetup.sh
         make -C BaseTools
+        cd AppPkg/Applications/Python/Python-3.6.8/
+        python3 srcprep.py
+        cd -
         build -t GCC5 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc
-
+        ./create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
+        
     - name: List build artifacts
       run: |
         ls -R edk2/Build
@@ -48,5 +53,5 @@ jobs:
       with:
         name: edk2-build-artifacts
         path: |
-          edk2/Build/**/*  # Replace with the actual path to your build artifacts
+          edk2/Build/AppPkg/**/*  # Replace with the actual path to your build artifacts
         
