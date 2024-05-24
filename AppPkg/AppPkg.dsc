@@ -121,7 +121,7 @@
   }
 
 #### Un-comment the following line to build Python 3.6.8.
-# AppPkg/Applications/Python/Python-3.6.8/Python368.inf
+ AppPkg/Applications/Python/Python-3.6.8/Python368.inf
 
 #### Un-comment the following line to build Lua.
 #  AppPkg/Applications/Lua/Lua.inf
