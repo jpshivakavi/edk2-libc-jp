@@ -1,0 +1,40 @@
+name: Build EDK2
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential uuid-dev iasl git gcc-5 nasm python3-distutils
+
+    - name: Clone EDK2
+      run: |
+        git clone https://github.com/tianocore/edk2.git
+        cd edk2
+        git submodule update --init
+
+    - name: Clone edk2-libc
+      run: |
+        git clone https://github.com/jpshivakavi/edk2-libc-jp.git
+        cd edk2-libc-jp
+        cp -rf * ../edk2/.
+
+    - name: Build EDK2
+      run: |
+        cd edk2
+        . edksetup.sh
+        make -C BaseTools
+        build -t GCC5 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc
