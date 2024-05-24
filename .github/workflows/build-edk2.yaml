@@ -18,7 +18,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential uuid-dev iasl git gcc-5 nasm python3-distutils
+        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3-distutils
 
     - name: Clone EDK2
       run: |
