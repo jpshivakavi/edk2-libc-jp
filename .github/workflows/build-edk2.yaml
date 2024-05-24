@@ -39,6 +39,10 @@ jobs:
         make -C BaseTools
         build -t GCC5 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc
 
+    - name: List build artifacts
+      run: |
+        ls -R edk2/Build
+
     - name: Archive build artifacts
       uses: actions/upload-artifact@v2
       with:
