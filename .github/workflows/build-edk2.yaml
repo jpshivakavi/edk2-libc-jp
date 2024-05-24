@@ -31,7 +31,9 @@ jobs:
         #git clone https://github.com/jpshivakavi/edk2-libc-jp.git
         #cd edk2-libc-jp
         ls -al
-        cp -rf * ../edk2/.
+        cp -rf AppPkg edk2/.
+        cp -rf StdLib edk2/.
+        cp -rf StdLibPrivateInternalFiles edk2/.
 
     - name: Build EDK2
       run: |
