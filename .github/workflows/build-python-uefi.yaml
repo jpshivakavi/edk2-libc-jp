@@ -1,0 +1,63 @@
+name: Build Python Interpreter for UEFI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3-distutils
+
+    - name: Clone EDK2
+      run: |
+        git clone https://github.com/tianocore/edk2.git
+        cd edk2
+        git submodule update --init
+
+    - name: Copy edk2-libc contents to edk2
+      run: |
+        #git clone https://github.com/jpshivakavi/edk2-libc-jp.git
+        #cd edk2-libc-jp
+        ls -al
+        cp -rf AppPkg edk2/.
+        cp -rf StdLib edk2/.
+        cp -rf StdLibPrivateInternalFiles edk2/.
+
+    - name: Build EDK2
+      run: |
+        cd edk2
+        . edksetup.sh
+        make -C BaseTools
+        cd AppPkg/Applications/Python/Python-3.6.8/
+        python3 srcprep.py
+        cd -
+        build -t GCC5 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc
+
+    - name: Create PyUEFI package
+      run: |
+        cd edk2/AppPkg/Applications/Python/Python-3.6.8/
+        ls
+        . create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
+        cd -
+        
+    - name: List build artifacts
+      run: |
+        ls -R edk2/myUEFIPy
+
+    - name: Upload build output as artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: myUEFIPy-build-output
+        path: edk2/myUEFIPy/**/*
