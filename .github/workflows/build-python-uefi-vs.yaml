@@ -26,16 +26,16 @@ jobs:
         #git clone https://github.com/jpshivakavi/edk2-libc-jp.git
         #cd edk2-libc-jp
         dir
-        copy /Y AppPkg edk2\
-        copy /Y StdLib edk2\
-        copy /Y StdLibPrivateInternalFiles edk2\
+        cmd /c xcopy /E /I /Y AppPkg edk2\AppPkg
+        cmd /c xcopy /E /I /Y StdLib edk2\StdLib
+        cmd /c xcopy /E /I /Y StdLibPrivateInternalFiles edk2\StdLibPrivateInternalFiles
 
     - name: Build EDK2
       run: |
         cd edk2
         call edksetup.bat
         call edksetup.bat Rebuild
-        cd AppPkg/Applications/Python/Python-3.6.8\
+        cd AppPkg\Applications\Python\Python-3.6.8\
         python srcprep.py
         cd ..\..\..\..\..\
         build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc
