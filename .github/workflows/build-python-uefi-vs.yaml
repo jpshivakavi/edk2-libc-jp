@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      NASM_PREFIX: "C:\\Program Files\\NASM"
+      NASM_PREFIX: "C:\Program Files\NASM"
     defaults:
       run:
         shell: cmd
@@ -23,9 +23,13 @@ jobs:
     - name: Install NASM
       run: choco install nasm
 
+    - name: VSWhere
+      run: |
+        & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
     - name: Setup environment for Visual Studio 2019 Build Tools
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" x86
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" x86
         set
 
     - name: Clone EDK2
@@ -36,8 +40,6 @@ jobs:
 
     - name: Copy edk2-libc contents to edk2
       run: |
-        #git clone https://github.com/jpshivakavi/edk2-libc-jp.git
-        #cd edk2-libc-jp
         dir
         cmd /c xcopy /E /I /Y AppPkg edk2\AppPkg
         cmd /c xcopy /E /I /Y StdLib edk2\StdLib
