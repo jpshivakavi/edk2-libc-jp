@@ -18,7 +18,7 @@ jobs:
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.x'
+        python-version: '3.10'
 
     - name: Install NASM
       run: choco install nasm
@@ -53,8 +53,8 @@ jobs:
     - name: Build EDK2
       run: |
         cd edk2
-        call edksetup.bat
-        call edksetup.bat Rebuild
+        edksetup.bat
+        edksetup.bat Rebuild
         cd AppPkg\Applications\Python\Python-3.6.8\
         python srcprep.py
         cd ..\..\..\..\..\
@@ -64,7 +64,7 @@ jobs:
       run: |
         cd edk2\AppPkg\Applications\Python\Python-3.6.8\
         dir
-        call create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
+        create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
 
     - name: List build artifacts
       run: |
