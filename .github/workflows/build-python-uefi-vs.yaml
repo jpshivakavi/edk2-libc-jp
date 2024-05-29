@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      NASM_PREFIX: "C:\Program Files\NASM"
+      NASM_PREFIX: "C:\\Program Files\\NASM"
     defaults:
       run:
         shell: cmd
@@ -25,12 +25,12 @@ jobs:
 
     - name: Setup environment for Visual Studio 2019 Build Tools
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -version "[16.0,17.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > vs_path.txt
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -version "[16.0,17.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > vs_path.txt
         set /p VSINSTALLDIR=<vs_path.txt
         del vs_path.txt
         set "VCToolsInstallDir=%VSINSTALLDIR%\VC\Tools\MSVC"
         set "VCToolsVersion="
-        for /d %%d in ("%VCToolsInstallDir%\*") do set "VCToolsVersion=%%~nxd"
+        for /d %d in ("%VCToolsInstallDir%\*") do set "VCToolsVersion=%~nxd"
         set "VCToolsInstallDir=%VCToolsInstallDir%\%VCToolsVersion%"
         echo VSINSTALLDIR=%VSINSTALLDIR%
         echo VCToolsInstallDir=%VCToolsInstallDir%
@@ -50,18 +50,27 @@ jobs:
         cmd /c xcopy /E /I /Y StdLib edk2\StdLib
         cmd /c xcopy /E /I /Y StdLibPrivateInternalFiles edk2\StdLibPrivateInternalFiles
 
-    - name: Build EDK2
+    - name: Build EDK2 Base Tools
       run: |
         cd edk2
         edksetup.bat
-        edksetup.bat Rebuild
+        edksetup.bat ForceRebuild
+
+    - name: Build Python UEFI
+      run: |
+        cd edk2
+        dir
+        edksetup.bat
+        set
+        echo %PATH%
         cd AppPkg\Applications\Python\Python-3.6.8\
         python srcprep.py
         cd ..\..\..\..\..\
         build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc
 
-    - name: Create PyUEFI package
+    - name: Create Python UEFI package
       run: |
+        dir
         cd edk2\AppPkg\Applications\Python\Python-3.6.8\
         dir
         create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
