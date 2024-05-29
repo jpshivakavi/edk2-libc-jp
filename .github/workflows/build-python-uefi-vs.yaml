@@ -25,11 +25,11 @@ jobs:
 
     - name: VSWhere
       run: |
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
 
     - name: Setup environment for Visual Studio 2019 Build Tools
       run: |
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" x86
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" x86
         set
 
     - name: Clone EDK2
