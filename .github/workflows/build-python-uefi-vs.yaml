@@ -30,7 +30,7 @@ jobs:
         del vs_path.txt
         set "VCToolsInstallDir=%VSINSTALLDIR%\VC\Tools\MSVC"
         set "VCToolsVersion="
-        for /d %d in ("%VCToolsInstallDir%\*") do set "VCToolsVersion=%~nxd"
+        for /d %%d in ("%VCToolsInstallDir%\*") do set "VCToolsVersion=%%~nxd"
         set "VCToolsInstallDir=%VCToolsInstallDir%\%VCToolsVersion%"
         echo VSINSTALLDIR=%VSINSTALLDIR%
         echo VCToolsInstallDir=%VCToolsInstallDir%
