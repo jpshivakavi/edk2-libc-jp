@@ -5,6 +5,8 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      NASM_PREFIX: "C:\Program Files\NASM"
     defaults:
       run:
         shell: cmd
@@ -17,6 +19,9 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.x'
+
+    - name: Install NASM
+      run: choco install nasm
 
     - name: Clone EDK2
       run: |
