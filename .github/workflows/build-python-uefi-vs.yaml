@@ -23,6 +23,18 @@ jobs:
     - name: Install NASM
       run: choco install nasm
 
+    - name: Setup environment for Visual Studio 2019 Build Tools
+      run: |
+        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -version "[16.0,17.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > vs_path.txt
+        set /p VSINSTALLDIR=<vs_path.txt
+        del vs_path.txt
+        set "VCToolsInstallDir=%VSINSTALLDIR%\VC\Tools\MSVC"
+        set "VCToolsVersion="
+        for /d %%d in ("%VCToolsInstallDir%\*") do set "VCToolsVersion=%%~nxd"
+        set "VCToolsInstallDir=%VCToolsInstallDir%\%VCToolsVersion%"
+        echo VSINSTALLDIR=%VSINSTALLDIR%
+        echo VCToolsInstallDir=%VCToolsInstallDir%
+
     - name: Clone EDK2
       run: |
         git clone https://github.com/tianocore/edk2.git
