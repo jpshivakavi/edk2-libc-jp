@@ -25,7 +25,7 @@ jobs:
 
     - name: VSWhere
       run: |
-        & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
     - name: Setup environment for Visual Studio 2019 Build Tools
       run: |
