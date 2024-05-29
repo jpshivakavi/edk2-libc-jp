@@ -30,7 +30,7 @@ jobs:
 
     - name: Clone EDK2
       run: |
-        git clone https://github.com/tianocore/edk2.git" x86
+        git clone https://github.com/tianocore/edk2.git"
         cd edk2
         git submodule update --init
 
