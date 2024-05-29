@@ -48,7 +48,6 @@ jobs:
     - name: Build EDK2 Base Tools
       run: |
         cd edk2
-        edksetup.bat
         edksetup.bat ForceRebuild
 
     - name: Build Python UEFI
