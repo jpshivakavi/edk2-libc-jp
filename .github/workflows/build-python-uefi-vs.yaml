@@ -25,7 +25,10 @@ jobs:
 
     - name: Setup environment for Visual Studio 2019 Build Tools
       run: |
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -version "[16.0,17.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > vs_path.txt
+        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -version
+        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -version "[16.0,17.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > vs_path.txt
+        echo displaying the vs_path.txt contents
+        type vs_path.txt
         set /p VSINSTALLDIR=<vs_path.txt
         del vs_path.txt
         set "VCToolsInstallDir=%VSINSTALLDIR%\VC\Tools\MSVC"
