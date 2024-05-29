@@ -1,0 +1,57 @@
+name: Build Python Interpreter for UEFI using VS2019
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Clone EDK2
+      run: |
+        git clone https://github.com/tianocore/edk2.git
+        cd edk2
+        git submodule update --init
+
+    - name: Copy edk2-libc contents to edk2
+      run: |
+        #git clone https://github.com/jpshivakavi/edk2-libc-jp.git
+        #cd edk2-libc-jp
+        dir
+        copy /Y AppPkg edk2\
+        copy /Y StdLib edk2\
+        copy /Y StdLibPrivateInternalFiles edk2\
+
+    - name: Build EDK2
+      run: |
+        cd edk2
+        call edksetup.bat
+        call edksetup.bat Rebuild
+        cd AppPkg/Applications/Python/Python-3.6.8\
+        python srcprep.py
+        cd ..\..\..\..\..\
+        build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc
+
+    - name: Create PyUEFI package
+      run: |
+        cd edk2\AppPkg\Applications\Python\Python-3.6.8\
+        dir
+        call create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
+
+    - name: List build artifacts
+      run: |
+        dir /S edk2\myUEFIPy
+
+    - name: Upload build output as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: myUEFIPy-build-VS2019-output
+        path: edk2\myUEFIPy\**\*
