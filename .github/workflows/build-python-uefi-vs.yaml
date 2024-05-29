@@ -48,15 +48,13 @@ jobs:
     - name: Build EDK2 Base Tools
       run: |
         cd edk2
+        dir
         edksetup.bat ForceRebuild
 
     - name: Build Python UEFI
       run: |
         cd edk2
-        dir
-        edksetup.bat
-        set
-        echo %PATH%
+        call edksetup.bat
         cd AppPkg\Applications\Python\Python-3.6.8\
         python srcprep.py
         cd ..\..\..\..\..\
@@ -67,7 +65,7 @@ jobs:
         dir
         cd edk2\AppPkg\Applications\Python\Python-3.6.8\
         dir
-        create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
+        call create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
 
     - name: List build artifacts
       run: |
