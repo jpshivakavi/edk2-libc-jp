@@ -1,4 +1,4 @@
-name: Build Python Interpreter for UEFI
+name: Build Python Interpreter for UEFI with GCC
 
 on: [push, pull_request]
 
