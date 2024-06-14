@@ -8,7 +8,7 @@ script_path = os.path.abspath(__file__)
 script_dir = os.path.dirname(script_path)
 
 # path to the AppPkg.dsc file
-path_to_AppPkg_dsc = os.path.join(script_dir, '..', '..', 'AppPkg', 'AppPkg.dsc')
+path_to_AppPkg_dsc = os.path.join(script_dir, '..', '..', 'edk2', 'AppPkg', 'AppPkg.dsc')
 print('Path to AppPkg dsc file : ', path_to_AppPkg_dsc)
 
 # Check if the file exists
