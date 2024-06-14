@@ -35,6 +35,12 @@ jobs:
         cp -rf StdLib edk2/.
         cp -rf StdLibPrivateInternalFiles edk2/.
 
+    - name: Enable python368.inf file in AppPkg.dsc
+      run: |
+        cd .github/scripts
+        ls
+        python enable_pyuefi_apppkg.py
+
     - name: Build EDK2
       run: |
         cd edk2

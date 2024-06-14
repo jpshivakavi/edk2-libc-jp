@@ -51,6 +51,12 @@ jobs:
         dir
         edksetup.bat ForceRebuild
 
+    - name: Enable python368.inf file in AppPkg.dsc
+      run: |
+        cd .github\scripts
+        dir
+        python enable_pyuefi_apppkg.py
+
     - name: Build Python UEFI
       run: |
         cd edk2
