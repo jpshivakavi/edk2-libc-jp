@@ -32,6 +32,9 @@ jobs:
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" x86
         set
 
+    - name: Setup environment variable
+      run: echo "EDK2_LIBC_PATH=$(cd)" >> $GITHUB_ENV
+
     - name: Clone EDK2
       run: |
         git clone https://github.com/tianocore/edk2.git"
@@ -44,25 +47,21 @@ jobs:
         dir
         edksetup.bat ForceRebuild
 
-    - name: Build Python UEFI
+    - name: Run srcprep.py
       run: |
-        set PACKAGES_PATH=%CD%\edk2;%CD%;
-        set EDK2_LIBC_PATH=%CD%
-        cd edk2
-        call edksetup.bat
-        echo after edksetup.bat 
-        echo current directory %CD%
-        dir
-        echo switching %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\
-        cd %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\
+        echo switching $EDK2_LIBC_PATH\AppPkg\Applications\Python\Python-3.6.8\
+        cd $EDK2_LIBC_PATH\AppPkg\Applications\Python\Python-3.6.8\
         dir
         echo run srcprep.py file
         python srcprep.py
-        echo switch to %WORKSPACE%
-        cd %WORKSPACE%  # switch to edk2 directory
-        dir
-        echo edk2 libc path %EDK2_LIBC_PATH%
-        build -t VS2019 -a X64 -b RELEASE -p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc -D BUILD_PYTHON368
+
+    - name: Build Python UEFI
+      run: |
+        set PACKAGES_PATH=%CD%\edk2;%CD%;
+        cd edk2
+        call edksetup.bat
+        echo edk2 libc path $EDK2_LIBC_PATH
+        build -t VS2019 -a X64 -b RELEASE -p $EDK2_LIBC_PATH\AppPkg\AppPkg.dsc -D BUILD_PYTHON368
 
     - name: Edk2 workspace path
       run: |
