@@ -63,6 +63,7 @@ jobs:
     - name: Create Python UEFI package
       run: |
         set WORKSPACE=%CD%\edk2
+        set EDK2_LIBC_PATH=%CD%
         dir
         call AppPkg\Applications\Python\Python-3.6.8\create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
 
