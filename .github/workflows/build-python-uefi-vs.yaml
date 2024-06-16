@@ -47,14 +47,18 @@ jobs:
     - name: Build Python UEFI
       run: |
         set PACKAGES_PATH=%CD%\edk2;%CD%;
+        set EDK2_LIBC_PATH=%CD%;
         cd edk2
         call edksetup.bat
+        echo switching to parent directory
         cd ..  # switch to parent directory 
+        dir
+        echo switching to AppPkg\Applications\Python\Python-3.6.8\
         cd AppPkg\Applications\Python\Python-3.6.8\
+        dir
         python srcprep.py
         cd %WORKSPACE%  # switch to edk2 directory
-        set EDK2_LIBC_PATH=%CD%\\..\\
-        echo edk2 libc path %EDK2_LIBC_PATH
+        echo edk2 libc path %EDK2_LIBC_PATH%
         build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc -D BUILD_PYTHON368
 
     - name: Edk2 workspace path
