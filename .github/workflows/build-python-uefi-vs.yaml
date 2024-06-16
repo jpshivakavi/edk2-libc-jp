@@ -50,6 +50,9 @@ jobs:
         set EDK2_LIBC_PATH=%CD%;
         cd edk2
         call edksetup.bat
+        echo after edksetup.bat 
+        echo current directory %CD%
+        dir
         echo switching to parent directory
         cd ..  # switch to parent directory 
         dir
