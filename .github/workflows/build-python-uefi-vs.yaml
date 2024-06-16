@@ -38,13 +38,6 @@ jobs:
         cd edk2
         git submodule update --init
 
-    - name: Copy edk2-libc contents to edk2
-      run: |
-        dir
-        cmd /c xcopy /E /I /Y AppPkg edk2\AppPkg
-        cmd /c xcopy /E /I /Y StdLib edk2\StdLib
-        cmd /c xcopy /E /I /Y StdLibPrivateInternalFiles edk2\StdLibPrivateInternalFiles
-
     - name: Build EDK2 Base Tools
       run: |
         cd edk2
