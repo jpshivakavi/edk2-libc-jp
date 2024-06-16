@@ -62,7 +62,7 @@ jobs:
 
     - name: Create Python UEFI package
       run: |
-        set WORKSPACE=%CD%\edk2   # This variable is used by the .bat script
+        set WORKSPACE=%CD%\edk2
         dir
         call AppPkg\Applications\Python\Python-3.6.8\create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
 
