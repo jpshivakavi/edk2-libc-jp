@@ -47,7 +47,7 @@ jobs:
     - name: Build Python UEFI
       run: |
         set PACKAGES_PATH=%CD%\edk2;%CD%;
-        set EDK2_LIBC_PATH=%CD%;
+        set EDK2_LIBC_PATH=%CD%
         cd edk2
         call edksetup.bat
         echo after edksetup.bat 
