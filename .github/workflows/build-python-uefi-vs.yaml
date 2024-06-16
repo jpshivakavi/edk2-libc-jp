@@ -49,8 +49,9 @@ jobs:
 
     - name: Run srcprep.py
       run: |
-        echo switching $EDK2_LIBC_PATH\AppPkg\Applications\Python\Python-3.6.8\
-        cd $EDK2_LIBC_PATH\AppPkg\Applications\Python\Python-3.6.8\
+        echo EDK2_LIBC_PATH = %EDK2_LIBC_PATH%
+        echo switching to AppPkg\Applications\Python\Python-3.6.8\
+        cd AppPkg\Applications\Python\Python-3.6.8\
         dir
         echo run srcprep.py file
         python srcprep.py
@@ -60,8 +61,7 @@ jobs:
         set PACKAGES_PATH=%CD%\edk2;%CD%;
         cd edk2
         call edksetup.bat
-        echo edk2 libc path $EDK2_LIBC_PATH
-        build -t VS2019 -a X64 -b RELEASE -p $EDK2_LIBC_PATH\AppPkg\AppPkg.dsc -D BUILD_PYTHON368
+        build -t VS2019 -a X64 -b RELEASE -p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc -D BUILD_PYTHON368
 
     - name: Edk2 workspace path
       run: |
