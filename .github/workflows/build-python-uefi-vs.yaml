@@ -53,8 +53,8 @@ jobs:
         echo after edksetup.bat 
         echo current directory %CD%
         dir
-        echo switching to parent directory
-        cd ..  # switch to parent directory 
+        echo switching %EDK2_LIBC_PATH%
+        cd %EDK2_LIBC_PATH%  # switch to parent directory 
         dir
         echo switching to AppPkg\Applications\Python\Python-3.6.8\
         cd AppPkg\Applications\Python\Python-3.6.8\
