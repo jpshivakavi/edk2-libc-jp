@@ -27,7 +27,7 @@ echo.
 goto :eof
 
 :continue
-cd ..\..\..\..\
+cd %WORKSPACE%
 if not exist Build\AppPkg\%TARGET%_%TOOL_CHAIN_TAG%\%ARCH%\Python.efi (
     goto error
 )
