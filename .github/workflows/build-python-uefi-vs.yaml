@@ -56,10 +56,13 @@ jobs:
         echo switching %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\
         cd %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\
         dir
+        echo run srcprep.py file
         python srcprep.py
+        echo switch to %WORKSPACE%
         cd %WORKSPACE%  # switch to edk2 directory
+        dir
         echo edk2 libc path %EDK2_LIBC_PATH%
-        build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc -D BUILD_PYTHON368
+        build -t VS2019 -a X64 -b RELEASE -p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc -D BUILD_PYTHON368
 
     - name: Edk2 workspace path
       run: |
