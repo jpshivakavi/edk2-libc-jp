@@ -51,25 +51,24 @@ jobs:
         dir
         edksetup.bat ForceRebuild
 
-    - name: Enable python368.inf file in AppPkg.dsc
-      run: |
-        cd .github\scripts
-        dir
-        python enable_pyuefi_apppkg.py
-
     - name: Build Python UEFI
       run: |
+        set PACKAGES_PATH=%CD%\edk2;%CD%;
         cd edk2
         call edksetup.bat
         cd AppPkg\Applications\Python\Python-3.6.8\
         python srcprep.py
         cd ..\..\..\..\..\
-        build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc
+        build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc -D BUILD_PY368
+
+    - name: Edk2 workspace path
+      run: |
+        dir %WORKSPACE%
 
     - name: Create Python UEFI package
       run: |
         dir
-        cd edk2\AppPkg\Applications\Python\Python-3.6.8\
+        cd AppPkg\Applications\Python\Python-3.6.8\
         dir
         call create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
 
