@@ -49,10 +49,13 @@ jobs:
         set PACKAGES_PATH=%CD%\edk2;%CD%;
         cd edk2
         call edksetup.bat
+        cd ..  # switch to parent directory 
         cd AppPkg\Applications\Python\Python-3.6.8\
         python srcprep.py
-        cd ..\..\..\..\..\
-        build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc -D BUILD_PY368
+        cd %WORKSPACE%  # switch to edk2 directory
+        set EDK2_LIBC_PATH=%CD%\\..\\
+        echo edk2 libc path %EDK2_LIBC_PATH
+        build -t VS2019 -a X64 -b RELEASE -p AppPkg\AppPkg.dsc -D BUILD_PYTHON368
 
     - name: Edk2 workspace path
       run: |
