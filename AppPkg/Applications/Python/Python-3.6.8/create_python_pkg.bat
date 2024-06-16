@@ -47,8 +47,9 @@ if not exist %OUT_FOLDER%\EFI\StdLib\lib\python36.8 (
 if not exist %OUT_FOLDER%\EFI\StdLib\etc (
    mkdir %OUT_FOLDER%\EFI\StdLib\etc
 )
-xcopy AppPkg\Applications\Python\Python-3.6.8\Lib\*  %OUT_FOLDER%\EFI\StdLib\lib\python36.8\    /Y /S /I
-xcopy StdLib\Efi\StdLib\etc\*  %OUT_FOLDER%\EFI\StdLib\etc\  /Y /S /I
+
+xcopy %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\Lib\*  %OUT_FOLDER%\EFI\StdLib\lib\python36.8\    /Y /S /I
+xcopy %EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\*  %OUT_FOLDER%\EFI\StdLib\etc\  /Y /S /I
 echo.
 
 if not x%OUT_FOLDER::=%==x%OUT_FOLDER% (
