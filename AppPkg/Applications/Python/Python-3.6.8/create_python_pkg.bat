@@ -27,7 +27,11 @@ echo.
 goto :eof
 
 :continue
+echo current working directory %CD%
+echo changing workspace to %WORKSPACE%
 cd %WORKSPACE%
+echo contents of %WORKSPACE%
+dir
 if not exist Build\AppPkg\%TARGET%_%TOOL_CHAIN_TAG%\%ARCH%\Python.efi (
     goto error
 )
