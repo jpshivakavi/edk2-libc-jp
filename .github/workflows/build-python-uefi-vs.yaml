@@ -60,16 +60,11 @@ jobs:
         call edksetup.bat
         build -t VS2019 -a X64 -b RELEASE -p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc -D BUILD_PYTHON368
 
-    - name: Edk2 workspace path
-      run: |
-        dir %WORKSPACE%
-
     - name: Create Python UEFI package
       run: |
+        set WORKSPACE=%CD%\edk2   # This variable is used by the .bat script
         dir
-        cd AppPkg\Applications\Python\Python-3.6.8\
-        dir
-        call create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
+        call AppPkg\Applications\Python\Python-3.6.8\create_python_pkg.bat VS2019 RELEASE X64 myUEFIPy
 
     - name: List build artifacts
       run: |
