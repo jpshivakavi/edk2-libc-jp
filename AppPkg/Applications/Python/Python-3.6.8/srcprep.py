@@ -24,7 +24,8 @@ def copyDirTree(root_src_dir,root_dst_dir):
                         os.remove(dst_file)
  
                 shutil.copy(src_file, dst_dir)
- 
+
+print('srcprep.py: current working directory =', os.getcwd())
 src = r'PyMod-3.6.8'
 dest = os.getcwd()
 copyDirTree(src,dest)
