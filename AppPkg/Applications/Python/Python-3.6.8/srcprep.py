@@ -29,3 +29,4 @@ print('srcprep.py: current working directory =', os.getcwd())
 src = r'PyMod-3.6.8'
 dest = os.getcwd()
 copyDirTree(src,dest)
+print('srcpre.py run successfully')
