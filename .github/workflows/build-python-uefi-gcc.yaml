@@ -44,6 +44,7 @@ jobs:
         python3 srcprep.py
 
     - name: Build Python UEFI
+      run: |
         export PACKAGES_PATH=`pwd`/edk2:`pwd`:
         export EDK2_LIBC_PATH=`pwd`
         cd edk2
