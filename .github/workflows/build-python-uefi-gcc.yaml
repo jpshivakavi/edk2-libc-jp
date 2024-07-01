@@ -24,7 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3-distutils
+        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3-distutils dos2unix
 
     - name: Clone EDK2
       run: |
@@ -56,8 +56,9 @@ jobs:
         echo Contents of the current working directory
         ls -al
         export WORKSPACE=`pwd`/edk2
-        echo WOKSPACE is $WORKSPACE
+        echo WORKSPACE is $WORKSPACE
         export EDK2_LIBC_PATH=`pwd`
+        dos2unix AppPkg/Applications/Python/Python-3.6.8/create_python_pkg.sh
         . AppPkg/Applications/Python/Python-3.6.8/create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
 
     - name: List build artifacts
