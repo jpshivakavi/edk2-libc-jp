@@ -53,7 +53,10 @@ jobs:
 
     - name: Create PyUEFI package
       run: |
+        echo Contents of the current working directory
+        ls -al
         export WORKSPACE=`pwd`/edk2
+        echo WOKSPACE is $WORKSPACE
         export EDK2_LIBC_PATH=`pwd`
         . AppPkg/Applications/Python/Python-3.6.8/create_python_pkg.sh GCC5 RELEASE X64 myUEFIPy
 
