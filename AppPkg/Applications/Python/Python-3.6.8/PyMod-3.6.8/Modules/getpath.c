@@ -116,7 +116,7 @@
 #define SIFY( y )   SIFY_I( y )
 
 #ifndef PREFIX
-  #define PREFIX      L"/Efi/StdLib"
+  #define PREFIX      L"/PyEfi/StdLib"
 #endif
 
 #ifndef EXEC_PREFIX
