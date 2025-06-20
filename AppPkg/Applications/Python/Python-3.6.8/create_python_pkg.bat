@@ -47,19 +47,19 @@ if not exist Build\AppPkg\%TARGET%_%TOOL_CHAIN_TAG%\%ARCH%\Python.efi (
     goto error
 )
 
-if not exist %OUT_FOLDER%\EFI\Tools (
-   mkdir %OUT_FOLDER%\EFI\Tools
+if not exist %OUT_FOLDER%\PyEfi\Tools (
+   mkdir %OUT_FOLDER%\PyEfi\Tools
 )
-xcopy Build\AppPkg\%TARGET%_%TOOL_CHAIN_TAG%\%ARCH%\Python.efi %OUT_FOLDER%\EFI\Tools\ /y
+xcopy Build\AppPkg\%TARGET%_%TOOL_CHAIN_TAG%\%ARCH%\Python.efi %OUT_FOLDER%\PyEfi\Tools\ /y
 
-if not exist %OUT_FOLDER%\EFI\StdLib\lib\python36.8 (
-    mkdir %OUT_FOLDER%\EFI\StdLib\lib\python36.8
+if not exist %OUT_FOLDER%\PyEfi\StdLib\lib\python36.8 (
+    mkdir %OUT_FOLDER%\PyEfi\StdLib\lib\python36.8
 )
-if not exist %OUT_FOLDER%\EFI\StdLib\etc (
-   mkdir %OUT_FOLDER%\EFI\StdLib\etc
+if not exist %OUT_FOLDER%\PyEfi\StdLib\etc (
+   mkdir %OUT_FOLDER%\PyEfi\StdLib\etc
 )
-xcopy %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\Lib\*  %OUT_FOLDER%\EFI\StdLib\lib\python36.8\    /Y /S /I
-xcopy %EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\*  %OUT_FOLDER%\EFI\StdLib\etc\  /Y /S /I
+xcopy %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.6.8\Lib\*  %OUT_FOLDER%\PyEfi\StdLib\lib\python36.8\    /Y /S /I
+xcopy %EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\*  %OUT_FOLDER%\PyEfi\StdLib\etc\  /Y /S /I
 echo.
 
 if not x%OUT_FOLDER::=%==x%OUT_FOLDER% (
