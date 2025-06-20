@@ -85,26 +85,26 @@ then
 fi
 
 
-# create /EFI/Tools folder in the Output folder if it doesn't exists
-if [ ! -d $OUT_FOLDER/EFI/Tools ]
+# create /PyEfi/Tools folder in the Output folder if it doesn't exists
+if [ ! -d $OUT_FOLDER/PyEfi/Tools ]
 then
-    mkdir -p $OUT_FOLDER/EFI/Tools
+    mkdir -p $OUT_FOLDER/PyEfi/Tools
 fi
 
-cp -f $PYTHON_BIN $OUT_FOLDER/EFI/Tools/
+cp -f $PYTHON_BIN $OUT_FOLDER/PyEfi/Tools/
 
-if [ ! -d $OUT_FOLDER/EFI/StdLib/lib/python36.8 ]
+if [ ! -d $OUT_FOLDER/PyEfi/StdLib/lib/python36.8 ]
 then
-    mkdir -p $OUT_FOLDER/EFI/StdLib/lib/python36.8
+    mkdir -p $OUT_FOLDER/PyEfi/StdLib/lib/python36.8
 fi
 
-if [ ! -d $OUT_FOLDER/EFI/StdLib/etc ]
+if [ ! -d $OUT_FOLDER/PyEfi/StdLib/etc ]
 then
-    mkdir -p $OUT_FOLDER/EFI/StdLib/etc
+    mkdir -p $OUT_FOLDER/PyEfi/StdLib/etc
 fi
 
-cp -rf $EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.6.8/Lib/*  $OUT_FOLDER/EFI/StdLib/lib/python36.8/
-cp -rf $EDK2_LIBC_PATH/StdLib/Efi/StdLib/etc/*  $OUT_FOLDER/EFI/StdLib/etc/
+cp -rf $EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.6.8/Lib/*  $OUT_FOLDER/PyEfi/StdLib/lib/python36.8/
+cp -rf $EDK2_LIBC_PATH/StdLib/Efi/StdLib/etc/*  $OUT_FOLDER/PyEfi/StdLib/etc/
 
 if [ ${OUT_FOLDER:0:1} == "/" ]
 then
