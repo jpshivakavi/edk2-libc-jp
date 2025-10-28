@@ -91,9 +91,17 @@ extern PyObject* init_sqlite3(void);
 
 // EfiPy
 extern PyObject* init_EfiPy(void);
+// LoLeOp
+extern PyObject* init_LoLeOp(void);
 
 // ssl
 extern PyObject* PyInit__ssl(void);
+
+// CCB Python modules
+extern void PyInit_CCBBaseTypes(void);
+extern void PyInit_CCBHWApi(void);
+extern void PyInit_CCBUsrCpuUtility(void);
+extern void PyInit_CCBSMBIOS(void);
 
 struct _inittab _PyImport_Inittab[] = {
     {"_ast", PyInit__ast},
@@ -106,7 +114,7 @@ struct _inittab _PyImport_Inittab[] = {
     {"_sha512", PyInit__sha512},
 	{ "_sha3", PyInit__sha3 },
 	{ "_blake2", PyInit__blake2 },
-//    {"_socket", PyInit__socket},
+    {"_socket", PyInit__socket},
     {"_symtable", PyInit__symtable},
 	{"binascii", PyInit_binascii},
 	{"cmath", PyInit_cmath},
@@ -161,6 +169,14 @@ struct _inittab _PyImport_Inittab[] = {
 #if defined(UEFI_MSVC_32) || defined(UEFI_MSVC_64)
     { "_ctypes", PyInit__ctypes },
 #endif
+	/* CCB Python built in modules */
+	{ "CCBBaseTypes", PyInit_CCBBaseTypes },
+	{ "CCBHWApi", PyInit_CCBHWApi },
+	{ "CCBUsrCpuUtility", PyInit_CCBUsrCpuUtility },
+	{ "CCBSMBIOS", PyInit_CCBSMBIOS },
+	{ "_EfiPy", init_EfiPy },
+	{ "_LoLeOp", init_LoLeOp },
+    {"_ssl", PyInit__ssl},
     /* Sentinel */
     {0, 0}
 };

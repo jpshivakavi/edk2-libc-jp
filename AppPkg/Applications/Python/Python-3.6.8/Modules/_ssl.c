@@ -11,7 +11,7 @@
    XXX should partial writes be enabled, SSL_MODE_ENABLE_PARTIAL_WRITE?
 
    XXX integrate several "shutdown modes" as suggested in
-       http://bugs.python.org/issue8108#msg102867 ?
+       http://bugs.python.org/issue8108#msg102867 
 */
 
 #define PY_SSIZE_T_CLEAN
@@ -66,6 +66,15 @@ static PySocketModule_APIObject PySocketModule;
 #endif
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#ifdef _MSC_VER
+#pragma warning(disable: 4996)  /* disable deprecated function warnings */
+#endif
+#ifdef UEFI_C_SOURCE
+#pragma warning(disable: 4047)  /* disable 'differs in levels of indirection' warnings */
+#pragma warning(disable: 4133)  /* disable 'incompatible types' warnings */
+#pragma warning(disable: 4013)  /* disable 'undefined function' warnings */
+#pragma warning(disable: 4090)  /* disable 'different const qualifiers' warnings */
 #endif
 
 /* Include OpenSSL header files */
@@ -387,6 +396,25 @@ class _ssl.SSLSession "PySSLSession *" "&PySSLSession_Type"
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdc67fafeeaa8109]*/
 
+/* Define stub functions for Windows-specific functions in UEFI */
+#ifdef UEFI_C_SOURCE
+/* Stub function for enum_certificates (Windows-specific) */
+static PyObject *
+_ssl_enum_certificates_impl(PyObject *module, const char *store_name)
+{
+    PyErr_SetString(PyExc_NotImplementedError, "enum_certificates (Windows cert store) not available in UEFI environment");
+    return NULL;
+}
+
+/* Stub function for enum_crls (Windows-specific) */
+static PyObject *
+_ssl_enum_crls_impl(PyObject *module, const char *store_name)
+{
+    PyErr_SetString(PyExc_NotImplementedError, "enum_crls (Windows cert store) not available in UEFI environment");
+    return NULL;
+}
+#endif
+
 #include "clinic/_ssl.c.h"
 
 static int PySSL_select(PySocketSockObject *s, int writing, _PyTime_t timeout);
@@ -641,6 +669,40 @@ _setSSLError (const char *errstr, int errcode, const char *filename, int lineno)
     return NULL;
 }
 
+#ifdef UEFI_C_SOURCE
+static PyObject *
+_setSSLError_UEFI_FileOp(const char *operation, const char *filename, int lineno) {
+    char error_msg[512];
+    char err_str[256] = "";
+    unsigned long err = ERR_peek_last_error();
+    
+    /* Get detailed OpenSSL error info if available */
+    if (err != 0) {
+        ERR_error_string_n(err, err_str, sizeof(err_str));
+    }
+    
+    /* Create more detailed error message with filename */
+    if (err_str[0] != '\0') {
+        snprintf(error_msg, sizeof(error_msg), 
+            "SSL %s failed for file '%s': %s. "
+            "Try using relative paths or absolute paths in format 'fs0:\\certs\\cert.pem'.",
+            operation, filename, err_str);
+    } else {
+        snprintf(error_msg, sizeof(error_msg), 
+            "SSL %s failed for file '%s': File operations may have limited support in UEFI. "
+            "Try using relative paths or ensure file paths use format 'fs0:\\certs\\cert.pem'.",
+            operation, filename);
+    }
+    
+    /* Print the error to stderr for debugging */
+    fprintf(stderr, "SSL Error: %s\n", error_msg);
+    
+    fill_and_set_sslerror(PySSLErrorObject, 0, error_msg, lineno, 0);
+    ERR_clear_error();
+    return NULL;
+}
+#endif
+
 /*
  * SSL objects
  */
@@ -788,73 +850,133 @@ _ssl__SSLSocket_do_handshake_impl(PySSLSocket *self)
     _PyTime_t timeout, deadline = 0;
     int has_timeout;
 
+    printf("[UEFI SSL DEBUG] do_handshake: Starting SSL handshake\n");
+    
     if (sock) {
+        printf("[UEFI SSL DEBUG] do_handshake: Socket object exists\n");
         if (((PyObject*)sock) == Py_None) {
+            printf("[UEFI SSL DEBUG] do_handshake: ERROR - Socket is None\n");
             _setSSLError("Underlying socket connection gone",
                          PY_SSL_ERROR_NO_SOCKET, __FILE__, __LINE__);
             return NULL;
         }
         Py_INCREF(sock);
+        printf("[UEFI SSL DEBUG] do_handshake: Socket validated, sock_fd=%d\n", sock->sock_fd);
 
         /* just in case the blocking state of the socket has been changed */
         nonblocking = (sock->sock_timeout >= 0);
+        printf("[UEFI SSL DEBUG] do_handshake: Setting BIO non-blocking mode: %s\n", 
+               nonblocking ? "true" : "false");
         BIO_set_nbio(SSL_get_rbio(self->ssl), nonblocking);
         BIO_set_nbio(SSL_get_wbio(self->ssl), nonblocking);
+    } else {
+        printf("[UEFI SSL DEBUG] do_handshake: WARNING - No socket object\n");
     }
 
     timeout = GET_SOCKET_TIMEOUT(sock);
     has_timeout = (timeout > 0);
-    if (has_timeout)
+    printf("[UEFI SSL DEBUG] do_handshake: Timeout settings - has_timeout=%s, timeout=%ld\n",
+           has_timeout ? "true" : "false", (long)timeout);
+    
+    if (has_timeout) {
         deadline = _PyTime_GetMonotonicClock() + timeout;
+        printf("[UEFI SSL DEBUG] do_handshake: Deadline set\n");
+    }
 
+    printf("[UEFI SSL DEBUG] do_handshake: Starting handshake loop\n");
+    int loop_count = 0;
+    
     /* Actually negotiate SSL connection */
     /* XXX If SSL_do_handshake() returns 0, it's also a failure. */
     do {
+        loop_count++;
+        printf("[UEFI SSL DEBUG] do_handshake: Loop iteration %d\n", loop_count);
+        
+        printf("[UEFI SSL DEBUG] do_handshake: About to call SSL_do_handshake()\n");
         PySSL_BEGIN_ALLOW_THREADS
         ret = SSL_do_handshake(self->ssl);
         err = _PySSL_errno(ret < 1, self->ssl, ret);
         PySSL_END_ALLOW_THREADS
+        printf("[UEFI SSL DEBUG] do_handshake: SSL_do_handshake() returned %d\n", ret);
+        printf("[UEFI SSL DEBUG] do_handshake: SSL error code: %d\n", err.ssl);
+        
         self->err = err;
 
-        if (PyErr_CheckSignals())
+        printf("[UEFI SSL DEBUG] do_handshake: Checking for Python signals\n");
+        if (PyErr_CheckSignals()) {
+            printf("[UEFI SSL DEBUG] do_handshake: Python signal detected, going to error\n");
             goto error;
+        }
 
-        if (has_timeout)
+        if (has_timeout) {
             timeout = deadline - _PyTime_GetMonotonicClock();
+            printf("[UEFI SSL DEBUG] do_handshake: Updated timeout: %ld\n", (long)timeout);
+        }
 
+        printf("[UEFI SSL DEBUG] do_handshake: Checking SSL error type\n");
         if (err.ssl == SSL_ERROR_WANT_READ) {
+            printf("[UEFI SSL DEBUG] do_handshake: SSL_ERROR_WANT_READ - selecting for read\n");
             sockstate = PySSL_select(sock, 0, timeout);
+            printf("[UEFI SSL DEBUG] do_handshake: PySSL_select(read) returned %d\n", sockstate);
         } else if (err.ssl == SSL_ERROR_WANT_WRITE) {
+            printf("[UEFI SSL DEBUG] do_handshake: SSL_ERROR_WANT_WRITE - selecting for write\n");
             sockstate = PySSL_select(sock, 1, timeout);
+            printf("[UEFI SSL DEBUG] do_handshake: PySSL_select(write) returned %d\n", sockstate);
         } else {
+            printf("[UEFI SSL DEBUG] do_handshake: No SSL_ERROR_WANT_* - operation complete or error\n");
             sockstate = SOCKET_OPERATION_OK;
         }
 
+        printf("[UEFI SSL DEBUG] do_handshake: Socket state: %d\n", sockstate);
+        
         if (sockstate == SOCKET_HAS_TIMED_OUT) {
+            printf("[UEFI SSL DEBUG] do_handshake: ERROR - Socket timed out\n");
             PyErr_SetString(PySocketModule.timeout_error,
                             ERRSTR("The handshake operation timed out"));
             goto error;
         } else if (sockstate == SOCKET_HAS_BEEN_CLOSED) {
+            printf("[UEFI SSL DEBUG] do_handshake: ERROR - Socket has been closed\n");
             PyErr_SetString(PySSLErrorObject,
                             ERRSTR("Underlying socket has been closed."));
             goto error;
         } else if (sockstate == SOCKET_TOO_LARGE_FOR_SELECT) {
+            printf("[UEFI SSL DEBUG] do_handshake: ERROR - Socket too large for select\n");
             PyErr_SetString(PySSLErrorObject,
                             ERRSTR("Underlying socket too large for select()."));
             goto error;
         } else if (sockstate == SOCKET_IS_NONBLOCKING) {
+            printf("[UEFI SSL DEBUG] do_handshake: Socket is non-blocking, breaking loop\n");
+            break;
+        }
+        
+        printf("[UEFI SSL DEBUG] do_handshake: Checking loop continuation condition\n");
+        printf("[UEFI SSL DEBUG] do_handshake: err.ssl=%d, SSL_ERROR_WANT_READ=%d, SSL_ERROR_WANT_WRITE=%d\n",
+               err.ssl, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE);
+               
+        if (loop_count > 100) {
+            printf("[UEFI SSL DEBUG] do_handshake: ERROR - Too many loop iterations, breaking to prevent infinite loop\n");
             break;
         }
     } while (err.ssl == SSL_ERROR_WANT_READ ||
              err.ssl == SSL_ERROR_WANT_WRITE);
+             
+    printf("[UEFI SSL DEBUG] do_handshake: Exited handshake loop after %d iterations\n", loop_count);
+    
     Py_XDECREF(sock);
-    if (ret < 1)
+    printf("[UEFI SSL DEBUG] do_handshake: Socket reference decremented\n");
+    
+    if (ret < 1) {
+        printf("[UEFI SSL DEBUG] do_handshake: ERROR - Handshake failed, ret=%d\n", ret);
         return PySSL_SetError(self, ret, __FILE__, __LINE__);
+    }
 
+    printf("[UEFI SSL DEBUG] do_handshake: SUCCESS - Handshake completed successfully\n");
     Py_RETURN_NONE;
 
 error:
+    printf("[UEFI SSL DEBUG] do_handshake: ERROR path - cleaning up\n");
     Py_XDECREF(sock);
+    printf("[UEFI SSL DEBUG] do_handshake: ERROR path - returning NULL\n");
     return NULL;
 }
 
@@ -3440,6 +3562,90 @@ error:
 }
 
 /*[clinic input]
+_ssl._SSLContext.load_cert_chain_from_memory
+    cert_bytes: object
+    key_bytes: object
+
+Load certificate and private key from memory buffers (PEM format).
+[clinic start generated code]*/
+
+static PyObject *
+_ssl__SSLContext_load_cert_chain_from_memory_impl(PySSLContext *self, PyObject *cert_bytes, PyObject *key_bytes)
+/*[clinic end generated code: output=xxx input=xxx]*/
+{
+    BIO *cert_bio = NULL, *key_bio = NULL;
+    X509 *cert = NULL;
+    EVP_PKEY *pkey = NULL;
+    int r = 0;
+
+    if (!PyBytes_Check(cert_bytes) || !PyBytes_Check(key_bytes)) {
+        PyErr_SetString(PyExc_TypeError, "cert_bytes and key_bytes must be bytes objects");
+        return NULL;
+    }
+
+    char *cert_buf = PyBytes_AsString(cert_bytes);
+    Py_ssize_t cert_len = PyBytes_Size(cert_bytes);
+    char *key_buf = PyBytes_AsString(key_bytes);
+    Py_ssize_t key_len = PyBytes_Size(key_bytes);
+
+    cert_bio = BIO_new_mem_buf(cert_buf, (int)cert_len);
+    key_bio = BIO_new_mem_buf(key_buf, (int)key_len);
+
+    if (!cert_bio || !key_bio) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create BIOs");
+        goto error;
+    }
+
+    PySSL_BEGIN_ALLOW_THREADS;
+    cert = PEM_read_bio_X509(cert_bio, NULL, 0, NULL);
+    pkey = PEM_read_bio_PrivateKey(key_bio, NULL, 0, NULL);
+    PySSL_END_ALLOW_THREADS;
+
+    if (!cert || !pkey) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to parse cert or key from memory");
+        goto error;
+    }
+
+    PySSL_BEGIN_ALLOW_THREADS;
+    r = SSL_CTX_use_certificate(self->ctx, cert);
+    PySSL_END_ALLOW_THREADS;
+    if (r != 1) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to use certificate");
+        goto error;
+    }
+
+    PySSL_BEGIN_ALLOW_THREADS;
+    r = SSL_CTX_use_PrivateKey(self->ctx, pkey);
+    PySSL_END_ALLOW_THREADS;
+    if (r != 1) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to use private key");
+        goto error;
+    }
+
+    PySSL_BEGIN_ALLOW_THREADS;
+    r = SSL_CTX_check_private_key(self->ctx);
+    PySSL_END_ALLOW_THREADS;
+    if (r != 1) {
+        PyErr_SetString(PyExc_RuntimeError, "Private key does not match certificate");
+        goto error;
+    }
+
+    BIO_free(cert_bio);
+    BIO_free(key_bio);
+    X509_free(cert);
+    EVP_PKEY_free(pkey);
+
+    Py_RETURN_NONE;
+
+error:
+    if (cert_bio) BIO_free(cert_bio);
+    if (key_bio) BIO_free(key_bio);
+    if (cert) X509_free(cert);
+    if (pkey) EVP_PKEY_free(pkey);
+    return NULL;
+}
+
+/*[clinic input]
 _ssl._SSLContext.load_cert_chain
     certfile: object
     keyfile: object = NULL
@@ -3483,8 +3689,29 @@ _ssl__SSLContext_load_cert_chain_impl(PySSLContext *self, PyObject *certfile,
         SSL_CTX_set_default_passwd_cb_userdata(self->ctx, &pw_info);
     }
     PySSL_BEGIN_ALLOW_THREADS_S(pw_info.thread_state);
+    #ifdef UEFI_C_SOURCE
+    /* UEFI: Always convert path to forward slashes and use only that */
+    char cert_path[256];
+    strncpy(cert_path, PyBytes_AS_STRING(certfile_bytes), sizeof(cert_path)-1);
+    cert_path[sizeof(cert_path)-1] = '\0';
+    for (int i = 0; cert_path[i] != '\0'; i++) {
+        if (cert_path[i] == '\\') {
+            cert_path[i] = '/';
+        }
+    }
+    fprintf(stderr, "[UEFI SSL] Loading certificate from path: %s\n", cert_path);
+    r = SSL_CTX_use_certificate_chain_file(self->ctx, cert_path);
+    if (r != 1) {
+        unsigned long err;
+        fprintf(stderr, "[UEFI SSL] Failed to load certificate. OpenSSL error stack:\n");
+        while ((err = ERR_get_error()) != 0) {
+            fprintf(stderr, "  %s\n", ERR_error_string(err, NULL));
+        }
+    }
+    #else
     r = SSL_CTX_use_certificate_chain_file(self->ctx,
         PyBytes_AS_STRING(certfile_bytes));
+    #endif
     PySSL_END_ALLOW_THREADS_S(pw_info.thread_state);
     if (r != 1) {
         if (pw_info.error) {
@@ -3496,14 +3723,39 @@ _ssl__SSLContext_load_cert_chain_impl(PySSLContext *self, PyObject *certfile,
             PyErr_SetFromErrno(PyExc_IOError);
         }
         else {
+#ifdef UEFI_C_SOURCE
+            _setSSLError_UEFI_FileOp("certificate loading", PyBytes_AS_STRING(certfile_bytes), __LINE__);
+#else
             _setSSLError(NULL, 0, __FILE__, __LINE__);
+#endif
         }
         goto error;
     }
     PySSL_BEGIN_ALLOW_THREADS_S(pw_info.thread_state);
+    #ifdef UEFI_C_SOURCE
+    /* UEFI: Always convert path to forward slashes and use only that */
+    char key_path[256];
+    strncpy(key_path, PyBytes_AS_STRING(keyfile ? keyfile_bytes : certfile_bytes), sizeof(key_path)-1);
+    key_path[sizeof(key_path)-1] = '\0';
+    for (int i = 0; key_path[i] != '\0'; i++) {
+        if (key_path[i] == '\\') {
+            key_path[i] = '/';
+        }
+    }
+    fprintf(stderr, "[UEFI SSL] Loading private key from path: %s\n", key_path);
+    r = SSL_CTX_use_PrivateKey_file(self->ctx, key_path, SSL_FILETYPE_PEM);
+    if (r != 1) {
+        unsigned long err;
+        fprintf(stderr, "[UEFI SSL] Failed to load private key. OpenSSL error stack:\n");
+        while ((err = ERR_get_error()) != 0) {
+            fprintf(stderr, "  %s\n", ERR_error_string(err, NULL));
+        }
+    }
+    #else
     r = SSL_CTX_use_PrivateKey_file(self->ctx,
         PyBytes_AS_STRING(keyfile ? keyfile_bytes : certfile_bytes),
         SSL_FILETYPE_PEM);
+    #endif
     PySSL_END_ALLOW_THREADS_S(pw_info.thread_state);
     Py_CLEAR(keyfile_bytes);
     Py_CLEAR(certfile_bytes);
@@ -3517,7 +3769,11 @@ _ssl__SSLContext_load_cert_chain_impl(PySSLContext *self, PyObject *certfile,
             PyErr_SetFromErrno(PyExc_IOError);
         }
         else {
+#ifdef UEFI_C_SOURCE
+            _setSSLError_UEFI_FileOp("private key loading", "key_file", __LINE__);
+#else
             _setSSLError(NULL, 0, __FILE__, __LINE__);
+#endif
         }
         goto error;
     }
@@ -3751,6 +4007,7 @@ _ssl._SSLContext.load_dh_params
 
 [clinic start generated code]*/
 
+/* File I/O implementation - works in both UEFI (via StdLib) and standard environments */
 static PyObject *
 _ssl__SSLContext_load_dh_params(PySSLContext *self, PyObject *filepath)
 /*[clinic end generated code: output=1c8e57a38e055af0 input=c8871f3c796ae1d6]*/
@@ -4228,6 +4485,7 @@ static struct PyMethodDef context_methods[] = {
     _SSL__SSLCONTEXT__SET_ALPN_PROTOCOLS_METHODDEF
     _SSL__SSLCONTEXT__SET_NPN_PROTOCOLS_METHODDEF
     _SSL__SSLCONTEXT_LOAD_CERT_CHAIN_METHODDEF
+    _SSL__SSLCONTEXT_LOAD_CERT_CHAIN_FROM_MEMORY_METHODDEF
     _SSL__SSLCONTEXT_LOAD_DH_PARAMS_METHODDEF
     _SSL__SSLCONTEXT_LOAD_VERIFY_LOCATIONS_METHODDEF
     _SSL__SSLCONTEXT_SESSION_STATS_METHODDEF
@@ -4963,7 +5221,7 @@ _ssl_nid2obj_impl(PyObject *module, int nid)
     return result;
 }
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
 
 static PyObject*
 certEncodingType(DWORD encodingType)
@@ -5225,8 +5483,10 @@ static PyMethodDef PySSL_methods[] = {
     _SSL_RAND_EGD_METHODDEF
     _SSL_RAND_STATUS_METHODDEF
     _SSL_GET_DEFAULT_VERIFY_PATHS_METHODDEF
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     _SSL_ENUM_CERTIFICATES_METHODDEF
     _SSL_ENUM_CRLS_METHODDEF
+#endif
     _SSL_TXT2OBJ_METHODDEF
     _SSL_NID2OBJ_METHODDEF
     {NULL,                  NULL}            /* Sentinel */
@@ -5322,7 +5582,14 @@ static int _setup_ssl_threads(void) {
 
 PyDoc_STRVAR(module_doc,
 "Implementation module for SSL socket operations.  See the socket module\n\
-for documentation.");
+for documentation.\n\
+\n\
+UEFI ENVIRONMENT NOTES:\n\
+- File system operations ARE supported via StdLib (FAT32 file systems)\n\
+- Certificate files can be loaded from UEFI file systems\n\
+- Default system certificate stores are NOT available\n\
+- Load CA certificates from files using SSL_CTX_load_verify_locations()\n\
+- Certificate verification is performed locally (no network required)");
 
 
 static struct PyModuleDef _sslmodule = {
@@ -5405,6 +5672,19 @@ PyInit__ssl(void)
     _ssl_locks_count++;
 #endif
 #endif  /* WITH_THREAD */
+
+#ifdef UEFI_C_SOURCE
+    /* UEFI-specific SSL initialization */
+    /* Initialize random number generator for UEFI environment */
+    RAND_poll();
+    
+    /* UEFI supports file system access via StdLib for FAT32 file systems
+     * Certificate files can be loaded from UEFI file systems using standard functions
+     * like SSL_CTX_load_verify_locations() with file paths */
+    
+    /* Note: Default system certificate stores are not available in UEFI
+     * Applications should load CA certificates from files on UEFI file systems */
+#endif
 
     /* Add symbols to module dict */
     sslerror_type_slots[0].pfunc = PyExc_OSError;

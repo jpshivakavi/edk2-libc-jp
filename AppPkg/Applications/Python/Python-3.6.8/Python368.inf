@@ -29,7 +29,9 @@
 [Packages]
   StdLib/StdLib.dec
   MdePkg/MdePkg.dec
-  MdeModulePkg/MdeModulePkg.dec 
+  MdeModulePkg/MdeModulePkg.dec
+  IntelFrameworkPkg/IntelFrameworkPkg.dec
+  CryptoPkg/CryptoPkg.dec
 
 [LibraryClasses]
   UefiLib
@@ -43,11 +45,22 @@
   LibNetUtil
   DevMedia
   PciLib
-  #BsdSocketLib
-  #EfiSocketLib
-
-[Protocols]
-  gEfiMpServiceProtocolGuid           ## CONSUMES
+  EfiPy
+  LoLeOp
+  BsdSocketLib
+  EfiSocketLib
+  #CpuLib
+  # CCB Libraries
+  CCHWAPILib
+  CCDebugLib
+  CCOSIntLib
+  CCContainerLib
+  CCSMBIOSLib
+  UserCPUUtility
+  # SSL/TLS Libraries for _ssl module - minimal set, no IntrinsicLib to avoid conflicts
+  OpensslLib
+  SafeIntLib
+  RngLib
 
 [FixedPcd]
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x0F
@@ -71,8 +84,8 @@
 #Python
   PyMod-$(PYTHON_VERSION)/Python/bltinmodule.c
   PyMod-$(PYTHON_VERSION)/Python/getcopyright.c
-  PyMod-$(PYTHON_VERSION)/Python/marshal.c 
-  PyMod-$(PYTHON_VERSION)/Python/random.c 
+  PyMod-$(PYTHON_VERSION)/Python/marshal.c
+  PyMod-$(PYTHON_VERSION)/Python/random.c
   PyMod-$(PYTHON_VERSION)/Python/fileutils.c
   PyMod-$(PYTHON_VERSION)/Python/pytime.c
   PyMod-$(PYTHON_VERSION)/Python/pylifecycle.c
@@ -82,7 +95,7 @@
   Python/_warnings.c
   Python/asdl.c
   Python/ast.c
-  Python/ceval.c   
+  Python/ceval.c
   Python/codecs.c
   Python/compile.c
   Python/dtoa.c
@@ -106,9 +119,9 @@
   Python/pyarena.c
   Python/pyctype.c
   Python/pyfpe.c
-  Python/pymath.c    
+  Python/pymath.c
   Python/pystrcmp.c
-  Python/pystrtod.c   
+  Python/pystrtod.c
   Python/Python-ast.c
   Python/pythonrun.c
   Python/structmember.c
@@ -122,7 +135,7 @@
   PyMod-$(PYTHON_VERSION)/Objects/memoryobject.c
   PyMod-$(PYTHON_VERSION)/Objects/object.c
   PyMod-$(PYTHON_VERSION)/Objects/unicodeobject.c
-  
+
   Objects/accu.c
   Objects/abstract.c
   Objects/boolobject.c
@@ -157,8 +170,8 @@
   Objects/typeobject.c
   Objects/unicodectype.c
   Objects/weakrefobject.c
-  Objects/namespaceobject.c 
-  
+  Objects/namespaceobject.c
+
   # Mandatory Modules -- These must always be built in.
   PyMod-$(PYTHON_VERSION)/Modules/config.c
   PyMod-$(PYTHON_VERSION)/Modules/edk2module.c
@@ -168,13 +181,19 @@
   PyMod-$(PYTHON_VERSION)/Modules/selectmodule.c
   PyMod-$(PYTHON_VERSION)/Modules/faulthandler.c
   PyMod-$(PYTHON_VERSION)/Modules/timemodule.c
+  # CCB Python Built-in Modules
+  PyMod-$(PYTHON_VERSION)/Modules/CCBBaseTypes.c
+  PyMod-$(PYTHON_VERSION)/Modules/CCBHWApi.c
+  PyMod-$(PYTHON_VERSION)/Modules/CCBUsrCpuUtility.c
+  #PyMod-$(PYTHON_VERSION)/Modules/CCBPlatformDetails.c
+  PyMod-$(PYTHON_VERSION)/Modules/CCBSMBIOS.c
 
   Modules/_functoolsmodule.c
   Modules/gcmodule.c
   Modules/getbuildinfo.c
   Programs/python.c
   Modules/hashtable.c
-  Modules/_stat.c 
+  Modules/_stat.c
   Modules/_opcode.c
   Modules/_sre.c
   Modules/_tracemalloc.c
@@ -205,8 +224,7 @@
   Modules/_blake2/blake2b_impl.c       #
   Modules/_blake2/blake2s_impl.c       #
   Modules/_sha3/sha3module.c           #
-  Modules/signalmodule.c               # 
-  #Modules/socketmodule.c               #
+  Modules/signalmodule.c               #
   Modules/symtablemodule.c             #
   Modules/unicodedata.c                #
   Modules/xxsubtype.c                  #
@@ -254,6 +272,13 @@ Modules/zlib
   Modules/zlib/uncompr.c               #
   Modules/zlib/zutil.c                 #
 
+#ssl module
+  Modules/_ssl.c
+  Modules/ssl_compat_stubs.c
+
+#Socket module
+  PyMod-$(PYTHON_VERSION)/Modules/socketmodule.c
+
 #Modules/ctypes
   PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes.c    | MSFT          #
   Modules/_ctypes/stgdict.c           | MSFT   #
@@ -263,6 +288,13 @@ Modules/zlib
   Modules/_ctypes/cfield.c    | MSFT           #
   PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callproc.c  | MSFT           #
   Modules/_ctypes/callbacks.c        | MSFT    #
+
+[Protocols]
+  gEfiPciRootBridgeIoProtocolGuid
+  gEfiMpServiceProtocolGuid
+
+[Guids]
+  gEfiSmbiosTableGuid
 
 [Sources.IA32]
   Modules/_ctypes/libffi_msvc/win32.c  | MSFT #
@@ -275,8 +307,8 @@ Modules/zlib
   PyMod-$(PYTHON_VERSION)/Modules/cpu_gcc.s  | GCC #
 
 [BuildOptions]
-  MSFT:*_*_*_CC_FLAGS = /GL- /Oi- /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4204 /wd4210 /wd4244 /wd4267 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 /wd4456 /wd4312 /wd4457 /wd4459 /wd4474 /wd4476 /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.6.8\Include /DHAVE_MEMMOVE /DUSE_PYEXPAT_CAPI /DXML_STATIC -D UEFI /WX- /DXML_POOR_ENTROPY /DUEFI_C_SOURCE
-  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.6.8/Include -DHAVE_MEMMOVE -DUSE_PYEXPAT_CAPI -DXML_STATIC -DXML_POOR_ENTROPY
+  MSFT:*_*_*_CC_FLAGS = /GL- /Oi- /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4204 /wd4210 /wd4244 /wd4267 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 /wd4456 /wd4312 /wd4457 /wd4459 /wd4474 /wd4476 /I$(WORKSPACE)/../edk2-libc/AppPkg/Applications/CCB/Products/Python/Python-3.6.8/Include /I$(WORKSPACE)/CryptoPkg/Library/OpensslLib/OpensslGen/include /I$(WORKSPACE)/CryptoPkg/Library/OpensslLib/openssl/include /DHAVE_MEMMOVE /DUSE_PYEXPAT_CAPI /DXML_STATIC /DUEFI /WX- /DXML_POOR_ENTROPY /DUEFI_C_SOURCE /DWITH_SSL /DHAVE_OPENSSL /DOPENSSL_SYS_UEFI /DOPENSSL_SYSNAME_UEFI /DSIXTY_FOUR_BIT /DSSLEAY_VERSION=OPENSSL_VERSION /DTLSv1_method=TLS_method /DTLSv1_1_method=TLS_method /DTLSv1_2_method=TLS_method /DSSLeay=OpenSSL_version_num /DSSLeay_version=OpenSSL_version /DASN1_STRING_data=ASN1_STRING_get0_data /DX509_get_notBefore=X509_getm_notBefore /DX509_get_notAfter=X509_getm_notAfter /DRAND_pseudo_bytes=RAND_bytes /wd4013 /wd4033 /DPACKAGE_SPECS=\"$(PRIVATE_ROOT)\PackageSpecs.h\"
+  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(WORKSPACE)/../edk2-libc/AppPkg/Applications/CCB/Products/Python/Python-3.6.8/Include -I$(WORKSPACE)/CryptoPkg/Library/OpensslLib/OpensslGen/include -I$(WORKSPACE)/CryptoPkg/Library/OpensslLib/openssl/include -DUEFI -DHAVE_MEMMOVE -DUSE_PYEXPAT_CAPI -DXML_STATIC -DXML_POOR_ENTROPY -DWITH_SSL -DHAVE_OPENSSL -DOPENSSL_SYS_UEFI -DOPENSSL_SYSNAME_UEFI -DSIXTY_FOUR_BIT -U_MSC_VER -DSSLEAY_VERSION=OPENSSL_VERSION -DTLSv1_method=TLS_method -DTLSv1_1_method=TLS_method -DTLSv1_2_method=TLS_method -DSSLeay=OpenSSL_version_num -DSSLeay_version=OpenSSL_version -DASN1_STRING_data=ASN1_STRING_get0_data -DX509_get_notBefore=X509_getm_notBefore -DX509_get_notAfter=X509_getm_notAfter -DRAND_pseudo_bytes=RAND_bytes
 
 [BuildOptions.IA32]
   MSFT:*_*_*_CC_FLAGS = /DUEFI_MSVC_32

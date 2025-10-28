@@ -1,6 +1,35 @@
+static PyObject *
+_ssl__SSLContext_load_cert_chain_from_memory_impl(PySSLContext *self, PyObject *cert_bytes, PyObject *key_bytes);
 /*[clinic input]
 preserve
 [clinic start generated code]*/
+
+PyDoc_STRVAR(_ssl__SSLContext_load_cert_chain_from_memory__doc__,
+"load_cert_chain_from_memory($self, cert_bytes, key_bytes, /)\n"
+"--\n"
+"\n"
+"Load certificate and private key from memory buffers (PEM format).\n"
+"cert_bytes: PEM-encoded certificate bytes\n"
+"key_bytes: PEM-encoded private key bytes\n"
+);
+
+#define _SSL__SSLCONTEXT_LOAD_CERT_CHAIN_FROM_MEMORY_METHODDEF \
+    {"load_cert_chain_from_memory", (PyCFunction)_ssl__SSLContext_load_cert_chain_from_memory, METH_VARARGS, _ssl__SSLContext_load_cert_chain_from_memory__doc__},
+
+static PyObject *
+_ssl__SSLContext_load_cert_chain_from_memory(PySSLContext *self, PyObject *args)
+{
+    PyObject *return_value = NULL;
+    PyObject *cert_bytes;
+    PyObject *key_bytes;
+
+    if (!PyArg_ParseTuple(args, "OO:load_cert_chain_from_memory", &cert_bytes, &key_bytes)) {
+        goto exit;
+    }
+    return_value = _ssl__SSLContext_load_cert_chain_from_memory_impl(self, cert_bytes, key_bytes);
+exit:
+    return return_value;
+}
 
 PyDoc_STRVAR(_ssl__SSLSocket_do_handshake__doc__,
 "do_handshake($self, /)\n"
@@ -512,6 +541,7 @@ _ssl__SSLContext_load_cert_chain(PySSLContext *self, PyObject **args, Py_ssize_t
 exit:
     return return_value;
 }
+
 
 PyDoc_STRVAR(_ssl__SSLContext_load_verify_locations__doc__,
 "load_verify_locations($self, /, cafile=None, capath=None, cadata=None)\n"

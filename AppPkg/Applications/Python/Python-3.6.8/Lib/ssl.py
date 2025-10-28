@@ -686,7 +686,9 @@ class SSLObject:
 
     def do_handshake(self):
         """Start the SSL/TLS handshake."""
+        print("Before calling self._sslobj.do_handshake()")
         self._sslobj.do_handshake()
+        print("After returning from self._sslobj.do_handshake()")
         if self.context.check_hostname:
             if not self.server_hostname:
                 raise ValueError("check_hostname needs server_hostname "
@@ -734,7 +736,9 @@ class SSLSocket(socket):
 
         if _context:
             self._context = _context
+            print(f"Using existing SSL context {self._context}")
         else:
+            print(f"Creating new SSL context with version {ssl_version}")
             if server_side and not certfile:
                 raise ValueError("certfile must be specified for server-side "
                                  "operations")
@@ -747,7 +751,15 @@ class SSLSocket(socket):
             if ca_certs:
                 self._context.load_verify_locations(ca_certs)
             if certfile:
-                self._context.load_cert_chain(certfile, keyfile)
+                #self._context.load_cert_chain(certfile, keyfile)
+                with open(certfile, 'rb') as f:
+                    cert_bytes = f.read()
+                
+                with open(keyfile, 'rb') as f:
+                    key_bytes = f.read()
+
+                self._context.load_cert_chain_from_memory(cert_bytes, key_bytes)
+
             if npn_protocols:
                 self._context.set_npn_protocols(npn_protocols)
             if ciphers:
@@ -783,7 +795,9 @@ class SSLSocket(socket):
                             proto=sock.proto,
                             fileno=sock.fileno())
             self.settimeout(sock.gettimeout())
+            print("Before calling sock.detach()")
             sock.detach()
+            print("After returning from sock.detach()")
         elif fileno is not None:
             socket.__init__(self, fileno=fileno)
         else:
@@ -798,15 +812,17 @@ class SSLSocket(socket):
             connected = False
         else:
             connected = True
-
+        print(f"Connected status = {connected}")
         self._closed = False
         self._sslobj = None
         self._connected = connected
         if connected:
             # create the SSL object
             try:
+                print(f"Creating SSL object")
                 sslobj = self._context._wrap_socket(self, server_side,
                                                     server_hostname)
+                print(f"Wrapped socket: {sslobj}")
                 self._sslobj = SSLObject(sslobj, owner=self,
                                          session=self._session)
                 if do_handshake_on_connect:
