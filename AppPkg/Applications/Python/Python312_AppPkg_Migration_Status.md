@@ -7,7 +7,7 @@
 **Iteration:** 1 (no edk2-libffi / edk2-openssl / edk2-zlib / edk2-pyreadline)  
 **Target repo:** `c:\Users\njayapra\github\edk2-libc`  
 **Branch:** `feature/python-3.12.13-apppkg`  
-**Source port:** `c:\Users\njayapra\github\edk2-py312`
+**Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
 
 ---
 
@@ -21,7 +21,7 @@
 | 3 | Port frozen / deepfreeze | **Done** (deepfreeze + global strings aligned for AppPkg) |
 | 4 | Author monolithic Python312.inf (MIN) | **Done** (+ `Parser/myreadline.c`) |
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
-| 6 | Package + REPL smoke | **Partial** — packaging scripts done; REPL smoke pending on hardware/QEMU |
+| 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | Not started |
 | 8 | Deferred (external pkgs, VS2022) | Deferred |
 
@@ -67,7 +67,13 @@
 
 1. Implemented `create_python_pkg.sh` / `.bat` for PREFIX `fs0:\EFI` layout (`EFI/bin`, `EFI/lib/python3.12`, `EFI/stdlib/etc`).
 2. Staged sample package at `Python-3.12.13/pkg_out/` (local; do not commit).
-3. Next: copy `pkg_out/EFI` to a FAT volume / QEMU rootfs and run REPL smoke from `Py312ReadMe.txt`.
+3. Staged sample package at `Python-3.12.13/pkg_out/` (local; do not commit).
+
+### 2026-07-14 — Session 4 (runtime)
+
+1. Re-synced AppPkg core from **`~/src/edk2-py31213/edk2-cpython`** (3.12.13; not `edk2-py312` 3.12.0).
+2. GCC rebuild + `create_python_pkg.sh` → `py312_efi/` (`EFI/bin/Python312.efi`, `lib/python3.12`, empty `lib-dynload`).
+3. **Basic REPL smoke on UEFI Shell:** version **3.12.13**, no “platform dependent libraries” warning, Iteration‑1 expectations OK. Deeper stdlib/module testing deferred.
 
 ---
 
@@ -257,9 +263,27 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 
 ---
 
-## Phase 6+ / 7 / 8
+## Phase 6 — Package + REPL smoke
 
-Not started. See plan for steps.
+### Checklist
+
+| Step | Action | Result |
+|------|--------|--------|
+| 6.1 | `create_python_pkg.sh` / `.bat` (PREFIX `fs0:\EFI`) | **Done** (includes empty `lib-dynload`) |
+| 6.2 | Stage `EFI/bin/Python312.efi` + `EFI/lib/python3.12/` | **Done** (`py312_efi/`) |
+| 6.3 | Copy to FAT / hardware volume | **Done** (user) |
+| 6.4 | Basic REPL: banner, `sys.version`, no getpath warning | **Done** (3.12.13 verified) |
+| 6.5 | Extended import / stdlib matrix | **Deferred** (user follow-up) |
+
+### Phase 6 result
+
+**Done** for Iteration 1 basic smoke. See Session 4 work log.
+
+---
+
+## Phase 7 / 8
+
+Phase 7 (docs + CI) and Phase 8 (external packages, VS2022) not started. See plan.
 
 ---
 
@@ -278,7 +302,7 @@ Not started. See plan for steps.
 1. **Windows agent cannot run GCC AppPkg build** — continue on Linux/WSL (see WSL GCC guide).
 2. **Frozen/deepfreeze artifacts missing** — gitignored; must generate/copy before AppPkg build.
 3. **Stock CPython tree still has UEFI deltas** — same content as PyMod for forked files; cleaning to upstream vanilla is optional polish.
-4. **`create_python_pkg.*` implemented** (Iteration 1 layout). REPL smoke still pending.
+4. **`create_python_pkg.*` + basic REPL smoke** — **Done** (3.12.13 on UEFI Shell). Extended testing later.
 5. **Local StdLib dirt** may exist from prior `git apply` / `make patch_libc` — discard or keep locally; never stage for Python commits.
 6. **NASM sources** (`edk2stack.nasm`, `edk2handler.nasm`) and `asm_trampoline.S` need toolchain validation under EDK II GCC.
 7. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
@@ -297,4 +321,4 @@ On WSL Ubuntu, in order:
 3. **Required:** `git apply --ignore-whitespace Python-3.12.13/patches/*.patch` (0001 = `upipe`).
 4. `python3 srcprep.py` (if overlays changed).
 5. Ensure frozen/deepfreeze artifacts are present (gitignored).
-6. `build -D BUILD_PYTHON312 -t GCC`; package with `create_python_pkg.sh`; REPL smoke.
+6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6). Next: Phase 7 or deeper smoke / Iteration 2.
