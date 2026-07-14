@@ -144,9 +144,7 @@ PyObject *_PyCodec_Lookup(const char *encoding)
     if (v == NULL) {
         return NULL;
     }
-
-    /* Intern the string. We'll make it immortal later if lookup succeeds. */
-    _PyUnicode_InternMortal(interp, &v);
+    PyUnicode_InternInPlace(&v);
 
     /* First, try to lookup the name in the registry dictionary */
     PyObject *result = PyDict_GetItemWithError(interp->codec_search_cache, v);
@@ -198,8 +196,6 @@ PyObject *_PyCodec_Lookup(const char *encoding)
                      "unknown encoding: %s", encoding);
         goto onError;
     }
-
-    _PyUnicode_InternImmortal(interp, &v);
 
     /* Cache and return the result */
     if (PyDict_SetItem(interp->codec_search_cache, v, result) < 0) {

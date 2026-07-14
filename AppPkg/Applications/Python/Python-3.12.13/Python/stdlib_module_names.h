@@ -89,7 +89,6 @@ static const char* _Py_stdlib_module_names[] = {
 "_weakref",
 "_weakrefset",
 "_winapi",
-"_wmi",
 "_zoneinfo",
 "abc",
 "aifc",

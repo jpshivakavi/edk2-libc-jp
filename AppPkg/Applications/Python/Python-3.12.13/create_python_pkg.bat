@@ -62,6 +62,7 @@ if not exist "%PYTHON_SRC%\Lib\" (
 
 mkdir "%OUT_FOLDER%\EFI\bin" 2>nul
 mkdir "%OUT_FOLDER%\EFI\lib\python3.12" 2>nul
+mkdir "%OUT_FOLDER%\EFI\lib\python3.12\lib-dynload" 2>nul
 mkdir "%OUT_FOLDER%\EFI\stdlib\etc" 2>nul
 
 copy /Y "%PYTHON_BIN%" "%OUT_FOLDER%\EFI\bin\Python312.efi" >nul

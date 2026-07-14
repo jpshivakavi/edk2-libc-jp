@@ -1749,11 +1749,7 @@ set_issubset(PySetObject *so, PyObject *other)
     Py_RETURN_TRUE;
 }
 
-PyDoc_STRVAR(issubset_doc,
-"issubset($self, other, /)\n\
---\n\
-\n\
-Test whether every element in the set is in other.");
+PyDoc_STRVAR(issubset_doc, "Report whether another set contains this set.");
 
 static PyObject *
 set_issuperset(PySetObject *so, PyObject *other)
@@ -1785,11 +1781,7 @@ set_issuperset(PySetObject *so, PyObject *other)
     Py_RETURN_TRUE;
 }
 
-PyDoc_STRVAR(issuperset_doc,
-"issuperset($self, other, /)\n\
---\n\
-\n\
-Test whether every element in other is in the set.");
+PyDoc_STRVAR(issuperset_doc, "Report whether this set contains another set.");
 
 static PyObject *
 set_richcompare(PySetObject *v, PyObject *w, int op)

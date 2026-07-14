@@ -16,15 +16,41 @@ Iteration 1 constraints
   edk2-libffi (_ctypes), edk2-openssl (_ssl / _hashopenssl),
   edk2-zlib (zlib), edk2-pyreadline (readline).
 
-Prep (when PyMod is populated)
-------------------------------
-  cd AppPkg/Applications/Python/Python-3.12.13
-  python srcprep.py
-  # apply patches/*.patch to edk2-libc as documented in the plan
-  # run frozen/ when Phase 3 is complete
+Required setup: apply libc patches (do NOT commit StdLib)
+---------------------------------------------------------
+Python 3.12 needs four edk2-libc patches that are not in upstream edk2-libc
+yet. Keep StdLib vanilla on the branch; apply them locally before every
+fresh checkout / before the first GCC build.
 
-Build (after Phase 4–5 complete)
---------------------------------
+  cd <edk2-libc>   # must be the same tree as EDK2_LIBC_PATH / PACKAGES_PATH
+  git apply --check --ignore-whitespace \
+    AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+  git apply --ignore-whitespace \
+    AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+
+  # Verify (patch 0001 is required to link):
+  ls StdLib/LibC/Uefi/upipe.c
+
+Patches (self-contained under this tree):
+  patches/0001-Implement-minimal-emulation-of-pipe-functionality.patch
+  patches/0002-Introduce-support-for-ANSI-escape-codes-for-console.patch
+  patches/0003-Fix-uninitialized-static-variable.patch
+  patches/0004-Fix-ioctl-vararg-handling-for-Console-and-Shell-devi.patch
+
+Policy: leave these as a local build prerequisite until they land upstream
+(tianocore/edk2-libc). Do not fold StdLib diffs into the Python migration
+commits. Discard local StdLib dirt with `git checkout -- StdLib
+StdLibPrivateInternalFiles` and `git clean -fd StdLib` if you need a clean
+tree, then re-apply as above.
+
+Prep
+----
+  cd AppPkg/Applications/Python/Python-3.12.13
+  python3 srcprep.py
+  # freeze/deepfreeze: see Python312_WSL_GCC_Build_Guide.md (artifacts are gitignored)
+
+Build
+-----
   set PACKAGES_PATH=<edk2>;<edk2-libc>
   set EDK2_LIBC_PATH=<edk2-libc>
   build -a X64 -b NOOPT -t GCC -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312

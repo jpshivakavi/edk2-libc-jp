@@ -150,7 +150,7 @@ _Py_c_pow(Py_complex a, Py_complex b)
         at = atan2(a.imag, a.real);
         phase = at*b.real;
         if (b.imag != 0.0) {
-            len *= exp(-at*b.imag);
+            len /= exp(at*b.imag);
             phase += b.imag*log(vabs);
         }
         r.real = len*cos(phase);
@@ -889,17 +889,14 @@ complex.__new__ as complex_new
     real as r: object(c_default="NULL") = 0
     imag as i: object(c_default="NULL") = 0
 
-Create a complex number from a string or numbers.
+Create a complex number from a real part and an optional imaginary part.
 
-If a string is given, parse it as a complex number.
-If a single number is given, convert it to a complex number.
-If the 'real' or 'imag' arguments are given, create a complex number
-with the specified real and imaginary components.
+This is equivalent to (real + imag*1j) where imag defaults to 0.
 [clinic start generated code]*/
 
 static PyObject *
 complex_new_impl(PyTypeObject *type, PyObject *r, PyObject *i)
-/*[clinic end generated code: output=b6c7dd577b537dc1 input=ff4268dc540958a4]*/
+/*[clinic end generated code: output=b6c7dd577b537dc1 input=f4c667f2596d4fd1]*/
 {
     PyObject *tmp;
     PyNumberMethods *nbr, *nbi = NULL;

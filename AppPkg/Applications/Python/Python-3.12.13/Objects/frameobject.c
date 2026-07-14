@@ -328,8 +328,6 @@ mark_stacks(PyCodeObject *code_obj, int len)
             switch (opcode) {
                 case POP_JUMP_IF_FALSE:
                 case POP_JUMP_IF_TRUE:
-                case POP_JUMP_IF_NONE:
-                case POP_JUMP_IF_NOT_NONE:
                 {
                     int64_t target_stack;
                     int j = next_i + oparg;
@@ -1403,9 +1401,6 @@ _PyFrame_LocalsToFast(_PyInterpreterFrame *frame, int clear)
 
         /* Same test as in PyFrame_FastToLocals() above. */
         if (kind & CO_FAST_FREE && !(co->co_flags & CO_OPTIMIZED)) {
-            continue;
-        }
-        if (kind & CO_FAST_HIDDEN) {
             continue;
         }
         PyObject *name = PyTuple_GET_ITEM(co->co_localsplusnames, i);

@@ -484,18 +484,11 @@ PyLong_AsLongAndOverflow(PyObject *vv, int *overflow)
         do_decref = 1;
     }
     if (_PyLong_IsCompact(v)) {
-#if SIZEOF_LONG < SIZEOF_SIZE_T
-        Py_ssize_t tmp = _PyLong_CompactValue(v);
-        if (tmp < LONG_MIN) {
-            *overflow = -1;
-            res = -1;
-        }
-        else if (tmp > LONG_MAX) {
-            *overflow = 1;
-            res = -1;
-        }
-        else {
-            res = (long)tmp;
+#if SIZEOF_LONG < SIZEOF_VOID_P
+        intptr_t tmp = _PyLong_CompactValue(v);
+        res = (long)tmp;
+        if (res != tmp) {
+            *overflow = tmp < 0 ? -1 : 1;
         }
 #else
         res = _PyLong_CompactValue(v);
@@ -640,15 +633,14 @@ PyLong_AsUnsignedLong(PyObject *vv)
 
     v = (PyLongObject *)vv;
     if (_PyLong_IsNonNegativeCompact(v)) {
-#if SIZEOF_LONG < SIZEOF_SIZE_T
-        size_t tmp = (size_t)_PyLong_CompactValue(v);
+#if SIZEOF_LONG < SIZEOF_VOID_P
+        intptr_t tmp = _PyLong_CompactValue(v);
         unsigned long res = (unsigned long)tmp;
         if (res != tmp) {
             goto overflow;
         }
-        return res;
 #else
-        return (unsigned long)(size_t)_PyLong_CompactValue(v);
+        return _PyLong_CompactValue(v);
 #endif
     }
     if (_PyLong_IsNegative(v)) {
@@ -694,7 +686,7 @@ PyLong_AsSize_t(PyObject *vv)
 
     v = (PyLongObject *)vv;
     if (_PyLong_IsNonNegativeCompact(v)) {
-        return (size_t)_PyLong_CompactValue(v);
+        return _PyLong_CompactValue(v);
     }
     if (_PyLong_IsNegative(v)) {
         PyErr_SetString(PyExc_OverflowError,
@@ -731,11 +723,7 @@ _PyLong_AsUnsignedLongMask(PyObject *vv)
     }
     v = (PyLongObject *)vv;
     if (_PyLong_IsCompact(v)) {
-#if SIZEOF_LONG < SIZEOF_SIZE_T
-        return (unsigned long)(size_t)_PyLong_CompactValue(v);
-#else
-        return (unsigned long)(long)_PyLong_CompactValue(v);
-#endif
+        return (unsigned long)_PyLong_CompactValue(v);
     }
     i = _PyLong_DigitCount(v);
     int sign = _PyLong_NonCompactSign(v);
@@ -1279,18 +1267,7 @@ PyLong_AsUnsignedLongLong(PyObject *vv)
     v = (PyLongObject*)vv;
     if (_PyLong_IsNonNegativeCompact(v)) {
         res = 0;
-#if SIZEOF_LONG_LONG < SIZEOF_SIZE_T
-        size_t tmp = (size_t)_PyLong_CompactValue(v);
-        bytes = (unsigned long long)tmp;
-        if (bytes != tmp) {
-            PyErr_SetString(PyExc_OverflowError,
-                            "Python int too large to convert "
-                            "to C unsigned long long");
-            res = -1;
-        }
-#else
-        bytes = (unsigned long long)(size_t)_PyLong_CompactValue(v);
-#endif
+        bytes = _PyLong_CompactValue(v);
     }
     else {
         res = _PyLong_AsByteArray((PyLongObject *)vv, (unsigned char *)&bytes,
@@ -1321,11 +1298,7 @@ _PyLong_AsUnsignedLongLongMask(PyObject *vv)
     }
     v = (PyLongObject *)vv;
     if (_PyLong_IsCompact(v)) {
-#if SIZEOF_LONG_LONG < SIZEOF_SIZE_T
-        return (unsigned long long)(size_t)_PyLong_CompactValue(v);
-#else
-        return (unsigned long long)(long long)_PyLong_CompactValue(v);
-#endif
+        return (unsigned long long)(signed long long)_PyLong_CompactValue(v);
     }
     i = _PyLong_DigitCount(v);
     sign = _PyLong_NonCompactSign(v);
@@ -1397,22 +1370,7 @@ PyLong_AsLongLongAndOverflow(PyObject *vv, int *overflow)
         do_decref = 1;
     }
     if (_PyLong_IsCompact(v)) {
-#if SIZEOF_LONG_LONG < SIZEOF_SIZE_T
-        Py_ssize_t tmp = _PyLong_CompactValue(v);
-        if (tmp < LLONG_MIN) {
-            *overflow = -1;
-            res = -1;
-        }
-        else if (tmp > LLONG_MAX) {
-            *overflow = 1;
-            res = -1;
-        }
-        else {
-            res = (long long)tmp;
-        }
-#else
         res = _PyLong_CompactValue(v);
-#endif
     }
     else {
         i = _PyLong_DigitCount(v);
@@ -1808,9 +1766,7 @@ long_to_decimal_string_internal(PyObject *aa,
     digit *pout, *pin, rem, tenpow;
     int negative;
     int d;
-
-    // writer or bytes_writer can be used, but not both at the same time.
-    assert(writer == NULL || bytes_writer == NULL);
+    int kind;
 
     a = (PyLongObject *)aa;
     if (a == NULL || !PyLong_Check(a)) {
@@ -1923,6 +1879,7 @@ long_to_decimal_string_internal(PyObject *aa,
             Py_DECREF(scratch);
             return -1;
         }
+        kind = writer->kind;
     }
     else if (bytes_writer) {
         *bytes_str = _PyBytesWriter_Prepare(bytes_writer, *bytes_str, strlen);
@@ -1937,6 +1894,7 @@ long_to_decimal_string_internal(PyObject *aa,
             Py_DECREF(scratch);
             return -1;
         }
+        kind = PyUnicode_KIND(str);
     }
 
 #define WRITE_DIGITS(p)                                               \
@@ -1984,23 +1942,19 @@ long_to_decimal_string_internal(PyObject *aa,
         WRITE_DIGITS(p);
         assert(p == *bytes_str);
     }
-    else {
-        int kind = writer ? writer->kind : PyUnicode_KIND(str);
-        if (kind == PyUnicode_1BYTE_KIND) {
-            Py_UCS1 *p;
-            WRITE_UNICODE_DIGITS(Py_UCS1);
-        }
-        else if (kind == PyUnicode_2BYTE_KIND) {
-            Py_UCS2 *p;
-            WRITE_UNICODE_DIGITS(Py_UCS2);
-        }
-        else {
-            assert (kind == PyUnicode_4BYTE_KIND);
-            Py_UCS4 *p;
-            WRITE_UNICODE_DIGITS(Py_UCS4);
-        }
+    else if (kind == PyUnicode_1BYTE_KIND) {
+        Py_UCS1 *p;
+        WRITE_UNICODE_DIGITS(Py_UCS1);
     }
-
+    else if (kind == PyUnicode_2BYTE_KIND) {
+        Py_UCS2 *p;
+        WRITE_UNICODE_DIGITS(Py_UCS2);
+    }
+    else {
+        Py_UCS4 *p;
+        assert (kind == PyUnicode_4BYTE_KIND);
+        WRITE_UNICODE_DIGITS(Py_UCS4);
+    }
 #undef WRITE_DIGITS
 #undef WRITE_UNICODE_DIGITS
 
@@ -2041,12 +1995,11 @@ long_format_binary(PyObject *aa, int base, int alternate,
     PyObject *v = NULL;
     Py_ssize_t sz;
     Py_ssize_t size_a;
+    int kind;
     int negative;
     int bits;
 
     assert(base == 2 || base == 8 || base == 16);
-    // writer or bytes_writer can be used, but not both at the same time.
-    assert(writer == NULL || bytes_writer == NULL);
     if (a == NULL || !PyLong_Check(a)) {
         PyErr_BadInternalCall();
         return -1;
@@ -2094,6 +2047,7 @@ long_format_binary(PyObject *aa, int base, int alternate,
     if (writer) {
         if (_PyUnicodeWriter_Prepare(writer, sz, 'x') == -1)
             return -1;
+        kind = writer->kind;
     }
     else if (bytes_writer) {
         *bytes_str = _PyBytesWriter_Prepare(bytes_writer, *bytes_str, sz);
@@ -2104,6 +2058,7 @@ long_format_binary(PyObject *aa, int base, int alternate,
         v = PyUnicode_New(sz, 'x');
         if (v == NULL)
             return -1;
+        kind = PyUnicode_KIND(v);
     }
 
 #define WRITE_DIGITS(p)                                                 \
@@ -2164,23 +2119,19 @@ long_format_binary(PyObject *aa, int base, int alternate,
         WRITE_DIGITS(p);
         assert(p == *bytes_str);
     }
-    else {
-        int kind = writer ? writer->kind : PyUnicode_KIND(v);
-        if (kind == PyUnicode_1BYTE_KIND) {
-            Py_UCS1 *p;
-            WRITE_UNICODE_DIGITS(Py_UCS1);
-        }
-        else if (kind == PyUnicode_2BYTE_KIND) {
-            Py_UCS2 *p;
-            WRITE_UNICODE_DIGITS(Py_UCS2);
-        }
-        else {
-            assert (kind == PyUnicode_4BYTE_KIND);
-            Py_UCS4 *p;
-            WRITE_UNICODE_DIGITS(Py_UCS4);
-        }
+    else if (kind == PyUnicode_1BYTE_KIND) {
+        Py_UCS1 *p;
+        WRITE_UNICODE_DIGITS(Py_UCS1);
     }
-
+    else if (kind == PyUnicode_2BYTE_KIND) {
+        Py_UCS2 *p;
+        WRITE_UNICODE_DIGITS(Py_UCS2);
+    }
+    else {
+        Py_UCS4 *p;
+        assert (kind == PyUnicode_4BYTE_KIND);
+        WRITE_UNICODE_DIGITS(Py_UCS4);
+    }
 #undef WRITE_DIGITS
 #undef WRITE_UNICODE_DIGITS
 
@@ -3350,7 +3301,7 @@ long_hash(PyLongObject *v)
     int sign;
 
     if (_PyLong_IsCompact(v)) {
-        x = (Py_uhash_t)_PyLong_CompactValue(v);
+        x = _PyLong_CompactValue(v);
         if (x == (Py_uhash_t)-1) {
             x = (Py_uhash_t)-2;
         }
@@ -6251,7 +6202,7 @@ PyDoc_STRVAR(long_doc,
 int(x, base=10) -> integer\n\
 \n\
 Convert a number or string to an integer, or return 0 if no arguments\n\
-are given.  If x is a number, return x.__int__().  For floating-point\n\
+are given.  If x is a number, return x.__int__().  For floating point\n\
 numbers, this truncates towards zero.\n\
 \n\
 If x is not a number or if base is given, then x must be a string,\n\

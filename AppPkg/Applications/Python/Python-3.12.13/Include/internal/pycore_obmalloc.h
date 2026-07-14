@@ -665,9 +665,7 @@ struct _obmalloc_global_state {
 struct _obmalloc_state {
     struct _obmalloc_pools pools;
     struct _obmalloc_mgmt mgmt;
-#if WITH_PYMALLOC_RADIX_TREE
     struct _obmalloc_usage usage;
-#endif
 };
 
 

@@ -150,10 +150,7 @@ int _PyPegen_fill_token(Parser *p);
 expr_ty _PyPegen_name_token(Parser *p);
 expr_ty _PyPegen_number_token(Parser *p);
 void *_PyPegen_string_token(Parser *p);
-Py_ssize_t _PyPegen_byte_offset_to_character_offset_line(PyObject *line, Py_ssize_t col_offset, Py_ssize_t end_col_offset);
 Py_ssize_t _PyPegen_byte_offset_to_character_offset(PyObject *line, Py_ssize_t col_offset);
-Py_ssize_t _PyPegen_byte_offset_to_character_offset_raw(const char*, Py_ssize_t col_offset);
-Py_ssize_t _PyPegen_calculate_display_width(PyObject *segment, Py_ssize_t character_offset);
 
 // Error handling functions and APIs
 typedef enum {
@@ -349,8 +346,6 @@ mod_ty _PyPegen_make_module(Parser *, asdl_stmt_seq *);
 void *_PyPegen_arguments_parsing_error(Parser *, expr_ty);
 expr_ty _PyPegen_get_last_comprehension_item(comprehension_ty comprehension);
 void *_PyPegen_nonparen_genexp_in_call(Parser *p, expr_ty args, asdl_comprehension_seq *comprehensions);
-stmt_ty _PyPegen_checked_future_import(Parser *p, identifier module, asdl_alias_seq *,
-                                       int , int, int , int , int , PyArena *);
 
 // Parser API
 

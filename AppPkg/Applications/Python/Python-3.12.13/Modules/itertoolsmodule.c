@@ -330,30 +330,21 @@ pairwise_next(pairwiseobject *po)
         return NULL;
     }
     if (old == NULL) {
-        old = (*Py_TYPE(it)->tp_iternext)(it);
-        Py_XSETREF(po->old, old);
+        po->old = old = (*Py_TYPE(it)->tp_iternext)(it);
         if (old == NULL) {
             Py_CLEAR(po->it);
             return NULL;
         }
-        it = po->it;
-        if (it == NULL) {
-            Py_CLEAR(po->old);
-            return NULL;
-        }
     }
-    Py_INCREF(old);
     new = (*Py_TYPE(it)->tp_iternext)(it);
     if (new == NULL) {
         Py_CLEAR(po->it);
         Py_CLEAR(po->old);
-        Py_DECREF(old);
         return NULL;
     }
     /* Future optimization: Reuse the result tuple as we do in enumerate() */
     result = PyTuple_Pack(2, old, new);
-    Py_XSETREF(po->old, new);
-    Py_DECREF(old);
+    Py_SETREF(po->old, new);
     return result;
 }
 
@@ -810,9 +801,10 @@ teedataobject_traverse(teedataobject *tdo, visitproc visit, void * arg)
 }
 
 static void
-teedataobject_safe_decref(PyObject *obj)
+teedataobject_safe_decref(PyObject *obj, PyTypeObject *tdo_type)
 {
-    while (obj && Py_REFCNT(obj) == 1) {
+    while (obj && Py_IS_TYPE(obj, tdo_type) &&
+           Py_REFCNT(obj) == 1) {
         PyObject *nextlink = ((teedataobject *)obj)->nextlink;
         ((teedataobject *)obj)->nextlink = NULL;
         Py_SETREF(obj, nextlink);
@@ -831,7 +823,8 @@ teedataobject_clear(teedataobject *tdo)
         Py_CLEAR(tdo->values[i]);
     tmp = tdo->nextlink;
     tdo->nextlink = NULL;
-    teedataobject_safe_decref(tmp);
+    itertools_state *state = get_module_state_by_cls(Py_TYPE(tdo));
+    teedataobject_safe_decref(tmp, state->teedataobject_type);
     return 0;
 }
 
@@ -1137,7 +1130,7 @@ itertools_tee_impl(PyObject *module, PyObject *iterable, Py_ssize_t n)
 /*[clinic end generated code: output=1c64519cd859c2f0 input=c99a1472c425d66d]*/
 {
     Py_ssize_t i;
-    PyObject *it, *to, *result;
+    PyObject *it, *copyable, *copyfunc, *result;
 
     if (n < 0) {
         PyErr_SetString(PyExc_ValueError, "n must be >= 0");
@@ -1154,24 +1147,41 @@ itertools_tee_impl(PyObject *module, PyObject *iterable, Py_ssize_t n)
         return NULL;
     }
 
-    (void)&_Py_ID(__copy__); // Retain a reference to __copy__
-    itertools_state *state = get_module_state(module);
-    to = tee_fromiterable(state, it);
-    Py_DECREF(it);
-    if (to == NULL) {
+    if (_PyObject_LookupAttr(it, &_Py_ID(__copy__), &copyfunc) < 0) {
+        Py_DECREF(it);
         Py_DECREF(result);
         return NULL;
     }
-
-    PyTuple_SET_ITEM(result, 0, to);
-    for (i = 1; i < n; i++) {
-        to = tee_copy((teeobject *)to, NULL);
-        if (to == NULL) {
+    if (copyfunc != NULL) {
+        copyable = it;
+    }
+    else {
+        itertools_state *state = get_module_state(module);
+        copyable = tee_fromiterable(state, it);
+        Py_DECREF(it);
+        if (copyable == NULL) {
             Py_DECREF(result);
             return NULL;
         }
-        PyTuple_SET_ITEM(result, i, to);
+        copyfunc = PyObject_GetAttr(copyable, &_Py_ID(__copy__));
+        if (copyfunc == NULL) {
+            Py_DECREF(copyable);
+            Py_DECREF(result);
+            return NULL;
+        }
     }
+
+    PyTuple_SET_ITEM(result, 0, copyable);
+    for (i = 1; i < n; i++) {
+        copyable = _PyObject_CallNoArgs(copyfunc);
+        if (copyable == NULL) {
+            Py_DECREF(copyfunc);
+            Py_DECREF(result);
+            return NULL;
+        }
+        PyTuple_SET_ITEM(result, i, copyable);
+    }
+    Py_DECREF(copyfunc);
     return result;
 }
 
@@ -3981,7 +3991,7 @@ typedef struct {
 
 fast_mode:  when cnt an integer < PY_SSIZE_T_MAX and no step is specified.
 
-    assert(long_cnt == NULL && long_step==PyLong(1));
+    assert(cnt != PY_SSIZE_T_MAX && long_cnt == NULL && long_step==PyLong(1));
     Advances with:  cnt += 1
     When count hits Y_SSIZE_T_MAX, switch to slow_mode.
 
@@ -4068,7 +4078,7 @@ itertools_count_impl(PyTypeObject *type, PyObject *long_cnt,
     else
         cnt = PY_SSIZE_T_MAX;
 
-    assert((long_cnt == NULL && fast_mode) ||
+    assert((cnt != PY_SSIZE_T_MAX && long_cnt == NULL && fast_mode) ||
            (cnt == PY_SSIZE_T_MAX && long_cnt != NULL && !fast_mode));
     assert(!fast_mode ||
            (PyLong_Check(long_step) && PyLong_AS_LONG(long_step) == 1));
@@ -4140,7 +4150,7 @@ count_next(countobject *lz)
 static PyObject *
 count_repr(countobject *lz)
 {
-    if (lz->long_cnt == NULL)
+    if (lz->cnt != PY_SSIZE_T_MAX)
         return PyUnicode_FromFormat("%s(%zd)",
                                     _PyType_Name(Py_TYPE(lz)), lz->cnt);
 
@@ -4599,15 +4609,15 @@ batched(p, n) --> [p0, p1, ..., p_n-1], [p_n, p_n+1, ..., p_2n-1], ...\n\
 chain(p, q, ...) --> p0, p1, ... plast, q0, q1, ...\n\
 chain.from_iterable([p, q, ...]) --> p0, p1, ... plast, q0, q1, ...\n\
 compress(data, selectors) --> (d[0] if s[0]), (d[1] if s[1]), ...\n\
-dropwhile(predicate, seq) --> seq[n], seq[n+1], starting when predicate fails\n\
+dropwhile(pred, seq) --> seq[n], seq[n+1], starting when pred fails\n\
 groupby(iterable[, keyfunc]) --> sub-iterators grouped by value of keyfunc(v)\n\
-filterfalse(predicate, seq) --> elements of seq where predicate(elem) is False\n\
+filterfalse(pred, seq) --> elements of seq where pred(elem) is False\n\
 islice(seq, [start,] stop [, step]) --> elements from\n\
        seq[start:stop:step]\n\
 pairwise(s) --> (s[0],s[1]), (s[1],s[2]), (s[2], s[3]), ...\n\
 starmap(fun, seq) --> fun(*seq[0]), fun(*seq[1]), ...\n\
 tee(it, n=2) --> (it1, it2 , ... itn) splits one iterator into n\n\
-takewhile(predicate, seq) --> seq[0], seq[1], until predicate fails\n\
+takewhile(pred, seq) --> seq[0], seq[1], until pred fails\n\
 zip_longest(p, q, ...) --> (p[0], q[0]), (p[1], q[1]), ...\n\
 \n\
 Combinatoric generators:\n\

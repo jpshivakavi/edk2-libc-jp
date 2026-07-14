@@ -1237,7 +1237,6 @@ _Py_fstat_noraise(int fd, struct _Py_stat_struct *status)
     BY_HANDLE_FILE_INFORMATION info;
     FILE_BASIC_INFO basicInfo;
     FILE_ID_INFO idInfo;
-    FILE_ID_INFO *pIdInfo = &idInfo;
     HANDLE h;
     int type;
 
@@ -1270,19 +1269,15 @@ _Py_fstat_noraise(int fd, struct _Py_stat_struct *status)
     }
 
     if (!GetFileInformationByHandle(h, &info) ||
-        !GetFileInformationByHandleEx(h, FileBasicInfo, &basicInfo, sizeof(basicInfo))) {
+        !GetFileInformationByHandleEx(h, FileBasicInfo, &basicInfo, sizeof(basicInfo)) ||
+        !GetFileInformationByHandleEx(h, FileIdInfo, &idInfo, sizeof(idInfo))) {
         /* The Win32 error is already set, but we also set errno for
            callers who expect it */
         errno = winerror_to_errno(GetLastError());
         return -1;
     }
 
-    if (!GetFileInformationByHandleEx(h, FileIdInfo, &idInfo, sizeof(idInfo))) {
-        /* Failed to get FileIdInfo, so do not pass it along */
-        pIdInfo = NULL;
-    }
-
-    _Py_attribute_data_to_stat(&info, 0, &basicInfo, pIdInfo, status);
+    _Py_attribute_data_to_stat(&info, 0, &basicInfo, &idInfo, status);
     return 0;
 #else
     return fstat(fd, status);

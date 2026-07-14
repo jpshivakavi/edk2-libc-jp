@@ -193,7 +193,7 @@ write_str(stringio *self, PyObject *obj)
     }
     if (self->writenl) {
         PyObject *translated = PyUnicode_Replace(
-            decoded, _Py_LATIN1_CHR('\n'), self->writenl, -1);
+            decoded, &_Py_STR(newline), self->writenl, -1);
         Py_SETREF(decoded, translated);
     }
     if (decoded == NULL)
@@ -884,25 +884,23 @@ stringio_setstate(stringio *self, PyObject *state)
        once by __init__. So we do not take any chance and replace object's
        buffer completely. */
     {
-        PyObject *item = PyTuple_GET_ITEM(state, 0);
-        if (PyUnicode_Check(item)) {
-            Py_UCS4 *buf = PyUnicode_AsUCS4Copy(item);
-            if (buf == NULL)
-                return NULL;
-            Py_ssize_t bufsize = PyUnicode_GET_LENGTH(item);
+        PyObject *item;
+        Py_UCS4 *buf;
+        Py_ssize_t bufsize;
 
-            if (resize_buffer(self, bufsize) < 0) {
-                PyMem_Free(buf);
-                return NULL;
-            }
-            memcpy(self->buf, buf, bufsize * sizeof(Py_UCS4));
+        item = PyTuple_GET_ITEM(state, 0);
+        buf = PyUnicode_AsUCS4Copy(item);
+        if (buf == NULL)
+            return NULL;
+        bufsize = PyUnicode_GET_LENGTH(item);
+
+        if (resize_buffer(self, bufsize) < 0) {
             PyMem_Free(buf);
-            self->string_size = bufsize;
+            return NULL;
         }
-        else {
-            assert(item == Py_None);
-            self->string_size = 0;
-        }
+        memcpy(self->buf, buf, bufsize * sizeof(Py_UCS4));
+        PyMem_Free(buf);
+        self->string_size = bufsize;
     }
 
     /* Set carefully the position value. Alternatively, we could use the seek

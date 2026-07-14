@@ -917,14 +917,12 @@ extensions_lock_release(void)
 static void *
 hashtable_key_from_2_strings(PyObject *str1, PyObject *str2, const char sep)
 {
-    const char *str1_data = _PyUnicode_AsUTF8NoNUL(str1);
-    const char *str2_data = _PyUnicode_AsUTF8NoNUL(str2);
+    Py_ssize_t str1_len, str2_len;
+    const char *str1_data = PyUnicode_AsUTF8AndSize(str1, &str1_len);
+    const char *str2_data = PyUnicode_AsUTF8AndSize(str2, &str2_len);
     if (str1_data == NULL || str2_data == NULL) {
         return NULL;
     }
-    Py_ssize_t str1_len = strlen(str1_data);
-    Py_ssize_t str2_len = strlen(str2_data);
-
     /* Make sure sep and the NULL byte won't cause an overflow. */
     assert(SIZE_MAX - str1_len - str2_len > 2);
     size_t size = str1_len + 1 + str2_len + 1;
@@ -2382,14 +2380,9 @@ get_path_importer(PyThreadState *tstate, PyObject *path_importer_cache,
     PyObject *importer;
     Py_ssize_t j, nhooks;
 
-    if (!PyList_Check(path_hooks)) {
-        PyErr_SetString(PyExc_RuntimeError, "sys.path_hooks is not a list");
-        return NULL;
-    }
-    if (!PyDict_Check(path_importer_cache)) {
-        PyErr_SetString(PyExc_RuntimeError, "sys.path_importer_cache is not a dict");
-        return NULL;
-    }
+    /* These conditions are the caller's responsibility: */
+    assert(PyList_Check(path_hooks));
+    assert(PyDict_Check(path_importer_cache));
 
     nhooks = PyList_Size(path_hooks);
     if (nhooks < 0)
@@ -2431,19 +2424,12 @@ PyObject *
 PyImport_GetImporter(PyObject *path)
 {
     PyThreadState *tstate = _PyThreadState_GET();
-    PyObject *path_importer_cache = _PySys_GetRequiredAttrString("path_importer_cache");
-    if (path_importer_cache == NULL) {
+    PyObject *path_importer_cache = PySys_GetObject("path_importer_cache");
+    PyObject *path_hooks = PySys_GetObject("path_hooks");
+    if (path_importer_cache == NULL || path_hooks == NULL) {
         return NULL;
     }
-    PyObject *path_hooks = _PySys_GetRequiredAttrString("path_hooks");
-    if (path_hooks == NULL) {
-        Py_DECREF(path_importer_cache);
-        return NULL;
-    }
-    PyObject *importer = get_path_importer(tstate, path_importer_cache, path_hooks, path);
-    Py_DECREF(path_hooks);
-    Py_DECREF(path_importer_cache);
-    return importer;
+    return get_path_importer(tstate, path_importer_cache, path_hooks, path);
 }
 
 
@@ -2741,31 +2727,15 @@ import_find_and_load(PyThreadState *tstate, PyObject *abs_name)
 
     _PyTime_t t1 = 0, accumulated_copy = accumulated;
 
-    PyObject *sys_path, *sys_meta_path, *sys_path_hooks;
-    if (_PySys_GetOptionalAttrString("path", &sys_path) < 0) {
-        return NULL;
-    }
-    if (_PySys_GetOptionalAttrString("meta_path", &sys_meta_path) < 0) {
-        Py_XDECREF(sys_path);
-        return NULL;
-    }
-    if (_PySys_GetOptionalAttrString("path_hooks", &sys_path_hooks) < 0) {
-        Py_XDECREF(sys_meta_path);
-        Py_XDECREF(sys_path);
-        return NULL;
-    }
+    PyObject *sys_path = PySys_GetObject("path");
+    PyObject *sys_meta_path = PySys_GetObject("meta_path");
+    PyObject *sys_path_hooks = PySys_GetObject("path_hooks");
     if (_PySys_Audit(tstate, "import", "OOOOO",
                      abs_name, Py_None, sys_path ? sys_path : Py_None,
                      sys_meta_path ? sys_meta_path : Py_None,
                      sys_path_hooks ? sys_path_hooks : Py_None) < 0) {
-        Py_XDECREF(sys_path_hooks);
-        Py_XDECREF(sys_meta_path);
-        Py_XDECREF(sys_path);
         return NULL;
     }
-    Py_XDECREF(sys_path_hooks);
-    Py_XDECREF(sys_meta_path);
-    Py_XDECREF(sys_path);
 
 
     /* XOptions is initialized after first some imports.
@@ -3219,8 +3189,10 @@ _PyImport_FiniCore(PyInterpreterState *interp)
 static int
 init_zipimport(PyThreadState *tstate, int verbose)
 {
-    PyObject *path_hooks = _PySys_GetRequiredAttrString("path_hooks");
+    PyObject *path_hooks = PySys_GetObject("path_hooks");
     if (path_hooks == NULL) {
+        _PyErr_SetString(tstate, PyExc_RuntimeError,
+                         "unable to get sys.path_hooks");
         return -1;
     }
 
@@ -3240,14 +3212,12 @@ init_zipimport(PyThreadState *tstate, int verbose)
         int err = PyList_Insert(path_hooks, 0, zipimporter);
         Py_DECREF(zipimporter);
         if (err < 0) {
-            Py_DECREF(path_hooks);
             return -1;
         }
         if (verbose) {
             PySys_WriteStderr("# installed zipimport hook\n");
         }
     }
-    Py_DECREF(path_hooks);
 
     return 0;
 }
@@ -3553,7 +3523,7 @@ _imp_find_frozen_impl(PyObject *module, PyObject *name, int withdata)
     if (info.origname != NULL && info.origname[0] != '\0') {
         origname = PyUnicode_FromString(info.origname);
         if (origname == NULL) {
-            Py_XDECREF(data);
+            Py_DECREF(data);
             return NULL;
         }
     }
@@ -3584,7 +3554,7 @@ _imp_get_frozen_object_impl(PyObject *module, PyObject *name,
     struct frozen_info info = {0};
     Py_buffer buf = {0};
     if (PyObject_CheckBuffer(dataobj)) {
-        if (PyObject_GetBuffer(dataobj, &buf, PyBUF_SIMPLE) != 0) {
+        if (PyObject_GetBuffer(dataobj, &buf, PyBUF_READ) != 0) {
             return NULL;
         }
         info.data = (const char *)buf.buf;

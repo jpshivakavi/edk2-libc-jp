@@ -1116,9 +1116,8 @@ deque_index(dequeobject *deque, PyObject *const *args, Py_ssize_t nargs)
     n = stop - i;
     while (--n >= 0) {
         CHECK_NOT_END(b);
-        item = Py_NewRef(b->data[index]);
+        item = b->data[index];
         cmp = PyObject_RichCompareBool(item, v, Py_EQ);
-        Py_DECREF(item);
         if (cmp > 0)
             return PyLong_FromSsize_t(stop - n - 1);
         if (cmp < 0)

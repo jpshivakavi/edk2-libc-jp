@@ -493,15 +493,22 @@ Also mirror exclusions in `PyMod-.../Modules/config.c` `_PyImport_Inittab[]`: co
 | 0003 | uninitialized static |
 | 0004 | ioctl vararg |
 
-Document in `Py312ReadMe.txt`:
+**Policy (Iteration 1):** do **not** commit applied StdLib diffs on the
+migration branch (zero StdLib divergence until an upstream tianocore PR).
+Keep patches under AppPkg and require a local apply before build.
+
+Document in `Py312ReadMe.txt` / WSL guide:
 
 ```text
-Required before building Python 3.12:
-  apply AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
-  (or cherry-pick equivalent commits)
+Required before building Python 3.12 (from edk2-libc root):
+  git apply --check --ignore-whitespace \
+    AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+  git apply --ignore-whitespace \
+    AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+  ls StdLib/LibC/Uefi/upipe.c
 ```
 
-Copy the patch files into the AppPkg Python tree for self-containment:
+Patch files live in the AppPkg Python tree for self-containment:
 
 ```text
 Python-3.12.13/patches/0001-*.patch

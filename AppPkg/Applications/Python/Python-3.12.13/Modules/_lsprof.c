@@ -56,7 +56,6 @@ typedef struct {
 #define POF_ENABLED     0x001
 #define POF_SUBCALLS    0x002
 #define POF_BUILTINS    0x004
-#define POF_EXT_TIMER   0x008
 #define POF_NOMEMORY    0x100
 
 /*[clinic input]
@@ -85,14 +84,7 @@ _lsprof_get_state(PyObject *module)
 
 static _PyTime_t CallExternalTimer(ProfilerObject *pObj)
 {
-    PyObject *o = NULL;
-
-    // External timer can do arbitrary things so we need a flag to prevent
-    // horrible things to happen
-    pObj->flags |= POF_EXT_TIMER;
-    o = _PyObject_CallNoArgs(pObj->externalTimer);
-    pObj->flags &= ~POF_EXT_TIMER;
-
+    PyObject *o = _PyObject_CallNoArgs(pObj->externalTimer);
     if (o == NULL) {
         PyErr_WriteUnraisable(pObj->externalTimer);
         return 0;
@@ -604,12 +596,6 @@ setBuiltins(ProfilerObject *pObj, int nvalue)
 
 PyObject* pystart_callback(ProfilerObject* self, PyObject *const *args, Py_ssize_t size)
 {
-    if (size < 2) {
-        PyErr_Format(PyExc_TypeError,
-                     "_pystart_callback expected 2 arguments, got %zd",
-                     size);
-        return NULL;
-    }
     PyObject* code = args[0];
     ptrace_enter_call((PyObject*)self, (void *)code, (PyObject *)code);
 
@@ -618,12 +604,6 @@ PyObject* pystart_callback(ProfilerObject* self, PyObject *const *args, Py_ssize
 
 PyObject* pyreturn_callback(ProfilerObject* self, PyObject *const *args, Py_ssize_t size)
 {
-    if (size < 3) {
-        PyErr_Format(PyExc_TypeError,
-                     "_pyreturn_callback expected 3 arguments, got %zd",
-                     size);
-        return NULL;
-    }
     PyObject* code = args[0];
     ptrace_leave_call((PyObject*)self, (void *)code);
 
@@ -659,12 +639,6 @@ PyObject* get_cfunc_from_callable(PyObject* callable, PyObject* self_arg, PyObje
 
 PyObject* ccall_callback(ProfilerObject* self, PyObject *const *args, Py_ssize_t size)
 {
-    if (size < 4) {
-        PyErr_Format(PyExc_TypeError,
-                     "_ccall_callback expected 4 arguments, got %zd",
-                     size);
-        return NULL;
-    }
     if (self->flags & POF_BUILTINS) {
         PyObject* callable = args[2];
         PyObject* self_arg = args[3];
@@ -683,12 +657,6 @@ PyObject* ccall_callback(ProfilerObject* self, PyObject *const *args, Py_ssize_t
 
 PyObject* creturn_callback(ProfilerObject* self, PyObject *const *args, Py_ssize_t size)
 {
-    if (size < 4) {
-        PyErr_Format(PyExc_TypeError,
-                     "_creturn_callback expected 4 arguments, got %zd",
-                     size);
-        return NULL;
-    }
     if (self->flags & POF_BUILTINS) {
         PyObject* callable = args[2];
         PyObject* self_arg = args[3];
@@ -750,47 +718,34 @@ profiler_enable(ProfilerObject *self, PyObject *args, PyObject *kwds)
         return NULL;
     }
 
-    PyObject *check = PyObject_CallMethod(monitoring,
-                                          "use_tool_id", "is",
-                                          self->tool_id, "cProfile");
-    if (check == NULL) {
+    if (PyObject_CallMethod(monitoring, "use_tool_id", "is", self->tool_id, "cProfile") == NULL) {
         PyErr_Format(PyExc_ValueError, "Another profiling tool is already active");
-        goto error;
+        Py_DECREF(monitoring);
+        return NULL;
     }
-    Py_DECREF(check);
 
     for (int i = 0; callback_table[i].callback_method; i++) {
-        int event = (1 << callback_table[i].event);
         PyObject* callback = PyObject_GetAttrString((PyObject*)self, callback_table[i].callback_method);
         if (!callback) {
-            goto error;
+            Py_DECREF(monitoring);
+            return NULL;
         }
-        PyObject *register_result = PyObject_CallMethod(monitoring, "register_callback",
-                                                        "iiO", self->tool_id,
-                                                        event, callback);
+        Py_XDECREF(PyObject_CallMethod(monitoring, "register_callback", "iiO", self->tool_id,
+                                       (1 << callback_table[i].event),
+                                       callback));
         Py_DECREF(callback);
-        if (register_result == NULL) {
-            goto error;
-        }
-        Py_DECREF(register_result);
-        all_events |= event;
+        all_events |= (1 << callback_table[i].event);
     }
 
-    PyObject *event_result = PyObject_CallMethod(monitoring, "set_events", "ii",
-                                                 self->tool_id, all_events);
-    if (event_result == NULL) {
-        goto error;
+    if (!PyObject_CallMethod(monitoring, "set_events", "ii", self->tool_id, all_events)) {
+        Py_DECREF(monitoring);
+        return NULL;
     }
 
-    Py_DECREF(event_result);
     Py_DECREF(monitoring);
 
     self->flags |= POF_ENABLED;
     Py_RETURN_NONE;
-
-error:
-    Py_DECREF(monitoring);
-    return NULL;
 }
 
 static void
@@ -818,11 +773,6 @@ Stop collecting profiling information.\n\
 static PyObject*
 profiler_disable(ProfilerObject *self, PyObject* noarg)
 {
-    if (self->flags & POF_EXT_TIMER) {
-        PyErr_SetString(PyExc_RuntimeError,
-                        "cannot disable profiler in external timer");
-        return NULL;
-    }
     if (self->flags & POF_ENABLED) {
         PyObject* result = NULL;
         PyObject* monitoring = _PyImport_GetModuleAttrString("sys", "monitoring");
@@ -876,11 +826,6 @@ Clear all profiling information collected so far.\n\
 static PyObject*
 profiler_clear(ProfilerObject *pObj, PyObject* noarg)
 {
-    if (pObj->flags & POF_EXT_TIMER) {
-        PyErr_SetString(PyExc_RuntimeError,
-                        "cannot clear profiler in external timer");
-        return NULL;
-    }
     clearEntries(pObj);
     Py_RETURN_NONE;
 }
@@ -889,7 +834,6 @@ static int
 profiler_traverse(ProfilerObject *op, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE(op));
-    Py_VISIT(op->externalTimer);
     return 0;
 }
 

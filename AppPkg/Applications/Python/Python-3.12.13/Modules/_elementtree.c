@@ -93,7 +93,6 @@ typedef struct {
     PyTypeObject *TreeBuilder_Type;
     PyTypeObject *XMLParser_Type;
 
-    PyObject *expat_capsule;
     struct PyExpat_CAPI *expat_capi;
 } elementtreestate;
 
@@ -151,7 +150,6 @@ elementtree_clear(PyObject *m)
     Py_CLEAR(st->ElementIter_Type);
     Py_CLEAR(st->TreeBuilder_Type);
     Py_CLEAR(st->XMLParser_Type);
-    Py_CLEAR(st->expat_capsule);
 
     st->expat_capi = NULL;
     return 0;
@@ -172,7 +170,6 @@ elementtree_traverse(PyObject *m, visitproc visit, void *arg)
     Py_VISIT(st->ElementIter_Type);
     Py_VISIT(st->TreeBuilder_Type);
     Py_VISIT(st->XMLParser_Type);
-    Py_VISIT(st->expat_capsule);
     return 0;
 }
 
@@ -845,7 +842,6 @@ _elementtree_Element___deepcopy___impl(ElementObject *self, PyObject *memo)
         if (element_resize(element, self->extra->length) < 0)
             goto error;
 
-        // TODO(picnixz): check for an evil child's __deepcopy__ on 'self'
         for (i = 0; i < self->extra->length; i++) {
             PyObject* child = deepcopy(st, self->extra->children[i], memo);
             if (!child || !Element_Check(st, child)) {
@@ -1214,8 +1210,12 @@ _elementtree_Element_extend_impl(ElementObject *self, PyTypeObject *cls,
     PyObject* seq;
     Py_ssize_t i;
 
-    seq = PySequence_Fast(elements, "'elements' must be an iterable");
+    seq = PySequence_Fast(elements, "");
     if (!seq) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "expected sequence, not \"%.200s\"", Py_TYPE(elements)->tp_name
+            );
         return NULL;
     }
 
@@ -1250,28 +1250,29 @@ _elementtree_Element_find_impl(ElementObject *self, PyTypeObject *cls,
                                PyObject *path, PyObject *namespaces)
 /*[clinic end generated code: output=18f77d393c9fef1b input=94df8a83f956acc6]*/
 {
+    Py_ssize_t i;
     elementtreestate *st = get_elementtree_state_by_cls(cls);
 
     if (checkpath(path) || namespaces != Py_None) {
         return PyObject_CallMethodObjArgs(
             st->elementpath_obj, st->str_find, self, path, namespaces, NULL
-        );
+            );
     }
 
-    for (Py_ssize_t i = 0; self->extra && i < self->extra->length; i++) {
-        PyObject *item = self->extra->children[i];
+    if (!self->extra)
+        Py_RETURN_NONE;
+
+    for (i = 0; i < self->extra->length; i++) {
+        PyObject* item = self->extra->children[i];
+        int rc;
         assert(Element_Check(st, item));
         Py_INCREF(item);
-        PyObject *tag = Py_NewRef(((ElementObject *)item)->tag);
-        int rc = PyObject_RichCompareBool(tag, path, Py_EQ);
-        Py_DECREF(tag);
-        if (rc > 0) {
+        rc = PyObject_RichCompareBool(((ElementObject*)item)->tag, path, Py_EQ);
+        if (rc > 0)
             return item;
-        }
         Py_DECREF(item);
-        if (rc < 0) {
+        if (rc < 0)
             return NULL;
-        }
     }
 
     Py_RETURN_NONE;
@@ -1294,34 +1295,38 @@ _elementtree_Element_findtext_impl(ElementObject *self, PyTypeObject *cls,
                                    PyObject *namespaces)
 /*[clinic end generated code: output=6af7a2d96aac32cb input=32f252099f62a3d2]*/
 {
+    Py_ssize_t i;
     elementtreestate *st = get_elementtree_state_by_cls(cls);
 
     if (checkpath(path) || namespaces != Py_None)
         return PyObject_CallMethodObjArgs(
             st->elementpath_obj, st->str_findtext,
             self, path, default_value, namespaces, NULL
-        );
+            );
 
-    for (Py_ssize_t i = 0; self->extra && i < self->extra->length; i++) {
+    if (!self->extra) {
+        return Py_NewRef(default_value);
+    }
+
+    for (i = 0; i < self->extra->length; i++) {
         PyObject *item = self->extra->children[i];
+        int rc;
         assert(Element_Check(st, item));
         Py_INCREF(item);
-        PyObject *tag = Py_NewRef(((ElementObject *)item)->tag);
-        int rc = PyObject_RichCompareBool(tag, path, Py_EQ);
-        Py_DECREF(tag);
+        rc = PyObject_RichCompareBool(((ElementObject*)item)->tag, path, Py_EQ);
         if (rc > 0) {
-            PyObject *text = element_get_text((ElementObject *)item);
-            Py_DECREF(item);
+            PyObject* text = element_get_text((ElementObject*)item);
             if (text == Py_None) {
+                Py_DECREF(item);
                 return PyUnicode_New(0, 0);
             }
             Py_XINCREF(text);
+            Py_DECREF(item);
             return text;
         }
         Py_DECREF(item);
-        if (rc < 0) {
+        if (rc < 0)
             return NULL;
-        }
     }
 
     return Py_NewRef(default_value);
@@ -1342,26 +1347,29 @@ _elementtree_Element_findall_impl(ElementObject *self, PyTypeObject *cls,
                                   PyObject *path, PyObject *namespaces)
 /*[clinic end generated code: output=65e39a1208f3b59e input=7aa0db45673fc9a5]*/
 {
+    Py_ssize_t i;
+    PyObject* out;
     elementtreestate *st = get_elementtree_state_by_cls(cls);
 
     if (checkpath(path) || namespaces != Py_None) {
         return PyObject_CallMethodObjArgs(
             st->elementpath_obj, st->str_findall, self, path, namespaces, NULL
-        );
+            );
     }
 
-    PyObject *out = PyList_New(0);
-    if (out == NULL) {
+    out = PyList_New(0);
+    if (!out)
         return NULL;
-    }
 
-    for (Py_ssize_t i = 0; self->extra && i < self->extra->length; i++) {
-        PyObject *item = self->extra->children[i];
+    if (!self->extra)
+        return out;
+
+    for (i = 0; i < self->extra->length; i++) {
+        PyObject* item = self->extra->children[i];
+        int rc;
         assert(Element_Check(st, item));
         Py_INCREF(item);
-        PyObject *tag = Py_NewRef(((ElementObject *)item)->tag);
-        int rc = PyObject_RichCompareBool(tag, path, Py_EQ);
-        Py_DECREF(tag);
+        rc = PyObject_RichCompareBool(((ElementObject*)item)->tag, path, Py_EQ);
         if (rc != 0 && (rc < 0 || PyList_Append(out, item) < 0)) {
             Py_DECREF(item);
             Py_DECREF(out);
@@ -1493,7 +1501,7 @@ element_bool(PyObject* self_)
 {
     ElementObject* self = (ElementObject*) self_;
     if (PyErr_WarnEx(PyExc_DeprecationWarning,
-                     "Testing an element's truth value will always return True "
+                     "Testing an element's truth value will raise an exception "
                      "in future versions.  Use specific 'len(elem)' or "
                      "'elem is not None' test instead.",
                      1) < 0) {
@@ -1628,47 +1636,42 @@ _elementtree_Element_remove_impl(ElementObject *self, PyObject *subelement)
 /*[clinic end generated code: output=38fe6c07d6d87d1f input=6133e1d05597d5ee]*/
 {
     Py_ssize_t i;
-    // When iterating over the list of children, we need to check that the
-    // list is not cleared (self->extra != NULL) and that we are still within
-    // the correct bounds (i < self->extra->length).
-    //
-    // We deliberately avoid protecting against children lists that grow
-    // faster than the index since list objects do not protect against it.
-    int rc = 0;
-    for (i = 0; self->extra && i < self->extra->length; i++) {
-        if (self->extra->children[i] == subelement) {
-            rc = 1;
-            break;
-        }
-        PyObject *child = Py_NewRef(self->extra->children[i]);
-        rc = PyObject_RichCompareBool(child, subelement, Py_EQ);
-        Py_DECREF(child);
-        if (rc < 0) {
-            return NULL;
-        }
-        else if (rc > 0) {
-            break;
-        }
-    }
+    int rc;
+    PyObject *found;
 
-    if (rc == 0) {
-        PyErr_SetString(PyExc_ValueError, "list.remove(x): x not in list");
+    if (!self->extra) {
+        /* element has no children, so raise exception */
+        PyErr_SetString(
+            PyExc_ValueError,
+            "list.remove(x): x not in list"
+            );
         return NULL;
     }
 
-    // An extra check must be done if the mutation occurs at the very last
-    // step and removes or clears the 'extra' list (the condition on the
-    // length would not be satisfied any more).
-    if (self->extra == NULL || i >= self->extra->length) {
-        Py_RETURN_NONE;
+    for (i = 0; i < self->extra->length; i++) {
+        if (self->extra->children[i] == subelement)
+            break;
+        rc = PyObject_RichCompareBool(self->extra->children[i], subelement, Py_EQ);
+        if (rc > 0)
+            break;
+        if (rc < 0)
+            return NULL;
     }
 
-    PyObject *found = self->extra->children[i];
+    if (i >= self->extra->length) {
+        /* subelement is not in children, so raise exception */
+        PyErr_SetString(
+            PyExc_ValueError,
+            "list.remove(x): x not in list"
+            );
+        return NULL;
+    }
+
+    found = self->extra->children[i];
 
     self->extra->length--;
-    for (; i < self->extra->length; i++) {
+    for (; i < self->extra->length; i++)
         self->extra->children[i] = self->extra->children[i+1];
-    }
 
     Py_DECREF(found);
     Py_RETURN_NONE;
@@ -1914,8 +1917,12 @@ element_ass_subscr(PyObject* self_, PyObject* item, PyObject* value)
         }
 
         /* A new slice is actually being assigned */
-        seq = PySequence_Fast(value, "assignment expects an iterable");
+        seq = PySequence_Fast(value, "");
         if (!seq) {
+            PyErr_Format(
+                PyExc_TypeError,
+                "expected sequence, not \"%.200s\"", Py_TYPE(value)->tp_name
+                );
             return -1;
         }
         newlen = PySequence_Fast_GET_SIZE(seq);
@@ -3058,7 +3065,6 @@ typedef struct {
     PyObject *handle_close;
 
     elementtreestate *state;
-    PyObject *elementtree_module;
 } XMLParserObject;
 
 /* helpers */
@@ -3605,11 +3611,7 @@ xmlparser_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->handle_start = self->handle_data = self->handle_end = NULL;
         self->handle_comment = self->handle_pi = self->handle_close = NULL;
         self->handle_doctype = NULL;
-        self->elementtree_module = PyType_GetModuleByDef(type, &elementtreemodule);
-        assert(self->elementtree_module != NULL);
-        Py_INCREF(self->elementtree_module);
-        // See gh-111784 for explanation why is reference to module needed here.
-        self->state = get_elementtree_state(self->elementtree_module);
+        self->state = get_elementtree_state_by_type(type);
     }
     return (PyObject *)self;
 }
@@ -3786,7 +3788,6 @@ xmlparser_gc_clear(XMLParserObject *self)
         EXPAT(st, ParserFree)(parser);
     }
 
-    Py_CLEAR(self->elementtree_module);
     Py_CLEAR(self->handle_close);
     Py_CLEAR(self->handle_pi);
     Py_CLEAR(self->handle_comment);
@@ -3883,40 +3884,6 @@ _elementtree_XMLParser_close_impl(XMLParserObject *self)
     else {
         return res;
     }
-}
-
-/*[clinic input]
-_elementtree.XMLParser.flush
-
-[clinic start generated code]*/
-
-static PyObject *
-_elementtree_XMLParser_flush_impl(XMLParserObject *self)
-/*[clinic end generated code: output=42fdb8795ca24509 input=effbecdb28715949]*/
-{
-    if (!_check_xmlparser(self)) {
-        return NULL;
-    }
-
-    elementtreestate *st = self->state;
-
-    if (EXPAT(st, SetReparseDeferralEnabled) == NULL) {
-        Py_RETURN_NONE;
-    }
-
-    // NOTE: The Expat parser in the C implementation of ElementTree is not
-    //       exposed to the outside; as a result we known that reparse deferral
-    //       is currently enabled, or we would not even have access to function
-    //       XML_SetReparseDeferralEnabled in the first place (which we checked
-    //       for, a few lines up).
-
-    EXPAT(st, SetReparseDeferralEnabled)(self->parser, XML_FALSE);
-
-    PyObject *res = expat_parse(st, self, "", 0, XML_FALSE);
-
-    EXPAT(st, SetReparseDeferralEnabled)(self->parser, XML_TRUE);
-
-    return res;
 }
 
 /*[clinic input]
@@ -4313,7 +4280,6 @@ static PyType_Spec treebuilder_spec = {
 static PyMethodDef xmlparser_methods[] = {
     _ELEMENTTREE_XMLPARSER_FEED_METHODDEF
     _ELEMENTTREE_XMLPARSER_CLOSE_METHODDEF
-    _ELEMENTTREE_XMLPARSER_FLUSH_METHODDEF
     _ELEMENTTREE_XMLPARSER__PARSE_WHOLE_METHODDEF
     _ELEMENTTREE_XMLPARSER__SETEVENTS_METHODDEF
     {NULL, NULL}
@@ -4381,10 +4347,7 @@ module_exec(PyObject *m)
         goto error;
 
     /* link against pyexpat */
-    if (!(st->expat_capsule = _PyImport_GetModuleAttrString("pyexpat", "expat_CAPI")))
-        goto error;
-    if (!(st->expat_capi = PyCapsule_GetPointer(st->expat_capsule, PyExpat_CAPSULE_NAME)))
-        goto error;
+    st->expat_capi = PyCapsule_Import(PyExpat_CAPSULE_NAME, 0);
     if (st->expat_capi) {
         /* check that it's usable */
         if (strcmp(st->expat_capi->magic, PyExpat_CAPI_MAGIC) != 0 ||

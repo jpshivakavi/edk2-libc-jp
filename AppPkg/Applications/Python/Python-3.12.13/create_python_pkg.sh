@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 #
 # Stage Python 3.12.13 UEFI runtime tree for FAT / QEMU rootfs.
 #
@@ -87,7 +87,7 @@ BIN_DIR="${OUT_FOLDER}/EFI/bin"
 LIB_DIR="${OUT_FOLDER}/EFI/lib/python3.12"
 ETC_DIR="${OUT_FOLDER}/EFI/stdlib/etc"
 
-mkdir -p "${BIN_DIR}" "${LIB_DIR}" "${ETC_DIR}"
+mkdir -p "${BIN_DIR}" "${LIB_DIR}" "${LIB_DIR}/lib-dynload" "${ETC_DIR}"
 
 cp -f "${PYTHON_BIN}" "${BIN_DIR}/Python312.efi"
 

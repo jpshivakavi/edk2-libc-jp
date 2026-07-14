@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 #include "Python.h"
 #include "opcode.h"
 #include "structmember.h"         // PyMemberDef
@@ -8,8 +10,6 @@
 #include "pycore_pystate.h"       // _PyInterpreterState_GET()
 #include "pycore_tuple.h"         // _PyTuple_ITEMS()
 #include "clinic/codeobject.c.h"
-
-#include <stdbool.h>
 
 static PyObject* code_repr(PyCodeObject *co);
 
@@ -132,7 +132,6 @@ all_name_chars(PyObject *o)
 static int
 intern_strings(PyObject *tuple)
 {
-    PyInterpreterState *interp = _PyInterpreterState_GET();
     Py_ssize_t i;
 
     for (i = PyTuple_GET_SIZE(tuple); --i >= 0; ) {
@@ -142,7 +141,7 @@ intern_strings(PyObject *tuple)
                             "non-string found in code slot");
             return -1;
         }
-        _PyUnicode_InternImmortal(interp, &_PyTuple_ITEMS(tuple)[i]);
+        PyUnicode_InternInPlace(&_PyTuple_ITEMS(tuple)[i]);
     }
     return 0;
 }
@@ -151,7 +150,6 @@ intern_strings(PyObject *tuple)
 static int
 intern_string_constants(PyObject *tuple, int *modified)
 {
-    PyInterpreterState *interp = _PyInterpreterState_GET();
     for (Py_ssize_t i = PyTuple_GET_SIZE(tuple); --i >= 0; ) {
         PyObject *v = PyTuple_GET_ITEM(tuple, i);
         if (PyUnicode_CheckExact(v)) {
@@ -161,7 +159,7 @@ intern_string_constants(PyObject *tuple, int *modified)
 
             if (all_name_chars(v)) {
                 PyObject *w = v;
-                _PyUnicode_InternMortal(interp, &v);
+                PyUnicode_InternInPlace(&v);
                 if (w != v) {
                     PyTuple_SET_ITEM(tuple, i, v);
                     if (modified) {
@@ -667,35 +665,6 @@ PyUnstable_Code_NewWithPosOnlyArgs(
         _Py_set_localsplus_info(offset, name, CO_FAST_FREE,
                                localsplusnames, localspluskinds);
     }
-
-    // gh-110543: Make sure the CO_FAST_HIDDEN flag is set correctly.
-    if (!(flags & CO_OPTIMIZED)) {
-        Py_ssize_t code_len = PyBytes_GET_SIZE(code);
-        _Py_CODEUNIT *code_data = (_Py_CODEUNIT *)PyBytes_AS_STRING(code);
-        Py_ssize_t num_code_units = code_len / sizeof(_Py_CODEUNIT);
-        int extended_arg = 0;
-        for (int i = 0; i < num_code_units; i += 1 + _PyOpcode_Caches[code_data[i].op.code]) {
-            _Py_CODEUNIT *instr = &code_data[i];
-            uint8_t opcode = instr->op.code;
-            if (opcode == EXTENDED_ARG) {
-                extended_arg = extended_arg << 8 | instr->op.arg;
-                continue;
-            }
-            if (opcode == LOAD_FAST_AND_CLEAR) {
-                int oparg = extended_arg << 8 | instr->op.arg;
-                if (oparg >= nlocalsplus) {
-                    PyErr_Format(PyExc_ValueError,
-                                "code: LOAD_FAST_AND_CLEAR oparg %d out of range",
-                                oparg);
-                    goto error;
-                }
-                _PyLocals_Kind kind = _PyLocals_GetKind(localspluskinds, oparg);
-                _PyLocals_SetKind(localspluskinds, oparg, kind | CO_FAST_HIDDEN);
-            }
-            extended_arg = 0;
-        }
-    }
-
     // If any cells were args then nlocalsplus will have shrunk.
     if (nlocalsplus != PyTuple_GET_SIZE(localsplusnames)) {
         if (_PyTuple_Resize(&localsplusnames, nlocalsplus) < 0
@@ -1802,8 +1771,8 @@ code_richcompare(PyObject *self, PyObject *other, int op)
     for (int i = 0; i < Py_SIZE(co); i++) {
         _Py_CODEUNIT co_instr = _PyCode_CODE(co)[i];
         _Py_CODEUNIT cp_instr = _PyCode_CODE(cp)[i];
-        co_instr.op.code = _Py_GetBaseOpcode(co, i);
-        cp_instr.op.code = _Py_GetBaseOpcode(cp, i);
+        co_instr.op.code = _PyOpcode_Deopt[co_instr.op.code];
+        cp_instr.op.code = _PyOpcode_Deopt[cp_instr.op.code];
         eq = co_instr.cache == cp_instr.cache;
         if (!eq) {
             goto unequal;

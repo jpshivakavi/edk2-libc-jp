@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 
-#define _Py_COMMON_FIELDS(PREFIX) \
+#define COMMON_FIELDS(PREFIX) \
     PyObject *PREFIX ## globals; \
     PyObject *PREFIX ## builtins; \
     PyObject *PREFIX ## name; \
@@ -19,7 +19,7 @@ extern "C" {
     PyObject *PREFIX ## closure;     /* NULL or a tuple of cell objects */
 
 typedef struct {
-    _Py_COMMON_FIELDS(fc_)
+    COMMON_FIELDS(fc_)
 } PyFrameConstructor;
 
 /* Function objects and code objects should not be confused with each other:
@@ -35,7 +35,7 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
-    _Py_COMMON_FIELDS(func_)
+    COMMON_FIELDS(func_)
     PyObject *func_doc;         /* The __doc__ attribute, can be anything */
     PyObject *func_dict;        /* The __dict__ attribute, a dict or NULL */
     PyObject *func_weakreflist; /* List of weak references */
@@ -59,8 +59,6 @@ typedef struct {
      *     (func_closure may be NULL if PyCode_GetNumFree(func_code) == 0).
      */
 } PyFunctionObject;
-
-#undef _Py_COMMON_FIELDS
 
 PyAPI_DATA(PyTypeObject) PyFunction_Type;
 

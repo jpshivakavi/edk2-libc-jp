@@ -216,24 +216,10 @@ perf_map_write_entry(void *state, const void *code_addr,
     PyMem_RawFree(perf_map_entry);
 }
 
-static void*
-perf_map_init_state(void)
-{
-    PyUnstable_PerfMapState_Init();
-    return NULL;
-}
-
-static int
-perf_map_free_state(void *state)
-{
-    PyUnstable_PerfMapState_Fini();
-    return 0;
-}
-
 _PyPerf_Callbacks _Py_perfmap_callbacks = {
-    &perf_map_init_state,
+    NULL,
     &perf_map_write_entry,
-    &perf_map_free_state,
+    NULL,
 };
 
 static int
@@ -247,7 +233,7 @@ new_code_arena(void)
              mem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
              -1,  // fd (not used here)
              0);  // offset (not used here)
-    if (memory == MAP_FAILED) {
+    if (!memory) {
         PyErr_SetFromErrno(PyExc_OSError);
         _PyErr_WriteUnraisableMsg(
             "Failed to create new mmap for perf trampoline", NULL);
@@ -412,15 +398,9 @@ _PyPerfTrampoline_SetCallbacks(_PyPerf_Callbacks *callbacks)
     trampoline_api.write_state = callbacks->write_state;
     trampoline_api.free_state = callbacks->free_state;
     trampoline_api.state = NULL;
+    perf_status = PERF_STATUS_OK;
 #endif
     return 0;
-}
-
-void _PyPerfTrampoline_FreeArenas(void) {
-#ifdef PY_HAVE_PERF_TRAMPOLINE
-    free_code_arenas();
-#endif
-    return;
 }
 
 int
@@ -437,7 +417,6 @@ _PyPerfTrampoline_Init(int activate)
     }
     if (!activate) {
         tstate->interp->eval_frame = NULL;
-        perf_status = PERF_STATUS_NO_INIT;
     }
     else {
         tstate->interp->eval_frame = py_trampoline_evaluator;
@@ -447,9 +426,6 @@ _PyPerfTrampoline_Init(int activate)
         extra_code_index = _PyEval_RequestCodeExtraIndex(NULL);
         if (extra_code_index == -1) {
             return -1;
-        }
-        if (trampoline_api.state == NULL && trampoline_api.init_state != NULL) {
-            trampoline_api.state = trampoline_api.init_state();
         }
         perf_status = PERF_STATUS_OK;
     }
@@ -461,18 +437,12 @@ int
 _PyPerfTrampoline_Fini(void)
 {
 #ifdef PY_HAVE_PERF_TRAMPOLINE
-    if (perf_status != PERF_STATUS_OK) {
-        return 0;
-    }
     PyThreadState *tstate = _PyThreadState_GET();
     if (tstate->interp->eval_frame == py_trampoline_evaluator) {
         tstate->interp->eval_frame = NULL;
     }
-    if (perf_status == PERF_STATUS_OK) {
-        trampoline_api.free_state(trampoline_api.state);
-    }
+    free_code_arenas();
     extra_code_index = -1;
-    perf_status = PERF_STATUS_NO_INIT;
 #endif
     return 0;
 }

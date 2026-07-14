@@ -107,28 +107,38 @@ ls AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
 
 ---
 
-## 4. Apply libc patches (Phase 5.2)
+## 4. Apply libc patches (**required** setup — Phase 5.2)
 
 These come from `edk2-py312` and are **not** in upstream edk2-libc yet.
-**Patch 0001 (`upipe`) is required** to link; 0002–0004 are strongly
-recommended for GCC runtime.
+**Iteration 1 policy:** keep **zero StdLib divergence** on the Git branch;
+apply patches locally as a build prerequisite (re-apply after a clean
+checkout). **Patch 0001 (`upipe`) is required** to link; 0002–0004 are
+strongly recommended for GCC runtime.
+
+Use `--ignore-whitespace` (patch context can carry trailing spaces):
 
 ```bash
-cd ~/src/edk2-libc
+cd ~/src/edk2-libc   # same tree as EDK2_LIBC_PATH / PACKAGES_PATH
 
-# Prefer applying from a clean master-based tree; resolve conflicts if any.
-git apply --check AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
-git apply AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+# Prefer a clean StdLib baseline (no half-applied local edits):
+#   git checkout -- StdLib StdLibPrivateInternalFiles
+#   git clean -fd StdLib StdLibPrivateInternalFiles
+
+git apply --check --ignore-whitespace \
+  AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+git apply --ignore-whitespace \
+  AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
 
 # Verify upipe landed:
 ls StdLib/LibC/Uefi/upipe.c
 ```
 
-If `git apply` fails (line drift), try one patch at a time and record failures
-in `Python312_AppPkg_Migration_Status.md`.
+If `git apply` still fails (line drift), try one patch at a time and record
+failures in `Python312_AppPkg_Migration_Status.md`.
 
-**Do not commit** libc patch changes into the Python migration PR unless you
-intend to upstream them; keep them as a local build prerequisite for now.
+**Do not commit** StdLib / `StdLibPrivateInternalFiles` changes from these
+patches into the Python migration branch. Upstream them separately (or keep
+applying patches) until tianocore lands equivalents.
 
 ---
 
@@ -292,7 +302,7 @@ Smoke (Iteration 1):
 [ ] edk2 BaseTools + edksetup.sh
 [ ] PACKAGES_PATH / EDK2_LIBC_PATH set (edk2 + edk2-libc only)
 [ ] branch feature/python-3.12.13-apppkg
-[ ] git apply patches/*.patch (upipe.c present)
+[ ] git apply --ignore-whitespace patches/*.patch (upipe.c present)
 [ ] python3 srcprep.py
 [ ] build -D BUILD_PYTHON312 -t GCC
 [ ] Python312.efi produced

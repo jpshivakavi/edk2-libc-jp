@@ -53,7 +53,7 @@ functions and constants
 extern "C" {
 #endif
 
-#if defined(__clang__) || defined(_MSC_VER)
+#ifdef __clang__
 struct timeval;
 #endif
 

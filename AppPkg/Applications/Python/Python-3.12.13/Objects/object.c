@@ -159,27 +159,11 @@ _PyDebug_PrintTotalRefs(void) {
 
 #ifdef Py_TRACE_REFS
 
-#define REFCHAIN(interp) interp->object_state.refchain
-
-static inline int
-has_own_refchain(PyInterpreterState *interp)
-{
-    if (interp->feature_flags & Py_RTFLAGS_USE_MAIN_OBMALLOC) {
-        return (_Py_IsMainInterpreter(interp)
-            || _PyInterpreterState_Main() == NULL);
-    }
-    return 1;
-}
+#define REFCHAIN(interp) &interp->object_state.refchain
 
 static inline void
 init_refchain(PyInterpreterState *interp)
 {
-    if (!has_own_refchain(interp)) {
-        // Legacy subinterpreters share a refchain with the main interpreter.
-        REFCHAIN(interp) = REFCHAIN(_PyInterpreterState_Main());
-        return;
-    }
-    REFCHAIN(interp) = &interp->object_state._refchain_obj;
     PyObject *refchain = REFCHAIN(interp);
     refchain->_ob_prev = refchain;
     refchain->_ob_next = refchain;
@@ -1186,8 +1170,7 @@ PyObject_SetAttr(PyObject *v, PyObject *name, PyObject *value)
     }
     Py_INCREF(name);
 
-    PyInterpreterState *interp = _PyInterpreterState_GET();
-    _PyUnicode_InternMortal(interp, &name);
+    PyUnicode_InternInPlace(&name);
     if (tp->tp_setattro != NULL) {
         err = (*tp->tp_setattro)(v, name, value);
         Py_DECREF(name);
@@ -1895,7 +1878,7 @@ PyTypeObject _PyNone_Type = {
     0,                  /*tp_doc */
     0,                  /*tp_traverse */
     0,                  /*tp_clear */
-    _Py_BaseObject_RichCompare, /*tp_richcompare */
+    0,                  /*tp_richcompare */
     0,                  /*tp_weaklistoffset */
     0,                  /*tp_iter */
     0,                  /*tp_iternext */
@@ -2026,7 +2009,9 @@ void
 _PyObject_InitState(PyInterpreterState *interp)
 {
 #ifdef Py_TRACE_REFS
-    init_refchain(interp);
+    if (!_Py_IsMainInterpreter(interp)) {
+        init_refchain(interp);
+    }
 #endif
 }
 

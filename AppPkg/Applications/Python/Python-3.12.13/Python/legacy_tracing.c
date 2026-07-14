@@ -103,19 +103,6 @@ sys_profile_call_or_return(
         Py_DECREF(meth);
         return res;
     }
-    else if (Py_TYPE(callable) == &PyMethod_Type) {
-        // CALL instruction will grab the function from the method,
-        // so if the function is a C function, the return event will
-        // be emitted. However, CALL event happens before CALL
-        // instruction, so we need to handle this case here.
-        PyObject* func = PyMethod_GET_FUNCTION(callable);
-        if (func == NULL) {
-            return NULL;
-        }
-        if (PyCFunction_Check(func)) {
-            return call_profile_func(self, func);
-        }
-    }
     Py_RETURN_NONE;
 }
 
@@ -391,11 +378,6 @@ _PyEval_SetProfile(PyThreadState *tstate, Py_tracefunc func, PyObject *arg)
             return -1;
         }
         if (set_callbacks(PY_MONITORING_SYS_PROFILE_ID,
-            (vectorcallfunc)sys_profile_func3, PyTrace_CALL,
-                        PY_MONITORING_EVENT_PY_THROW, -1)) {
-            return -1;
-        }
-        if (set_callbacks(PY_MONITORING_SYS_PROFILE_ID,
             (vectorcallfunc)sys_profile_func3, PyTrace_RETURN,
                         PY_MONITORING_EVENT_PY_RETURN, PY_MONITORING_EVENT_PY_YIELD)) {
             return -1;
@@ -435,8 +417,7 @@ _PyEval_SetProfile(PyThreadState *tstate, Py_tracefunc func, PyObject *arg)
         events =
             (1 << PY_MONITORING_EVENT_PY_START) | (1 << PY_MONITORING_EVENT_PY_RESUME) |
             (1 << PY_MONITORING_EVENT_PY_RETURN) | (1 << PY_MONITORING_EVENT_PY_YIELD) |
-            (1 << PY_MONITORING_EVENT_CALL) | (1 << PY_MONITORING_EVENT_PY_UNWIND) |
-            (1 << PY_MONITORING_EVENT_PY_THROW);
+            (1 << PY_MONITORING_EVENT_CALL) | (1 << PY_MONITORING_EVENT_PY_UNWIND);
     }
     return _PyMonitoring_SetEvents(PY_MONITORING_SYS_PROFILE_ID, events);
 }

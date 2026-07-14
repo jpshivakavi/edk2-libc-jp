@@ -761,7 +761,6 @@ extern "C" {
     INIT_ID(_lock_unlock_module), \
     INIT_ID(_loop), \
     INIT_ID(_needs_com_addref_), \
-    INIT_ID(_only_immortal), \
     INIT_ID(_pack_), \
     INIT_ID(_restype_), \
     INIT_ID(_showwarnmsg), \
@@ -1182,7 +1181,6 @@ extern "C" {
     INIT_ID(sound), \
     INIT_ID(source), \
     INIT_ID(source_traceback), \
-    INIT_ID(spam), \
     INIT_ID(src), \
     INIT_ID(src_dir_fd), \
     INIT_ID(stacklevel), \

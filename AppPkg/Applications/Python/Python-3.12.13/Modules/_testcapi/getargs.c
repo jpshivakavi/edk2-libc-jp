@@ -15,9 +15,9 @@ parse_tuple_and_keywords(PyObject *self, PyObject *args)
     const char *sub_format;
     PyObject *sub_keywords;
 
-#define MAX_PARAMS 8
-    double buffers[MAX_PARAMS][4]; /* double ensures alignment where necessary */
-    char *keywords[MAX_PARAMS + 1]; /* space for NULL at end */
+    double buffers[8][4]; /* double ensures alignment where necessary */
+    PyObject *converted[8];
+    char *keywords[8 + 1]; /* space for NULL at end */
 
     PyObject *return_value = NULL;
 
@@ -37,10 +37,11 @@ parse_tuple_and_keywords(PyObject *self, PyObject *args)
     }
 
     memset(buffers, 0, sizeof(buffers));
+    memset(converted, 0, sizeof(converted));
     memset(keywords, 0, sizeof(keywords));
 
     Py_ssize_t size = PySequence_Fast_GET_SIZE(sub_keywords);
-    if (size > MAX_PARAMS) {
+    if (size > 8) {
         PyErr_SetString(PyExc_ValueError,
             "parse_tuple_and_keywords: too many keywords in sub_keywords");
         goto exit;
@@ -48,60 +49,29 @@ parse_tuple_and_keywords(PyObject *self, PyObject *args)
 
     for (Py_ssize_t i = 0; i < size; i++) {
         PyObject *o = PySequence_Fast_GET_ITEM(sub_keywords, i);
-        if (PyUnicode_Check(o)) {
-            keywords[i] = (char *)PyUnicode_AsUTF8(o);
-            if (keywords[i] == NULL) {
-                goto exit;
-            }
-        }
-        else if (PyBytes_Check(o)) {
-            keywords[i] = PyBytes_AS_STRING(o);
-        }
-        else {
+        if (!PyUnicode_FSConverter(o, (void *)(converted + i))) {
             PyErr_Format(PyExc_ValueError,
                 "parse_tuple_and_keywords: "
-                "keywords must be str or bytes", i);
+                "could not convert keywords[%zd] to narrow string", i);
             goto exit;
         }
+        keywords[i] = PyBytes_AS_STRING(converted[i]);
     }
 
-    assert(MAX_PARAMS == 8);
     int result = PyArg_ParseTupleAndKeywords(sub_args, sub_kwargs,
         sub_format, keywords,
         buffers + 0, buffers + 1, buffers + 2, buffers + 3,
         buffers + 4, buffers + 5, buffers + 6, buffers + 7);
 
     if (result) {
-        int objects_only = 1;
-        int count = 0;
-        for (const char *f = sub_format; *f; f++) {
-            if (Py_ISALNUM(*f)) {
-                if (strchr("OSUY", *f) == NULL) {
-                    objects_only = 0;
-                    break;
-                }
-                count++;
-            }
-        }
-        if (objects_only) {
-            return_value = PyTuple_New(count);
-            if (return_value == NULL) {
-                goto exit;
-            }
-            for (Py_ssize_t i = 0; i < count; i++) {
-                PyObject *arg = *(PyObject **)(buffers + i);
-                if (arg == NULL) {
-                    arg = Py_None;
-                }
-                PyTuple_SET_ITEM(return_value, i, Py_NewRef(arg));
-            }
-        }
-        else {
-            return_value = Py_NewRef(Py_None);
-        }
+        return_value = Py_NewRef(Py_None);
     }
 
 exit:
+    size = sizeof(converted) / sizeof(converted[0]);
+    for (Py_ssize_t i = 0; i < size; i++) {
+        Py_XDECREF(converted[i]);
+    }
     return return_value;
 }
 
@@ -365,83 +335,68 @@ getargs_K(PyObject *self, PyObject *args)
 static PyObject *
 test_k_code(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
-    PyObject *tuple = PyTuple_New(1);
+    PyObject *tuple, *num;
+    unsigned long value;
+
+    tuple = PyTuple_New(1);
     if (tuple == NULL) {
         return NULL;
     }
 
     /* a number larger than ULONG_MAX even on 64-bit platforms */
-    PyObject *num = PyLong_FromString("FFFFFFFFFFFFFFFFFFFFFFFF", NULL, 16);
+    num = PyLong_FromString("FFFFFFFFFFFFFFFFFFFFFFFF", NULL, 16);
     if (num == NULL) {
-        goto error;
+        return NULL;
     }
 
-    unsigned long value = PyLong_AsUnsignedLongMask(num);
-    if (value == (unsigned long)-1 && PyErr_Occurred()) {
-        Py_DECREF(num);
-        goto error;
-    }
-    else if (value != ULONG_MAX) {
-        Py_DECREF(num);
+    value = PyLong_AsUnsignedLongMask(num);
+    if (value != ULONG_MAX) {
         PyErr_SetString(PyExc_AssertionError,
             "test_k_code: "
             "PyLong_AsUnsignedLongMask() returned wrong value for long 0xFFF...FFF");
-        goto error;
+        return NULL;
     }
 
     PyTuple_SET_ITEM(tuple, 0, num);
 
     value = 0;
     if (!PyArg_ParseTuple(tuple, "k:test_k_code", &value)) {
-        goto error;
+        return NULL;
     }
     if (value != ULONG_MAX) {
         PyErr_SetString(PyExc_AssertionError,
             "test_k_code: k code returned wrong value for long 0xFFF...FFF");
-        goto error;
-    }
-
-    Py_DECREF(tuple);  // also clears `num`
-    tuple = PyTuple_New(1);
-    if (tuple == NULL) {
         return NULL;
     }
+
+    Py_DECREF(num);
     num = PyLong_FromString("-FFFFFFFF000000000000000042", NULL, 16);
     if (num == NULL) {
-        goto error;
+        return NULL;
     }
 
     value = PyLong_AsUnsignedLongMask(num);
-    if (value == (unsigned long)-1 && PyErr_Occurred()) {
-        Py_DECREF(num);
-        goto error;
-    }
-    else if (value != (unsigned long)-0x42) {
-        Py_DECREF(num);
+    if (value != (unsigned long)-0x42) {
         PyErr_SetString(PyExc_AssertionError,
             "test_k_code: "
             "PyLong_AsUnsignedLongMask() returned wrong value for long -0xFFF..000042");
-        goto error;
+        return NULL;
     }
 
     PyTuple_SET_ITEM(tuple, 0, num);
 
     value = 0;
     if (!PyArg_ParseTuple(tuple, "k:test_k_code", &value)) {
-        goto error;
+        return NULL;
     }
     if (value != (unsigned long)-0x42) {
         PyErr_SetString(PyExc_AssertionError,
             "test_k_code: k code returned wrong value for long -0xFFF..000042");
-        goto error;
+        return NULL;
     }
 
     Py_DECREF(tuple);
     Py_RETURN_NONE;
-
-error:
-    Py_DECREF(tuple);
-    return NULL;
 }
 
 static PyObject *
@@ -779,56 +734,51 @@ getargs_et_hash(PyObject *self, PyObject *args)
 static PyObject *
 test_L_code(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
-    PyObject *tuple = PyTuple_New(1);
-    if (tuple == NULL) {
-        return NULL;
-    }
+    PyObject *tuple, *num;
+    long long value;
 
-    PyObject *num = PyLong_FromLong(42);
-    if (num == NULL) {
-        goto error;
-    }
-
-    PyTuple_SET_ITEM(tuple, 0, num);
-
-    long long value = -1;
-    if (!PyArg_ParseTuple(tuple, "L:test_L_code", &value)) {
-        goto error;
-    }
-    if (value != 42) {
-        PyErr_SetString(PyExc_AssertionError,
-            "test_L_code: L code returned wrong value for long 42");
-        goto error;
-    }
-
-    Py_DECREF(tuple);  // also clears `num`
     tuple = PyTuple_New(1);
     if (tuple == NULL) {
         return NULL;
     }
+
     num = PyLong_FromLong(42);
     if (num == NULL) {
-        goto error;
+        return NULL;
     }
 
     PyTuple_SET_ITEM(tuple, 0, num);
 
     value = -1;
     if (!PyArg_ParseTuple(tuple, "L:test_L_code", &value)) {
-        goto error;
+        return NULL;
+    }
+    if (value != 42) {
+        PyErr_SetString(PyExc_AssertionError,
+            "test_L_code: L code returned wrong value for long 42");
+        return NULL;
+    }
+
+    Py_DECREF(num);
+    num = PyLong_FromLong(42);
+    if (num == NULL) {
+        return NULL;
+    }
+
+    PyTuple_SET_ITEM(tuple, 0, num);
+
+    value = -1;
+    if (!PyArg_ParseTuple(tuple, "L:test_L_code", &value)) {
+        return NULL;
     }
     if (value != 42) {
         PyErr_SetString(PyExc_AssertionError,
             "test_L_code: L code returned wrong value for int 42");
-        goto error;
+        return NULL;
     }
 
     Py_DECREF(tuple);
     Py_RETURN_NONE;
-
-error:
-    Py_DECREF(tuple);
-    return NULL;
 }
 
 /* Test the s and z codes for PyArg_ParseTuple.
@@ -845,7 +795,7 @@ test_s_code(PyObject *self, PyObject *Py_UNUSED(ignored))
     PyObject *obj = PyUnicode_Decode("t\xeate", strlen("t\xeate"),
                                      "latin-1", NULL);
     if (obj == NULL) {
-        goto error;
+        return NULL;
     }
 
     PyTuple_SET_ITEM(tuple, 0, obj);
@@ -855,19 +805,15 @@ test_s_code(PyObject *self, PyObject *Py_UNUSED(ignored))
      */
     char *value;
     if (!PyArg_ParseTuple(tuple, "s:test_s_code1", &value)) {
-        goto error;
+        return NULL;
     }
 
     if (!PyArg_ParseTuple(tuple, "z:test_s_code2", &value)) {
-        goto error;
+        return NULL;
     }
 
     Py_DECREF(tuple);
     Py_RETURN_NONE;
-
-error:
-    Py_DECREF(tuple);
-    return NULL;
 }
 
 #undef PyArg_ParseTupleAndKeywords

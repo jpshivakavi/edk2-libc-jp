@@ -37,10 +37,8 @@
 #define Py_HAVE_CONDVAR
 
 /* include windows if it hasn't been done before */
-#ifndef WIN32_LEAN_AND_MEAN
-#  define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>              // CRITICAL_SECTION
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 
 /* options */
 /* non-emulated condition variables are provided for those that want

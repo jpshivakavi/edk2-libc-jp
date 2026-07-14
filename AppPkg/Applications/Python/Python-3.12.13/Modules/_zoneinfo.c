@@ -62,21 +62,21 @@ struct TransitionRuleType {
 
 typedef struct {
     TransitionRuleType base;
-    uint8_t month;      /* 1 - 12 */
-    uint8_t week;       /* 1 - 5 */
-    uint8_t day;        /* 0 - 6 */
-    int16_t hour;       /* -167 - 167, RFC 8536 §3.3.1 */
-    int8_t minute;      /* signed 2 digits */
-    int8_t second;      /* signed 2 digits */
+    uint8_t month;
+    uint8_t week;
+    uint8_t day;
+    int8_t hour;
+    int8_t minute;
+    int8_t second;
 } CalendarRule;
 
 typedef struct {
     TransitionRuleType base;
-    uint8_t julian;     /* 0, 1 */
-    uint16_t day;       /* 0 - 365 */
-    int16_t hour;       /* -167 - 167, RFC 8536 §3.3.1 */
-    int8_t minute;      /* signed 2 digits */
-    int8_t second;      /* signed 2 digits */
+    uint8_t julian;
+    unsigned int day;
+    int8_t hour;
+    int8_t minute;
+    int8_t second;
 } DayRule;
 
 struct StrongCacheNode {
@@ -134,14 +134,15 @@ ts_to_local(size_t *trans_idx, int64_t *trans_utc, long *utcoff,
 static int
 parse_tz_str(zoneinfo_state *state, PyObject *tz_str_obj, _tzrule *out);
 
-static int
-parse_abbr(const char **p, PyObject **abbr);
-static int
-parse_tz_delta(const char **p, long *total_seconds);
-static int
-parse_transition_time(const char **p, int *hour, int *minute, int *second);
-static int
-parse_transition_rule(const char **p, TransitionRuleType **out);
+static Py_ssize_t
+parse_abbr(const char *const p, PyObject **abbr);
+static Py_ssize_t
+parse_tz_delta(const char *const p, long *total_seconds);
+static Py_ssize_t
+parse_transition_time(const char *const p, int8_t *hour, int8_t *minute,
+                      int8_t *second);
+static Py_ssize_t
+parse_transition_rule(const char *const p, TransitionRuleType **out);
 
 static _ttinfo *
 find_tzrule_ttinfo(_tzrule *rule, int64_t ts, unsigned char fold, int year);
@@ -954,7 +955,6 @@ end:
 static int
 load_data(zoneinfo_state *state, PyZoneInfo_ZoneInfo *self, PyObject *file_obj)
 {
-    int rv = 0;
     PyObject *data_tuple = NULL;
 
     long *utcoff = NULL;
@@ -1231,6 +1231,7 @@ load_data(zoneinfo_state *state, PyZoneInfo_ZoneInfo *self, PyObject *file_obj)
         }
     }
 
+    int rv = 0;
     goto cleanup;
 error:
     // These resources only need to be freed if we have failed, if we succeed
@@ -1327,14 +1328,14 @@ calendarrule_year_to_timestamp(TransitionRuleType *base_self, int year)
     }
 
     int64_t ordinal = ymd_to_ord(year, self->month, month_day) - EPOCHORDINAL;
-    return ordinal * 86400 + (int64_t)self->hour * 3600 +
-            (int64_t)self->minute * 60 + self->second;
+    return ((ordinal * 86400) + (int64_t)(self->hour * 3600) +
+            (int64_t)(self->minute * 60) + (int64_t)(self->second));
 }
 
 /* Constructor for CalendarRule. */
 int
-calendarrule_new(int month, int week, int day, int hour,
-                 int minute, int second, CalendarRule *out)
+calendarrule_new(uint8_t month, uint8_t week, uint8_t day, int8_t hour,
+                 int8_t minute, int8_t second, CalendarRule *out)
 {
     // These bounds come from the POSIX standard, which describes an Mm.n.d
     // rule as:
@@ -1343,23 +1344,20 @@ calendarrule_new(int month, int week, int day, int hour,
     //   5, 1 <= m <= 12, where week 5 means "the last d day in month m" which
     //   may occur in either the fourth or the fifth week). Week 1 is the first
     //   week in which the d'th day occurs. Day zero is Sunday.
-    if (month < 1 || month > 12) {
-        PyErr_Format(PyExc_ValueError, "Month must be in [1, 12]");
+    if (month <= 0 || month > 12) {
+        PyErr_Format(PyExc_ValueError, "Month must be in (0, 12]");
         return -1;
     }
 
-    if (week < 1 || week > 5) {
-        PyErr_Format(PyExc_ValueError, "Week must be in [1, 5]");
+    if (week <= 0 || week > 5) {
+        PyErr_Format(PyExc_ValueError, "Week must be in (0, 5]");
         return -1;
     }
 
-    if (day < 0 || day > 6) {
+    // If the 'day' parameter type is changed to a signed type,
+    // "day < 0" check must be added.
+    if (/* day < 0 || */ day > 6) {
         PyErr_Format(PyExc_ValueError, "Day must be in [0, 6]");
-        return -1;
-    }
-
-    if (hour < -167 || hour > 167) {
-        PyErr_Format(PyExc_ValueError, "Hour must be in [0, 167]");
         return -1;
     }
 
@@ -1367,12 +1365,12 @@ calendarrule_new(int month, int week, int day, int hour,
 
     CalendarRule new_offset = {
         .base = base,
-        .month = (uint8_t)month,
-        .week = (uint8_t)week,
-        .day = (uint8_t)day,
-        .hour = (int16_t)hour,
-        .minute = (int8_t)minute,
-        .second = (int8_t)second,
+        .month = month,
+        .week = week,
+        .day = day,
+        .hour = hour,
+        .minute = minute,
+        .second = second,
     };
 
     *out = new_offset;
@@ -1412,31 +1410,26 @@ dayrule_year_to_timestamp(TransitionRuleType *base_self, int year)
     // always transitions on a given calendar day (other than February 29th),
     // you would use a Julian day, e.g. J91 always refers to April 1st and J365
     // always refers to December 31st.
-    uint16_t day = self->day;
+    unsigned int day = self->day;
     if (self->julian && day >= 59 && is_leap_year(year)) {
         day += 1;
     }
 
-    return (days_before_year + day) * 86400 + (int64_t)self->hour * 3600 +
-           (int64_t)self->minute * 60 + self->second;
+    return ((days_before_year + day) * 86400) + (self->hour * 3600) +
+           (self->minute * 60) + self->second;
 }
 
 /* Constructor for DayRule. */
 static int
-dayrule_new(int julian, int day, int hour, int minute,
-            int second, DayRule *out)
+dayrule_new(uint8_t julian, unsigned int day, int8_t hour, int8_t minute,
+            int8_t second, DayRule *out)
 {
     // The POSIX standard specifies that Julian days must be in the range (1 <=
     // n <= 365) and that non-Julian (they call it "0-based Julian") days must
     // be in the range (0 <= n <= 365).
     if (day < julian || day > 365) {
-        PyErr_Format(PyExc_ValueError, "day must be in [%d, 365], not: %d",
+        PyErr_Format(PyExc_ValueError, "day must be in [%u, 365], not: %u",
                      julian, day);
-        return -1;
-    }
-
-    if (hour < -167 || hour > 167) {
-        PyErr_Format(PyExc_ValueError, "Hour must be in [0, 167]");
         return -1;
     }
 
@@ -1446,11 +1439,11 @@ dayrule_new(int julian, int day, int hour, int minute,
 
     DayRule tmp = {
         .base = base,
-        .julian = (uint8_t)julian,
-        .day = (int16_t)day,
-        .hour = (int16_t)hour,
-        .minute = (int8_t)minute,
-        .second = (int8_t)second,
+        .julian = julian,
+        .day = day,
+        .hour = hour,
+        .minute = minute,
+        .second = second,
     };
 
     *out = tmp;
@@ -1607,18 +1600,21 @@ parse_tz_str(zoneinfo_state *state, PyObject *tz_str_obj, _tzrule *out)
     const char *p = tz_str;
 
     // Read the `std` abbreviation, which must be at least 3 characters long.
-    if (parse_abbr(&p, &std_abbr)) {
-        if (!PyErr_Occurred()) {
-            PyErr_Format(PyExc_ValueError, "Invalid STD format in %R", tz_str_obj);
-        }
+    Py_ssize_t num_chars = parse_abbr(p, &std_abbr);
+    if (num_chars < 1) {
+        PyErr_Format(PyExc_ValueError, "Invalid STD format in %R", tz_str_obj);
         goto error;
     }
 
+    p += num_chars;
+
     // Now read the STD offset, which is required
-    if (parse_tz_delta(&p, &std_offset)) {
+    num_chars = parse_tz_delta(p, &std_offset);
+    if (num_chars < 0) {
         PyErr_Format(PyExc_ValueError, "Invalid STD offset in %R", tz_str_obj);
         goto error;
     }
+    p += num_chars;
 
     // If the string ends here, there is no DST, otherwise we must parse the
     // DST abbreviation and start and end dates and times.
@@ -1626,12 +1622,12 @@ parse_tz_str(zoneinfo_state *state, PyObject *tz_str_obj, _tzrule *out)
         goto complete;
     }
 
-    if (parse_abbr(&p, &dst_abbr)) {
-        if (!PyErr_Occurred()) {
-            PyErr_Format(PyExc_ValueError, "Invalid DST format in %R", tz_str_obj);
-        }
+    num_chars = parse_abbr(p, &dst_abbr);
+    if (num_chars < 1) {
+        PyErr_Format(PyExc_ValueError, "Invalid DST format in %R", tz_str_obj);
         goto error;
     }
+    p += num_chars;
 
     if (*p == ',') {
         // From the POSIX standard:
@@ -1641,11 +1637,14 @@ parse_tz_str(zoneinfo_state *state, PyObject *tz_str_obj, _tzrule *out)
         dst_offset = std_offset + 3600;
     }
     else {
-        if (parse_tz_delta(&p, &dst_offset)) {
+        num_chars = parse_tz_delta(p, &dst_offset);
+        if (num_chars < 0) {
             PyErr_Format(PyExc_ValueError, "Invalid DST offset in %R",
                          tz_str_obj);
             goto error;
         }
+
+        p += num_chars;
     }
 
     TransitionRuleType **transitions[2] = {&start, &end};
@@ -1658,12 +1657,14 @@ parse_tz_str(zoneinfo_state *state, PyObject *tz_str_obj, _tzrule *out)
         }
         p++;
 
-        if (parse_transition_rule(&p, transitions[i])) {
+        num_chars = parse_transition_rule(p, transitions[i]);
+        if (num_chars < 0) {
             PyErr_Format(PyExc_ValueError,
                          "Malformed transition rule in TZ string: %R",
                          tz_str_obj);
             goto error;
         }
+        p += num_chars;
     }
 
     if (*p != '\0') {
@@ -1698,25 +1699,21 @@ error:
 }
 
 static int
-parse_digits(const char **p, int min, int max, int *value)
+parse_uint(const char *const p, uint8_t *value)
 {
-    assert(max <= 3);
-    *value = 0;
-    for (int i = 0; i < max; i++, (*p)++) {
-        if (!Py_ISDIGIT(**p)) {
-            return (i < min) ? -1 : 0;
-        }
-        *value *= 10;
-        *value += (**p) - '0';
+    if (!isdigit(*p)) {
+        return -1;
     }
+
+    *value = (*p) - '0';
     return 0;
 }
 
 /* Parse the STD and DST abbreviations from a TZ string. */
-static int
-parse_abbr(const char **p, PyObject **abbr)
+static Py_ssize_t
+parse_abbr(const char *const p, PyObject **abbr)
 {
-    const char *ptr = *p;
+    const char *ptr = p;
     const char *str_start;
     const char *str_end;
 
@@ -1745,7 +1742,7 @@ parse_abbr(const char **p, PyObject **abbr)
         ptr++;
     }
     else {
-        str_start = ptr;
+        str_start = p;
         // From the POSIX standard:
         //
         //   In the unquoted form, all characters in these fields shall be
@@ -1755,9 +1752,6 @@ parse_abbr(const char **p, PyObject **abbr)
             ptr++;
         }
         str_end = ptr;
-        if (str_end == str_start) {
-            return -1;
-        }
     }
 
     *abbr = PyUnicode_FromStringAndSize(str_start, str_end - str_start);
@@ -1765,13 +1759,12 @@ parse_abbr(const char **p, PyObject **abbr)
         return -1;
     }
 
-    *p = ptr;
-    return 0;
+    return ptr - p;
 }
 
 /* Parse a UTC offset from a TZ str. */
-static int
-parse_tz_delta(const char **p, long *total_seconds)
+static Py_ssize_t
+parse_tz_delta(const char *const p, long *total_seconds)
 {
     // From the POSIX spec:
     //
@@ -1786,30 +1779,75 @@ parse_tz_delta(const char **p, long *total_seconds)
     // The POSIX spec says that the values for `hour` must be between 0 and 24
     // hours, but RFC 8536 §3.3.1 specifies that the hours part of the
     // transition times may be signed and range from -167 to 167.
-    int hours = 0;
-    int minutes = 0;
-    int seconds = 0;
+    long sign = -1;
+    long hours = 0;
+    long minutes = 0;
+    long seconds = 0;
 
-    if (parse_transition_time(p, &hours, &minutes, &seconds)) {
+    const char *ptr = p;
+    char buff = *ptr;
+    if (buff == '-' || buff == '+') {
+        // Negative numbers correspond to *positive* offsets, from the spec:
+        //
+        //   If preceded by a '-', the timezone shall be east of the Prime
+        //   Meridian; otherwise, it shall be west (which may be indicated by
+        //   an optional preceding '+' ).
+        if (buff == '-') {
+            sign = 1;
+        }
+
+        ptr++;
+    }
+
+    // The hour can be 1 or 2 numeric characters
+    for (size_t i = 0; i < 2; ++i) {
+        buff = *ptr;
+        if (!isdigit(buff)) {
+            if (i == 0) {
+                return -1;
+            }
+            else {
+                break;
+            }
+        }
+
+        hours *= 10;
+        hours += buff - '0';
+        ptr++;
+    }
+
+    if (hours > 24 || hours < 0) {
         return -1;
     }
 
-    if (hours > 24 || hours < -24) {
-        return -1;
+    // Minutes and seconds always of the format ":dd"
+    long *outputs[2] = {&minutes, &seconds};
+    for (size_t i = 0; i < 2; ++i) {
+        if (*ptr != ':') {
+            goto complete;
+        }
+        ptr++;
+
+        for (size_t j = 0; j < 2; ++j) {
+            buff = *ptr;
+            if (!isdigit(buff)) {
+                return -1;
+            }
+            *(outputs[i]) *= 10;
+            *(outputs[i]) += buff - '0';
+            ptr++;
+        }
     }
 
-    // Negative numbers correspond to *positive* offsets, from the spec:
-    //
-    //   If preceded by a '-', the timezone shall be east of the Prime
-    //   Meridian; otherwise, it shall be west (which may be indicated by
-    //   an optional preceding '+' ).
-    *total_seconds = -((hours * 3600L) + (minutes * 60) + seconds);
-    return 0;
+complete:
+    *total_seconds = sign * ((hours * 3600) + (minutes * 60) + seconds);
+
+    return ptr - p;
 }
 
 /* Parse the date portion of a transition rule. */
-static int
-parse_transition_rule(const char **p, TransitionRuleType **out)
+static Py_ssize_t
+parse_transition_rule(const char *const p, TransitionRuleType **out)
 {
     // The full transition rule indicates when to change back and forth between
     // STD and DST, and has the form:
@@ -1821,10 +1859,10 @@ parse_transition_rule(const char **p, TransitionRuleType **out)
     // does not include the ',' at the end of the first rule.
     //
     // The POSIX spec states that if *time* is not given, the default is 02:00.
-    const char *ptr = *p;
-    int hour = 2;
-    int minute = 0;
-    int second = 0;
+    const char *ptr = p;
+    int8_t hour = 2;
+    int8_t minute = 0;
+    int8_t second = 0;
 
     // Rules come in one of three flavors:
     //
@@ -1833,30 +1871,44 @@ parse_transition_rule(const char **p, TransitionRuleType **out)
     //   3. Mm.n.d: Specifying by month, week and day-of-week.
 
     if (*ptr == 'M') {
-        int month, week, day;
+        uint8_t month, week, day;
         ptr++;
+        if (parse_uint(ptr, &month)) {
+            return -1;
+        }
+        ptr++;
+        if (*ptr != '.') {
+            uint8_t tmp;
+            if (parse_uint(ptr, &tmp)) {
+                return -1;
+            }
 
-        if (parse_digits(&ptr, 1, 2, &month)) {
-            return -1;
+            month *= 10;
+            month += tmp;
+            ptr++;
         }
-        if (*ptr++ != '.') {
-            return -1;
-        }
-        if (parse_digits(&ptr, 1, 1, &week)) {
-            return -1;
-        }
-        if (*ptr++ != '.') {
-            return -1;
-        }
-        if (parse_digits(&ptr, 1, 1, &day)) {
-            return -1;
+
+        uint8_t *values[2] = {&week, &day};
+        for (size_t i = 0; i < 2; ++i) {
+            if (*ptr != '.') {
+                return -1;
+            }
+            ptr++;
+
+            if (parse_uint(ptr, values[i])) {
+                return -1;
+            }
+            ptr++;
         }
 
         if (*ptr == '/') {
             ptr++;
-            if (parse_transition_time(&ptr, &hour, &minute, &second)) {
+            Py_ssize_t num_chars =
+                parse_transition_time(ptr, &hour, &minute, &second);
+            if (num_chars < 0) {
                 return -1;
             }
+            ptr += num_chars;
         }
 
         CalendarRule *rv = PyMem_Calloc(1, sizeof(CalendarRule));
@@ -1872,22 +1924,33 @@ parse_transition_rule(const char **p, TransitionRuleType **out)
         *out = (TransitionRuleType *)rv;
     }
     else {
-        int julian = 0;
-        int day = 0;
+        uint8_t julian = 0;
+        unsigned int day = 0;
         if (*ptr == 'J') {
             julian = 1;
             ptr++;
         }
 
-        if (parse_digits(&ptr, 1, 3, &day)) {
-            return -1;
+        for (size_t i = 0; i < 3; ++i) {
+            if (!isdigit(*ptr)) {
+                if (i == 0) {
+                    return -1;
+                }
+                break;
+            }
+            day *= 10;
+            day += (*ptr) - '0';
+            ptr++;
         }
 
         if (*ptr == '/') {
             ptr++;
-            if (parse_transition_time(&ptr, &hour, &minute, &second)) {
+            Py_ssize_t num_chars =
+                parse_transition_time(ptr, &hour, &minute, &second);
+            if (num_chars < 0) {
                 return -1;
             }
+            ptr += num_chars;
         }
 
         DayRule *rv = PyMem_Calloc(1, sizeof(DayRule));
@@ -1902,13 +1965,13 @@ parse_transition_rule(const char **p, TransitionRuleType **out)
         *out = (TransitionRuleType *)rv;
     }
 
-    *p = ptr;
-    return 0;
+    return ptr - p;
 }
 
 /* Parse the time portion of a transition rule (e.g. following an /) */
-static int
-parse_transition_time(const char **p, int *hour, int *minute, int *second)
+static Py_ssize_t
+parse_transition_time(const char *const p, int8_t *hour, int8_t *minute,
+                      int8_t *second)
 {
     // From the spec:
     //
@@ -1920,9 +1983,12 @@ parse_transition_time(const char **p, int *hour, int *minute, int *second)
     //   h[h][:mm[:ss]]
     //
     // RFC 8536 also allows transition times to be signed and to range from
-    // -167 to +167.
-    const char *ptr = *p;
-    int sign = 1;
+    // -167 to +167, but the current version only supports [0, 99].
+    //
+    // TODO: Support the full range of transition hours.
+    int8_t *components[3] = {hour, minute, second};
+    const char *ptr = p;
+    int8_t sign = 1;
 
     if (*ptr == '-' || *ptr == '+') {
         if (*ptr == '-') {
@@ -1931,31 +1997,32 @@ parse_transition_time(const char **p, int *hour, int *minute, int *second)
         ptr++;
     }
 
-    // The hour can be 1 to 3 numeric characters
-    if (parse_digits(&ptr, 1, 3, hour)) {
-        return -1;
-    }
-    *hour *= sign;
-
-    // Minutes and seconds always of the format ":dd"
-    if (*ptr == ':') {
-        ptr++;
-        if (parse_digits(&ptr, 2, 2, minute)) {
-            return -1;
-        }
-        *minute *= sign;
-
-        if (*ptr == ':') {
+    for (size_t i = 0; i < 3; ++i) {
+        if (i > 0) {
+            if (*ptr != ':') {
+                break;
+            }
             ptr++;
-            if (parse_digits(&ptr, 2, 2, second)) {
+        }
+
+        uint8_t buff = 0;
+        for (size_t j = 0; j < 2; j++) {
+            if (!isdigit(*ptr)) {
+                if (i == 0 && j > 0) {
+                    break;
+                }
                 return -1;
             }
-            *second *= sign;
+
+            buff *= 10;
+            buff += (*ptr) - '0';
+            ptr++;
         }
+
+        *(components[i]) = sign * buff;
     }
 
-    *p = ptr;
-    return 0;
+    return ptr - p;
 }
 
 /* Constructor for a _tzrule.
@@ -2310,8 +2377,8 @@ get_local_timestamp(PyObject *dt, int64_t *local_ts)
         }
     }
 
-    *local_ts = (int64_t)(ord - EPOCHORDINAL) * 86400L +
-                (int64_t)(hour * 3600L + minute * 60 + second);
+    *local_ts = (int64_t)(ord - EPOCHORDINAL) * 86400 +
+                (int64_t)(hour * 3600 + minute * 60 + second);
 
     return 0;
 }

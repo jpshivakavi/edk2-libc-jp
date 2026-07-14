@@ -39,8 +39,6 @@ typedef enum _framestate {
     FRAME_CLEARED = 4
 } PyFrameState;
 
-#define FRAME_STATE_FINISHED(S) ((S) >= FRAME_COMPLETED)
-
 enum _frameowner {
     FRAME_OWNED_BY_THREAD = 0,
     FRAME_OWNED_BY_GENERATOR = 1,
@@ -200,7 +198,7 @@ _PyFrame_MakeAndSetFrameObject(_PyInterpreterFrame *frame);
 
 /* Gets the PyFrameObject for this frame, lazily
  * creating it if necessary.
- * Returns a borrowed reference */
+ * Returns a borrowed referennce */
 static inline PyFrameObject *
 _PyFrame_GetFrameObject(_PyInterpreterFrame *frame)
 {

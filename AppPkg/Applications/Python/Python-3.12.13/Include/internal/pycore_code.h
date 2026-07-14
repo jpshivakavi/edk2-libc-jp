@@ -359,29 +359,27 @@ write_varint(uint8_t *ptr, unsigned int val)
         val >>= 6;
         written++;
     }
-    *ptr = (uint8_t)val;
+    *ptr = val;
     return written;
 }
 
 static inline int
 write_signed_varint(uint8_t *ptr, int val)
 {
-    unsigned int uval;
     if (val < 0) {
-        // (unsigned int)(-val) has an undefined behavior for INT_MIN
-        uval = ((0 - (unsigned int)val) << 1) | 1;
+        val = ((-val)<<1) | 1;
     }
     else {
-        uval = (unsigned int)val << 1;
+        val = val << 1;
     }
-    return write_varint(ptr, uval);
+    return write_varint(ptr, val);
 }
 
 static inline int
 write_location_entry_start(uint8_t *ptr, int code, int length)
 {
     assert((code & 15) == code);
-    *ptr = 128 | (uint8_t)(code << 3) | (uint8_t)(length - 1);
+    *ptr = 128 | (code << 3) | (length - 1);
     return 1;
 }
 
@@ -421,9 +419,9 @@ write_location_entry_start(uint8_t *ptr, int code, int length)
 
 
 static inline uint16_t
-adaptive_counter_bits(uint16_t value, uint16_t backoff) {
-    return ((value << ADAPTIVE_BACKOFF_BITS)
-            | (backoff & ((1 << ADAPTIVE_BACKOFF_BITS) - 1)));
+adaptive_counter_bits(int value, int backoff) {
+    return (value << ADAPTIVE_BACKOFF_BITS) |
+        (backoff & ((1<<ADAPTIVE_BACKOFF_BITS)-1));
 }
 
 static inline uint16_t
@@ -440,12 +438,12 @@ adaptive_counter_cooldown(void) {
 
 static inline uint16_t
 adaptive_counter_backoff(uint16_t counter) {
-    uint16_t backoff = counter & ((1 << ADAPTIVE_BACKOFF_BITS) - 1);
+    unsigned int backoff = counter & ((1<<ADAPTIVE_BACKOFF_BITS)-1);
     backoff++;
     if (backoff > MAX_BACKOFF_VALUE) {
         backoff = MAX_BACKOFF_VALUE;
     }
-    uint16_t value = (uint16_t)(1 << backoff) - 1;
+    unsigned int value = (1 << backoff) - 1;
     return adaptive_counter_bits(value, backoff);
 }
 

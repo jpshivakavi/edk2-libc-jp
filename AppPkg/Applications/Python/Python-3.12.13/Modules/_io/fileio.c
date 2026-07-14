@@ -153,7 +153,7 @@ _io_FileIO_close_impl(fileio *self, PyTypeObject *cls)
         return res;
     }
 
-    PyObject *exc = NULL;
+    PyObject *exc;
     if (res == NULL) {
         exc = PyErr_GetRaisedException();
     }

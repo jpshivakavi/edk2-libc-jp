@@ -9,7 +9,8 @@
    You will probably want to delete all references to 'x_attr' and add
    your own types of attributes instead.  Maybe you want to name your
    local variables other than 'self'.  If your object type is needed in
-   other files, you'll have to create a separate header file for it. */
+   other files, you'll have to create a file "foobarobject.h"; see
+   floatobject.h for an example. */
 
 /* Xxo objects */
 

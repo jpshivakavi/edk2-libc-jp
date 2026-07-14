@@ -116,7 +116,6 @@ static_builtin_index_clear(PyTypeObject *self)
     self->tp_subclasses = NULL;
 }
 
-
 static inline static_builtin_state *
 static_builtin_state_get(PyInterpreterState *interp, PyTypeObject *self)
 {
@@ -1080,10 +1079,8 @@ type_module(PyTypeObject *type, void *context)
         if (s != NULL) {
             mod = PyUnicode_FromStringAndSize(
                 type->tp_name, (Py_ssize_t)(s - type->tp_name));
-            if (mod != NULL) {
-                PyInterpreterState *interp = _PyInterpreterState_GET();
-                _PyUnicode_InternMortal(interp, &mod);
-            }
+            if (mod != NULL)
+                PyUnicode_InternInPlace(&mod);
         }
         else {
             mod = Py_NewRef(&_Py_ID(builtins));
@@ -1509,11 +1506,8 @@ type_set_annotations(PyTypeObject *type, PyObject *value, void *context)
 static PyObject *
 type_get_type_params(PyTypeObject *type, void *context)
 {
-    if (type == &PyType_Type) {
-        return PyTuple_New(0);
-    }
-
     PyObject *params = PyDict_GetItemWithError(lookup_tp_dict(type), &_Py_ID(__type_params__));
+
     if (params) {
         return Py_NewRef(params);
     }
@@ -2319,7 +2313,7 @@ vectorcall_maybe(PyThreadState *tstate, PyObject *name,
  */
 
 static int
-tail_contains(PyObject *tuple, Py_ssize_t whence, PyObject *o)
+tail_contains(PyObject *tuple, int whence, PyObject *o)
 {
     Py_ssize_t j, size;
     size = PyTuple_GET_SIZE(tuple);
@@ -2382,7 +2376,7 @@ check_duplicates(PyObject *tuple)
 */
 
 static void
-set_mro_error(PyObject **to_merge, Py_ssize_t to_merge_size, Py_ssize_t *remain)
+set_mro_error(PyObject **to_merge, Py_ssize_t to_merge_size, int *remain)
 {
     Py_ssize_t i, n, off;
     char buf[1000];
@@ -2437,13 +2431,13 @@ pmerge(PyObject *acc, PyObject **to_merge, Py_ssize_t to_merge_size)
 {
     int res = 0;
     Py_ssize_t i, j, empty_cnt;
-    Py_ssize_t *remain;
+    int *remain;
 
     /* remain stores an index into each sublist of to_merge.
        remain[i] is the index of the next base in to_merge[i]
        that is not included in acc.
     */
-    remain = PyMem_New(Py_ssize_t, to_merge_size);
+    remain = PyMem_New(int, to_merge_size);
     if (remain == NULL) {
         PyErr_NoMemory();
         return -1;
@@ -2980,21 +2974,21 @@ subtype_getweakref(PyObject *obj, void *context)
 
 static PyGetSetDef subtype_getsets_full[] = {
     {"__dict__", subtype_dict, subtype_setdict,
-     PyDoc_STR("dictionary for instance variables")},
+     PyDoc_STR("dictionary for instance variables (if defined)")},
     {"__weakref__", subtype_getweakref, NULL,
-     PyDoc_STR("list of weak references to the object")},
+     PyDoc_STR("list of weak references to the object (if defined)")},
     {0}
 };
 
 static PyGetSetDef subtype_getsets_dict_only[] = {
     {"__dict__", subtype_dict, subtype_setdict,
-     PyDoc_STR("dictionary for instance variables")},
+     PyDoc_STR("dictionary for instance variables (if defined)")},
     {0}
 };
 
 static PyGetSetDef subtype_getsets_weakref_only[] = {
     {"__weakref__", subtype_getweakref, NULL,
-     PyDoc_STR("list of weak references to the object")},
+     PyDoc_STR("list of weak references to the object (if defined)")},
     {0}
 };
 
@@ -4920,8 +4914,7 @@ type_setattro(PyTypeObject *type, PyObject *name, PyObject *value)
         }
         /* bpo-40521: Interned strings are shared by all subinterpreters */
         if (!PyUnicode_CHECK_INTERNED(name)) {
-            PyInterpreterState *interp = _PyInterpreterState_GET();
-            _PyUnicode_InternMortal(interp, &name);
+            PyUnicode_InternInPlace(&name);
             if (!PyUnicode_CHECK_INTERNED(name)) {
                 PyErr_SetString(PyExc_MemoryError,
                                 "Out of memory interning an attribute name");
@@ -5477,19 +5470,15 @@ object_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         comma_w_quotes_sep = PyUnicode_FromString("', '");
-        if (!comma_w_quotes_sep) {
-            Py_DECREF(sorted_methods);
-            return NULL;
-        }
         joined = PyUnicode_Join(comma_w_quotes_sep, sorted_methods);
-        Py_DECREF(comma_w_quotes_sep);
-        if (joined == NULL)  {
-            Py_DECREF(sorted_methods);
-            return NULL;
-        }
         method_count = PyObject_Length(sorted_methods);
         Py_DECREF(sorted_methods);
+        if (joined == NULL)  {
+            Py_DECREF(comma_w_quotes_sep);
+            return NULL;
+        }
         if (method_count == -1) {
+            Py_DECREF(comma_w_quotes_sep);
             Py_DECREF(joined);
             return NULL;
         }
@@ -5501,6 +5490,7 @@ object_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
                      method_count > 1 ? "s" : "",
                      joined);
         Py_DECREF(joined);
+        Py_DECREF(comma_w_quotes_sep);
         return NULL;
     }
     PyObject *obj = type->tp_alloc(type, 0);
@@ -5601,12 +5591,6 @@ object_richcompare(PyObject *self, PyObject *other, int op)
     }
 
     return res;
-}
-
-PyObject*
-_Py_BaseObject_RichCompare(PyObject* self, PyObject* other, int op)
-{
-    return object_richcompare(self, other, op);
 }
 
 static PyObject *
@@ -5713,6 +5697,7 @@ differs:
 static int
 object_set_class(PyObject *self, PyObject *value, void *closure)
 {
+    PyTypeObject *oldto = Py_TYPE(self);
 
     if (value == NULL) {
         PyErr_SetString(PyExc_TypeError,
@@ -5731,8 +5716,6 @@ object_set_class(PyObject *self, PyObject *value, void *closure)
                     self, "__class__", value) < 0) {
         return -1;
     }
-
-    PyTypeObject *oldto = Py_TYPE(self);
 
     /* In versions of CPython prior to 3.5, the code in
        compatible_for_assignment was not set up to correctly check for memory
@@ -6269,7 +6252,6 @@ reduce_newobj(PyObject *obj)
     }
     else {
         /* args == NULL */
-        Py_DECREF(copyreg);
         Py_DECREF(kwargs);
         PyErr_BadInternalCall();
         return NULL;
@@ -6462,11 +6444,8 @@ object___sizeof___impl(PyObject *self)
 
     res = 0;
     isize = Py_TYPE(self)->tp_itemsize;
-    if (isize > 0) {
-        /* This assumes that ob_size is valid if tp_itemsize is not 0,
-         which isn't true for PyLongObject. */
-        res = _PyVarObject_CAST(self)->ob_size * isize;
-    }
+    if (isize > 0)
+        res = Py_SIZE(self) * isize;
     res += Py_TYPE(self)->tp_basicsize;
 
     return PyLong_FromSsize_t(res);
@@ -6646,12 +6625,6 @@ type_add_method(PyTypeObject *type, PyMethodDef *meth)
         return -1;
     }
     return 0;
-}
-
-int
-_PyType_AddMethod(PyTypeObject *type, PyMethodDef *meth)
-{
-    return type_add_method(type, meth);
 }
 
 
@@ -7598,7 +7571,6 @@ _PyStaticType_InitBuiltin(PyInterpreterState *interp, PyTypeObject *self)
     if (res < 0) {
         static_builtin_state_clear(interp, self);
     }
-
     return res;
 }
 
@@ -8210,13 +8182,13 @@ wrap_buffer(PyObject *self, PyObject *args, void *wrapped)
     if (flags == -1 && PyErr_Occurred()) {
         return NULL;
     }
-    if (flags > INT_MAX || flags < INT_MIN) {
+    if (flags > INT_MAX) {
         PyErr_SetString(PyExc_OverflowError,
-                        "buffer flags out of range");
+                        "buffer flags too large");
         return NULL;
     }
 
-    return _PyMemoryView_FromBufferProc(self, (int)flags,
+    return _PyMemoryView_FromBufferProc(self, Py_SAFE_DOWNCAST(flags, Py_ssize_t, int),
                                         (getbufferproc)wrapped);
 }
 
@@ -10091,84 +10063,6 @@ recurse_down_subclasses(PyTypeObject *type, PyObject *attr_name,
     return 0;
 }
 
-static int
-expect_manually_inherited(PyTypeObject *type, void **slot)
-{
-    PyObject *typeobj = (PyObject *)type;
-    if (slot == (void *)&type->tp_init) {
-        /* This is a best-effort list of builtin exception types
-           that have their own tp_init function. */
-        if (typeobj != PyExc_BaseException
-            && typeobj != PyExc_BaseExceptionGroup
-            && typeobj != PyExc_ImportError
-            && typeobj != PyExc_NameError
-            && typeobj != PyExc_OSError
-            && typeobj != PyExc_StopIteration
-            && typeobj != PyExc_SyntaxError
-            && typeobj != PyExc_UnicodeDecodeError
-            && typeobj != PyExc_UnicodeEncodeError
-
-            && type != &PyBool_Type
-            && type != &PyBytes_Type
-            && type != &PyMemoryView_Type
-            && type != &PyComplex_Type
-            && type != &PyEnum_Type
-            && type != &PyFilter_Type
-            && type != &PyFloat_Type
-            && type != &PyFrozenSet_Type
-            && type != &PyLong_Type
-            && type != &PyMap_Type
-            && type != &PyRange_Type
-            && type != &PyReversed_Type
-            && type != &PySlice_Type
-            && type != &PyTuple_Type
-            && type != &PyUnicode_Type
-            && type != &PyZip_Type)
-
-        {
-            return 1;
-        }
-    }
-    else if (slot == (void *)&type->tp_str) {
-        /* This is a best-effort list of builtin exception types
-           that have their own tp_str function. */
-        if (typeobj == PyExc_AttributeError || typeobj == PyExc_NameError) {
-            return 1;
-        }
-    }
-    else if (slot == (void *)&type->tp_getattr
-             || slot == (void *)&type->tp_getattro)
-    {
-        /* This is a best-effort list of builtin types
-           that have their own tp_getattr function. */
-        if (typeobj == PyExc_BaseException
-            || type == &PyByteArray_Type
-            || type == &PyBytes_Type
-            || type == &PyComplex_Type
-            || type == &PyDict_Type
-            || type == &PyEnum_Type
-            || type == &PyFilter_Type
-            || type == &PyLong_Type
-            || type == &PyList_Type
-            || type == &PyMap_Type
-            || type == &PyMemoryView_Type
-            || type == &PyProperty_Type
-            || type == &PyRange_Type
-            || type == &PyReversed_Type
-            || type == &PySet_Type
-            || type == &PySlice_Type
-            || type == &PySuper_Type
-            || type == &PyTuple_Type
-            || type == &PyZip_Type)
-        {
-            return 1;
-        }
-    }
-
-    /* It must be inherited (see type_ready_inherit()).. */
-    return 0;
-}
-
 /* This function is called by PyType_Ready() to populate the type's
    dictionary with method descriptors for function slots.  For each
    function slot (like tp_repr) that's defined in the type, one or more
@@ -10213,26 +10107,6 @@ add_operators(PyTypeObject *type)
         ptr = slotptr(type, p->offset);
         if (!ptr || !*ptr)
             continue;
-        if (type->tp_flags & _Py_TPFLAGS_STATIC_BUILTIN
-            && type->tp_base != NULL)
-        {
-            /* Also ignore when the type slot has been inherited. */
-            void **ptr_base = slotptr(type->tp_base, p->offset);
-            if (ptr_base && *ptr == *ptr_base) {
-                /* Ideally we would always ignore any manually inherited
-                   slots, Which would mean inheriting the slot wrapper
-                   using normal attribute lookup rather than keeping
-                   a distinct copy.  However, that would introduce
-                   a slight change in behavior that could break
-                   existing code.
-
-                   In the meantime, look the other way when the definition
-                   explicitly inherits the slot. */
-                if (!expect_manually_inherited(type, ptr)) {
-                    continue;
-                }
-            }
-        }
         int r = PyDict_Contains(dict, p->name_strobj);
         if (r > 0)
             continue;

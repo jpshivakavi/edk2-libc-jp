@@ -121,10 +121,6 @@ namespace_repr(PyObject *ns)
             goto error;
     }
 
-    if (PyErr_Occurred()) {
-        goto error;
-    }
-
     separator = PyUnicode_FromString(", ");
     if (separator == NULL)
         goto error;

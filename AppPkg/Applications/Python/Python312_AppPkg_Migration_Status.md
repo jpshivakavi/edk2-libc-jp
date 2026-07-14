@@ -240,7 +240,7 @@ PyMod-3.12.13/
 | Step | Action | Result |
 |------|--------|--------|
 | 5.1 | AppPkg includes StdLib.inc | Already true |
-| 5.2 | Apply `patches/*.patch` to edk2-libc | **Not started** |
+| 5.2 | Apply `patches/*.patch` to edk2-libc | **Required setup (not committed)** — `git apply --ignore-whitespace`; keep StdLib vanilla on branch |
 | 5.3 | First GCC `build -D BUILD_PYTHON312` | **Not started** (needs Linux/WSL + edk2) |
 | 5.4 | Fix compile/link errors | Pending |
 | 5.5 | Gate: `Python312.efi` exists | Pending |
@@ -263,15 +263,26 @@ Not started. See plan for steps.
 
 ---
 
+## Locked policy — StdLib patches
+
+- **Do not commit** applied `StdLib/` / `StdLibPrivateInternalFiles/` diffs on this branch.
+- **Required** before GCC build / after a clean checkout:
+  `git apply --ignore-whitespace AppPkg/Applications/Python/Python-3.12.13/patches/*.patch`
+- Patch 0001 (`upipe`) is mandatory to link; see `Py312ReadMe.txt` and WSL GCC guide §4.
+- Optional later: upstream the four patches to tianocore/edk2-libc.
+
+---
+
 ## Known issues / follow-ups
 
-1. **Windows agent cannot run GCC AppPkg build** — continue Phase 5 on Linux/WSL (see WSL GCC guide).
-2. **Frozen/deepfreeze artifacts missing** — gitignored; must run `make frozen` (or equivalent) before AppPkg build.
+1. **Windows agent cannot run GCC AppPkg build** — continue on Linux/WSL (see WSL GCC guide).
+2. **Frozen/deepfreeze artifacts missing** — gitignored; must generate/copy before AppPkg build.
 3. **Stock CPython tree still has UEFI deltas** — same content as PyMod for forked files; cleaning to upstream vanilla is optional polish.
 4. **`create_python_pkg.*` implemented** (Iteration 1 layout). REPL smoke still pending.
-5. **NASM sources** (`edk2stack.nasm`, `edk2handler.nasm`) and `asm_trampoline.S` need toolchain validation under EDK II GCC.
-6. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
-7. Duplicate `efi/src/module_config.c` remains under PyMod; INF uses `Modules/config.c` only.
+5. **Local StdLib dirt** may exist from prior `git apply` / `make patch_libc` — discard or keep locally; never stage for Python commits.
+6. **NASM sources** (`edk2stack.nasm`, `edk2handler.nasm`) and `asm_trampoline.S` need toolchain validation under EDK II GCC.
+7. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
+8. Duplicate `efi/src/module_config.c` remains under PyMod; INF uses `Modules/config.c` only.
 
 ---
 
@@ -283,7 +294,7 @@ On WSL Ubuntu, in order:
 
 1. Install packages + prepare edk2 BaseTools.
 2. Check out `feature/python-3.12.13-apppkg`.
-3. Apply `Python-3.12.13/patches/*.patch` (0001 required for `upipe`).
-4. `python3 srcprep.py`.
-5. **Generate frozen headers** via edk2-py312 `make frozen` and copy into AppPkg (they are gitignored — not in the tree yet).
-6. `build -D BUILD_PYTHON312 -t GCC` and paste the first error into this status log.
+3. **Required:** `git apply --ignore-whitespace Python-3.12.13/patches/*.patch` (0001 = `upipe`).
+4. `python3 srcprep.py` (if overlays changed).
+5. Ensure frozen/deepfreeze artifacts are present (gitignored).
+6. `build -D BUILD_PYTHON312 -t GCC`; package with `create_python_pkg.sh`; REPL smoke.

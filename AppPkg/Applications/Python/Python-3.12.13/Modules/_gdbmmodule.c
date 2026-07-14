@@ -3,18 +3,12 @@
 /* Author: Anthony Baxter, after dbmmodule.c */
 /* Doc strings: Mitch Chapman */
 
-// required for pycore_pyerrors.h
-#ifndef Py_BUILD_CORE_BUILTIN
-#  define Py_BUILD_CORE_MODULE 1
-#endif
-
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
-#include "pycore_pyerrors.h"        // _PyErr_SetLocaleString()
 #include "gdbm.h"
 
 #include <fcntl.h>
-#include <stdlib.h>                 // free()
+#include <stdlib.h>               // free()
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -34,24 +28,6 @@ get_gdbm_state(PyObject *module)
     void *state = PyModule_GetState(module);
     assert(state != NULL);
     return (_gdbm_state *)state;
-}
-
-/*
- * Set the gdbm error obtained by gdbm_strerror(gdbm_errno).
- *
- * If no error message exists, a generic (UTF-8) error message
- * is used instead.
- */
-static void
-set_gdbm_error(_gdbm_state *state, const char *generic_error)
-{
-    const char *gdbm_errmsg = gdbm_strerror(gdbm_errno);
-    if (gdbm_errmsg) {
-        _PyErr_SetLocaleString(state->gdbm_error, gdbm_errmsg);
-    }
-    else {
-        PyErr_SetString(state->gdbm_error, generic_error);
-    }
 }
 
 /*[clinic input]
@@ -112,7 +88,7 @@ newgdbmobject(_gdbm_state *state, const char *file, int flags, int mode)
             PyErr_SetFromErrnoWithFilename(state->gdbm_error, file);
         }
         else {
-            set_gdbm_error(state, "gdbm_open() error");
+            PyErr_SetString(state->gdbm_error, gdbm_strerror(gdbm_errno));
         }
         Py_DECREF(dp);
         return NULL;
@@ -157,7 +133,7 @@ gdbm_length(gdbmobject *dp)
                 PyErr_SetFromErrno(state->gdbm_error);
             }
             else {
-                set_gdbm_error(state, "gdbm_count() error");
+                PyErr_SetString(state->gdbm_error, gdbm_strerror(gdbm_errno));
             }
             return -1;
         }
@@ -307,7 +283,7 @@ gdbm_ass_sub(gdbmobject *dp, PyObject *v, PyObject *w)
                 PyErr_SetObject(PyExc_KeyError, v);
             }
             else {
-                set_gdbm_error(state, "gdbm_delete() error");
+                PyErr_SetString(state->gdbm_error, gdbm_strerror(gdbm_errno));
             }
             return -1;
         }
@@ -318,12 +294,11 @@ gdbm_ass_sub(gdbmobject *dp, PyObject *v, PyObject *w)
         }
         errno = 0;
         if (gdbm_store(dp->di_dbm, krec, drec, GDBM_REPLACE) < 0) {
-            if (errno != 0) {
+            if (errno != 0)
                 PyErr_SetFromErrno(state->gdbm_error);
-            }
-            else {
-                set_gdbm_error(state, "gdbm_store() error");
-            }
+            else
+                PyErr_SetString(state->gdbm_error,
+                                gdbm_strerror(gdbm_errno));
             return -1;
         }
     }
@@ -556,12 +531,10 @@ _gdbm_gdbm_reorganize_impl(gdbmobject *self, PyTypeObject *cls)
     check_gdbmobject_open(self, state->gdbm_error);
     errno = 0;
     if (gdbm_reorganize(self->di_dbm) < 0) {
-        if (errno != 0) {
+        if (errno != 0)
             PyErr_SetFromErrno(state->gdbm_error);
-        }
-        else {
-            set_gdbm_error(state, "gdbm_reorganize() error");
-        }
+        else
+            PyErr_SetString(state->gdbm_error, gdbm_strerror(gdbm_errno));
         return NULL;
     }
     Py_RETURN_NONE;

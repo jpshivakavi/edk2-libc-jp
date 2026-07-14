@@ -1,3 +1,5 @@
+#include <stddef.h>               // ptrdiff_t
+
 #define PY_SSIZE_T_CLEAN
 #include "parts.h"
 #include "util.h"

@@ -108,6 +108,8 @@ mbuf_release(_PyManagedBufferObject *self)
     if (self->flags&_Py_MANAGED_BUFFER_RELEASED)
         return;
 
+    /* NOTE: at this point self->exports can still be > 0 if this function
+       is called from mbuf_clear() to break up a reference cycle. */
     self->flags |= _Py_MANAGED_BUFFER_RELEASED;
 
     /* PyBuffer_Release() decrements master->obj and sets it to NULL. */
@@ -262,7 +264,7 @@ PyTypeObject _PyManagedBuffer_Type = {
 /* Assumptions: ndim >= 1. The macro tests for a corner case that should
    perhaps be explicitly forbidden in the PEP. */
 #define HAVE_SUBOFFSETS_IN_LAST_DIM(view) \
-    (view->suboffsets && view->suboffsets[view->ndim-1] >= 0)
+    (view->suboffsets && view->suboffsets[dest->ndim-1] >= 0)
 
 static inline int
 last_dim_is_contiguous(const Py_buffer *dest, const Py_buffer *src)
@@ -1090,19 +1092,32 @@ PyBuffer_ToContiguous(void *buf, const Py_buffer *src, Py_ssize_t len, char orde
 /* Inform the managed buffer that this particular memoryview will not access
    the underlying buffer again. If no other memoryviews are registered with
    the managed buffer, the underlying buffer is released instantly and
-   marked as inaccessible for both the memoryview and the managed buffer. */
-static void
+   marked as inaccessible for both the memoryview and the managed buffer.
+
+   This function fails if the memoryview itself has exported buffers. */
+static int
 _memory_release(PyMemoryViewObject *self)
 {
-    assert(self->exports == 0);
     if (self->flags & _Py_MEMORYVIEW_RELEASED)
-        return;
+        return 0;
 
-    self->flags |= _Py_MEMORYVIEW_RELEASED;
-    assert(self->mbuf->exports > 0);
-    if (--self->mbuf->exports == 0) {
-        mbuf_release(self->mbuf);
+    if (self->exports == 0) {
+        self->flags |= _Py_MEMORYVIEW_RELEASED;
+        assert(self->mbuf->exports > 0);
+        if (--self->mbuf->exports == 0)
+            mbuf_release(self->mbuf);
+        return 0;
     }
+    if (self->exports > 0) {
+        PyErr_Format(PyExc_BufferError,
+            "memoryview has %zd exported buffer%s", self->exports,
+            self->exports==1 ? "" : "s");
+        return -1;
+    }
+
+    PyErr_SetString(PyExc_SystemError,
+                    "_memory_release(): negative export count");
+    return -1;
 }
 
 /*[clinic input]
@@ -1115,21 +1130,9 @@ static PyObject *
 memoryview_release_impl(PyMemoryViewObject *self)
 /*[clinic end generated code: output=d0b7e3ba95b7fcb9 input=bc71d1d51f4a52f0]*/
 {
-    if (self->exports == 0) {
-        _memory_release(self);
-        Py_RETURN_NONE;
-    }
-
-    if (self->exports > 0) {
-        PyErr_Format(PyExc_BufferError,
-            "memoryview has %zd exported buffer%s", self->exports,
-            self->exports==1 ? "" : "s");
+    if (_memory_release(self) < 0)
         return NULL;
-    }
-
-    PyErr_SetString(PyExc_SystemError,
-                    "memoryview: negative export count");
-    return NULL;
+    Py_RETURN_NONE;
 }
 
 static void
@@ -1137,7 +1140,7 @@ memory_dealloc(PyMemoryViewObject *self)
 {
     assert(self->exports == 0);
     _PyObject_GC_UNTRACK(self);
-    _memory_release(self);
+    (void)_memory_release(self);
     Py_CLEAR(self->mbuf);
     if (self->weakreflist != NULL)
         PyObject_ClearWeakRefs((PyObject *) self);
@@ -1154,10 +1157,8 @@ memory_traverse(PyMemoryViewObject *self, visitproc visit, void *arg)
 static int
 memory_clear(PyMemoryViewObject *self)
 {
-    if (self->exports == 0) {
-        _memory_release(self);
-        Py_CLEAR(self->mbuf);
-    }
+    (void)_memory_release(self);
+    Py_CLEAR(self->mbuf);
     return 0;
 }
 
@@ -3322,7 +3323,6 @@ memory_iter(PyObject *seq)
         PyErr_BadInternalCall();
         return NULL;
     }
-    CHECK_RELEASED(seq);
     PyMemoryViewObject *obj = (PyMemoryViewObject *)seq;
     int ndims = obj->view.ndim;
     if (ndims == 0) {

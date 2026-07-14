@@ -24,13 +24,7 @@ struct _py_object_state {
      * together via the _ob_prev and _ob_next members of a PyObject, which
      * exist only in a Py_TRACE_REFS build.
      */
-    PyObject *refchain;
-    /* In most cases, refchain points to _refchain_obj.
-     * In sub-interpreters that share objmalloc state with the main interp,
-     * refchain points to the main interpreter's _refchain_obj, and their own
-     * _refchain_obj is unused.
-     */
-    PyObject _refchain_obj;
+    PyObject refchain;
 #endif
     int _not_used;
 };
