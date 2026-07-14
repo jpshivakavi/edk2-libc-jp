@@ -1,0 +1,310 @@
+# Build Python 3.12.13 (AppPkg Iteration 1) with GCC on WSL Ubuntu
+
+Guide for the **edk2-libc AppPkg** migration tree (not the old `edk2-py312`
+`make python` flow). Follow these steps on **WSL2 Ubuntu** (20.04 / 22.04 / 24.04).
+
+Related docs:
+
+- Plan: [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)
+- Status: [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)
+- Tree: `AppPkg/Applications/Python/Python-3.12.13/`
+
+**Iteration 1:** no `edk2-libffi` / `edk2-openssl` / `edk2-zlib` / `edk2-pyreadline`.
+
+---
+
+## 0. Layout you will use
+
+Example paths (adjust to yours):
+
+```text
+~/src/edk2              # tianocore/edk2
+~/src/edk2-libc         # this repo, branch feature/python-3.12.13-apppkg
+```
+
+If the repo already lives on the Windows side:
+
+```text
+/mnt/c/Users/njayapra/github/edk2
+/mnt/c/Users/njayapra/github/edk2-libc
+```
+
+Using `/mnt/c/...` works but is slower. Prefer cloning or copying under `~/src`
+for builds.
+
+---
+
+## 1. Install Ubuntu packages
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential uuid-dev iasl git nasm \
+  python3 python3-pip python-is-python3 \
+  libx11-dev libxext-dev
+
+nasm -v          # ideally >= 2.15
+gcc --version
+python3 --version
+```
+
+On older Ubuntu, if `nasm` is too old, install a newer `.deb` (same approach as
+`Python-3.6.8/GCCCompilationBKMs.rst`).
+
+---
+
+## 2. Prepare edk2
+
+```bash
+mkdir -p ~/src
+cd ~/src
+
+# If you do not already have edk2:
+git clone https://github.com/tianocore/edk2.git
+cd edk2
+git submodule update --init
+
+make -C BaseTools
+export EDK_TOOLS_PATH=$HOME/src/edk2/BaseTools
+. edksetup.sh
+```
+
+Edit `Conf/target.txt` (under the edk2 tree) as needed:
+
+```text
+TOOL_CHAIN_TAG        = GCC
+# or GCC5 on older BKMs — use whatever your edk2 Conf/tools_def supports
+TARGET_ARCH           = X64
+```
+
+Quick smoke (optional):
+
+```bash
+export PACKAGES_PATH=$HOME/src/edk2:$HOME/src/edk2-libc
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc
+build -a X64 -b NOOPT -t GCC \
+  -p $EDK2_LIBC_PATH/AppPkg/AppPkg.dsc \
+  -m $EDK2_LIBC_PATH/AppPkg/Applications/Hello/Hello.inf
+```
+
+---
+
+## 3. Use the AppPkg migration branch of edk2-libc
+
+```bash
+cd ~/src/edk2-libc   # or /mnt/c/Users/njayapra/github/edk2-libc
+git status
+git checkout feature/python-3.12.13-apppkg   # if not already on it
+```
+
+Confirm these exist:
+
+```bash
+ls AppPkg/Applications/Python/Python-3.12.13/Python312.inf
+ls AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/config.c
+ls AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+```
+
+---
+
+## 4. Apply libc patches (Phase 5.2)
+
+These come from `edk2-py312` and are **not** in upstream edk2-libc yet.
+**Patch 0001 (`upipe`) is required** to link; 0002–0004 are strongly
+recommended for GCC runtime.
+
+```bash
+cd ~/src/edk2-libc
+
+# Prefer applying from a clean master-based tree; resolve conflicts if any.
+git apply --check AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+git apply AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+
+# Verify upipe landed:
+ls StdLib/LibC/Uefi/upipe.c
+```
+
+If `git apply` fails (line drift), try one patch at a time and record failures
+in `Python312_AppPkg_Migration_Status.md`.
+
+**Do not commit** libc patch changes into the Python migration PR unless you
+intend to upstream them; keep them as a local build prerequisite for now.
+
+---
+
+## 5. srcprep (overlay headers / Lib)
+
+```bash
+cd ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13
+python3 srcprep.py
+# Expect: Include/pyconfig.h with PLATFORM "uefi"
+grep PLATFORM Include/pyconfig.h
+```
+
+---
+
+## 6. Generate frozen / deepfreeze outputs (**required**)
+
+These files are **gitignored** in CPython and were **not** copied into AppPkg:
+
+- `Python/frozen_modules/*.h`
+- `Python/deepfreeze/deepfreeze.c`
+
+`Python312.inf` lists `Python/deepfreeze/deepfreeze.c`, so the build will fail without them.
+
+### Option A — Recommended: reuse edk2-py312 freeze (fastest)
+
+If you already have `~/src/edk2-py312` (or `/mnt/c/Users/njayapra/github/edk2-py312`):
+
+```bash
+cd ~/src/edk2-py312   # adjust path
+git submodule update --init --recursive   # if needed
+
+# Builds host _freeze_module / bootstrap and generates frozen headers + deepfreeze.c
+make local_python    # once; takes a while
+make frozen
+
+# Copy generated artifacts into the AppPkg tree
+APP_PY=~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13
+SRC_PY=~/src/edk2-py312/edk2-cpython
+
+mkdir -p "$APP_PY/Python/frozen_modules" "$APP_PY/Python/deepfreeze"
+cp -a "$SRC_PY/Python/frozen_modules/"*.h "$APP_PY/Python/frozen_modules/"
+cp -a "$SRC_PY/Python/deepfreeze/deepfreeze.c" "$APP_PY/Python/deepfreeze/"
+
+ls "$APP_PY/Python/deepfreeze/deepfreeze.c"
+ls "$APP_PY/Python/frozen_modules" | wc -l
+```
+
+### Option B — Freeze using AppPkg tree + edk2-py312 host tools
+
+```bash
+cd ~/src/edk2-py312
+make local_python   # produces build/cpython/... _freeze_module
+
+cd ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13
+make -f frozen/frozen_modules.mk ROOT_DIR=~/src/edk2-py312
+```
+
+(You may need small path fixes in `frozen_modules.mk` if `ROOT_DIR` layout differs.)
+
+### Verify before build
+
+```bash
+test -f Python/deepfreeze/deepfreeze.c && echo deepfreeze OK
+test -f Python/frozen_modules/importlib._bootstrap.h && echo frozen OK
+```
+
+---
+
+## 7. Build Python312 (Iteration 1 MIN)
+
+```bash
+export PACKAGES_PATH=$HOME/src/edk2:$HOME/src/edk2-libc
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc
+# If using /mnt/c paths, set both to those absolute paths instead.
+
+cd $HOME/src/edk2
+export EDK_TOOLS_PATH=$HOME/src/edk2/BaseTools
+. edksetup.sh
+
+build -a X64 -b NOOPT -t GCC \
+  -p "$EDK2_LIBC_PATH/AppPkg/AppPkg.dsc" \
+  -D BUILD_PYTHON312
+```
+
+Notes:
+
+- Use `GCC` or `GCC5` to match `Conf/target.txt` / `tools_def.txt`.
+- `NOOPT` matches the current edk2-py312 default; try `RELEASE` later.
+- **Do not** add openssl/zlib/libffi to `PACKAGES_PATH` for Iteration 1.
+
+Expected output (when successful):
+
+```text
+Build/AppPkg/NOOPT_GCC/X64/Python312.efi
+```
+
+(Exact `NOOPT_GCC` vs `NOOPT_GCC5` depends on toolchain tag.)
+
+---
+
+## 8. What to do when the build fails
+
+Work the errors in this order and append each batch to
+`Python312_AppPkg_Migration_Status.md`.
+
+| Symptom | Likely fix |
+|---------|------------|
+| `upipe` undefined | Re-apply patch 0001; confirm `upipe.c` in `StdLib/LibC/Uefi/Uefi.inf` |
+| `pyconfig.h` / `efi/*.h` not found | Re-run `srcprep.py`; check INF `-I.../Include` and `-I.../PyMod-3.12.13/efi/Include` |
+| NASM errors on `edk2stack.nasm` / `edk2handler.nasm` | Install newer nasm; compare flags with edk2-py312 `Python312.inf` |
+| GAS / `asm_trampoline.S` | May need `| GCC` path flags or temp stub for first link — copy approach from edk2-py312 CoreLib |
+| `PyInit__ctypes` / `_ssl` / `zlib` undefined | Ensure those stay **commented** in `PyMod-3.12.13/Modules/config.c` and out of INF |
+| Missing frozen `*.h` | Restore from edk2-cpython or run freeze |
+| Stack protector / `StackCheckLib` | edk2-py312 sets `StackCheckLibNull` in its DSC; AppPkg may need the same if GCC complains |
+
+Save the log:
+
+```bash
+build ... -D BUILD_PYTHON312 2>&1 | tee ~/python312-apppkg-build.log
+```
+
+Paste the **first real error** (not the summary) when asking for help.
+
+---
+
+## 9. After a successful link (Phase 6 sketch)
+
+Packaging stubs still exit with error. Minimal manual stage:
+
+```bash
+OUT=~/python312-uefi-img
+mkdir -p "$OUT/EFI/bin" "$OUT/EFI/lib/python3.12"
+cp Build/AppPkg/NOOPT_GCC/X64/Python312.efi "$OUT/EFI/bin/"
+# Copy Lib (large) — or a minimal subset first:
+cp -a "$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13/Lib/." \
+      "$OUT/EFI/lib/python3.12/"
+```
+
+`pyconfig.h` uses `PREFIX "fs0:\\EFI"`, so on the Shell:
+
+```text
+fs0:
+cd EFI\bin
+Python312
+```
+
+Smoke (Iteration 1):
+
+```text
+>>> import sys; sys.platform
+>>> import os, json, math
+>>> import ssl   # should fail / not present
+```
+
+---
+
+## 10. Checklist (copy into status doc when done)
+
+```text
+[ ] apt packages + nasm/gcc/python3
+[ ] edk2 BaseTools + edksetup.sh
+[ ] PACKAGES_PATH / EDK2_LIBC_PATH set (edk2 + edk2-libc only)
+[ ] branch feature/python-3.12.13-apppkg
+[ ] git apply patches/*.patch (upipe.c present)
+[ ] python3 srcprep.py
+[ ] build -D BUILD_PYTHON312 -t GCC
+[ ] Python312.efi produced
+[ ] (later) manual EFI tree + REPL smoke
+```
+
+---
+
+## Common path mistakes
+
+1. Building with only `edk2` on `PACKAGES_PATH` (AppPkg/StdLib not found).
+2. Forgetting `EDK2_LIBC_PATH` (INF `-I$(EDK2_LIBC_PATH)/...` breaks).
+3. Adding openssl/ffi/zlib paths by habit from edk2-py312 — **not for Iteration 1**.
+4. Running Windows `build` from PowerShell against this INF before WSL GCC is green.
+5. Applying patches to the wrong libc checkout (must be the same tree as `EDK2_LIBC_PATH`).

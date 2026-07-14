@@ -126,6 +126,12 @@
     AppPkg/Applications/Python/Python-3.6.8/Python368.inf
   !endif
 
+#### Conditional compilation of python312.inf by passing -D BUILD_PYTHON312
+#### Iteration 1: no edk2-libffi / openssl / zlib / pyreadline
+  !if $(BUILD_PYTHON312)
+    AppPkg/Applications/Python/Python-3.12.13/Python312.inf
+  !endif
+
 #### Un-comment the following line to build Lua.
 #  AppPkg/Applications/Lua/Lua.inf
 

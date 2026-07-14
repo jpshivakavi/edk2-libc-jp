@@ -16,6 +16,7 @@
 
 [Includes]
   Applications/Python/Python-3.6.8/Include
+  Applications/Python/Python-3.12.13/Include
 
 
 [Guids]
