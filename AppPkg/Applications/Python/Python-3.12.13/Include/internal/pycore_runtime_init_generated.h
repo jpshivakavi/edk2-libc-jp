@@ -542,16 +542,21 @@ extern "C" {
     INIT_STR(anon_setcomp, "<setcomp>"), \
     INIT_STR(anon_string, "<string>"), \
     INIT_STR(anon_unknown, "<unknown>"), \
+    INIT_STR(close_br, "}"), \
     INIT_STR(dbl_close_br, "}}"), \
     INIT_STR(dbl_open_br, "{{"), \
     INIT_STR(dbl_percent, "%%"), \
     INIT_STR(defaults, ".defaults"), \
+    INIT_STR(dot, "."), \
     INIT_STR(dot_locals, ".<locals>"), \
     INIT_STR(empty, ""), \
     INIT_STR(generic_base, ".generic_base"), \
     INIT_STR(json_decoder, "json.decoder"), \
     INIT_STR(kwdefaults, ".kwdefaults"), \
     INIT_STR(list_err, "list index out of range"), \
+    INIT_STR(newline, "\n"), \
+    INIT_STR(open_br, "{"), \
+    INIT_STR(percent, "%"), \
     INIT_STR(shim_name, "<shim>"), \
     INIT_STR(type_params, ".type_params"), \
     INIT_STR(utf_8, "utf-8"), \
@@ -567,6 +572,7 @@ extern "C" {
     INIT_ID(TextIOWrapper), \
     INIT_ID(True), \
     INIT_ID(WarningMessage), \
+    INIT_ID(_), \
     INIT_ID(_WindowsConsoleIO), \
     INIT_ID(__IOBase_closed), \
     INIT_ID(__abc_tpflags__), \
@@ -767,6 +773,7 @@ extern "C" {
     INIT_ID(_uninitialized_submodules), \
     INIT_ID(_warn_unawaited_coroutine), \
     INIT_ID(_xoptions), \
+    INIT_ID(a), \
     INIT_ID(abs_tol), \
     INIT_ID(access), \
     INIT_ID(add), \
@@ -786,6 +793,7 @@ extern "C" {
     INIT_ID(attribute), \
     INIT_ID(authorizer_callback), \
     INIT_ID(autocommit), \
+    INIT_ID(b), \
     INIT_ID(backtick), \
     INIT_ID(base), \
     INIT_ID(before), \
@@ -803,6 +811,7 @@ extern "C" {
     INIT_ID(byteorder), \
     INIT_ID(bytes), \
     INIT_ID(bytes_per_sep), \
+    INIT_ID(c), \
     INIT_ID(c_call), \
     INIT_ID(c_exception), \
     INIT_ID(c_return), \
@@ -855,6 +864,7 @@ extern "C" {
     INIT_ID(count), \
     INIT_ID(covariant), \
     INIT_ID(cwd), \
+    INIT_ID(d), \
     INIT_ID(data), \
     INIT_ID(database), \
     INIT_ID(decode), \
@@ -882,6 +892,7 @@ extern "C" {
     INIT_ID(dst), \
     INIT_ID(dst_dir_fd), \
     INIT_ID(duration), \
+    INIT_ID(e), \
     INIT_ID(eager_start), \
     INIT_ID(effective_ids), \
     INIT_ID(element_factory), \
@@ -1042,6 +1053,7 @@ extern "C" {
     INIT_ID(mro), \
     INIT_ID(msg), \
     INIT_ID(mycmp), \
+    INIT_ID(n), \
     INIT_ID(n_arg), \
     INIT_ID(n_fields), \
     INIT_ID(n_sequence_fields), \
@@ -1086,6 +1098,7 @@ extern "C" {
     INIT_ID(outgoing), \
     INIT_ID(overlapped), \
     INIT_ID(owner), \
+    INIT_ID(p), \
     INIT_ID(pages), \
     INIT_ID(parent), \
     INIT_ID(password), \
@@ -1113,6 +1126,7 @@ extern "C" {
     INIT_ID(ps2), \
     INIT_ID(query), \
     INIT_ID(quotetabs), \
+    INIT_ID(r), \
     INIT_ID(raw), \
     INIT_ID(read), \
     INIT_ID(read1), \
@@ -1136,6 +1150,7 @@ extern "C" {
     INIT_ID(return), \
     INIT_ID(reverse), \
     INIT_ID(reversed), \
+    INIT_ID(s), \
     INIT_ID(salt), \
     INIT_ID(sched_priority), \
     INIT_ID(scheduler), \
@@ -1239,6 +1254,7 @@ extern "C" {
     INIT_ID(writable), \
     INIT_ID(write), \
     INIT_ID(write_through), \
+    INIT_ID(x), \
     INIT_ID(year), \
     INIT_ID(zdict), \
 }

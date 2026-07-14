@@ -35,3 +35,26 @@ PREFIX (from current 3.12 port pyconfig; locked for Iteration 1)
   PREFIX      fs0:\EFI
   EXEC_PREFIX fs0:\EFI
   lib dir     lib\python3.12
+
+Package (stage FAT / QEMU rootfs)
+---------------------------------
+  export WORKSPACE=<edk2>
+  export EDK2_LIBC_PATH=<edk2-libc>
+  cd $EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13
+  ./create_python_pkg.sh GCC NOOPT X64 /path/to/out
+
+  Produces:
+    <out>/EFI/bin/Python312.efi
+    <out>/EFI/lib/python3.12/
+    <out>/EFI/stdlib/etc/
+
+REPL smoke (UEFI Shell, fs0: = package EFI tree)
+------------------------------------------------
+  fs0:
+  cd EFI\bin
+  Python312.efi
+
+  >>> import sys; print(sys.version); print(sys.platform); print(sys.path)
+  >>> import os; print(os.listdir('fs0:\\'))
+  >>> # Iteration 1: these must fail to import
+  >>> import ssl; import ctypes; import zlib; import readline

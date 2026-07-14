@@ -18,10 +18,10 @@
 | 0 | Prerequisites and baseline capture | **Done** (rebuild skipped on Windows) |
 | 1 | Scaffold AppPkg directory tree | **Done** |
 | 2 | Extract PyMod-3.12.13 overlays | **Done** (first pass; stock tree still holds UEFI deltas) |
-| 3 | Port frozen / deepfreeze | **Blocked until WSL** — artifacts gitignored; see WSL GCC guide §6 |
-| 4 | Author monolithic Python312.inf (MIN) | **In progress** (INF generated; not yet GCC-built) |
-| 5 | Wire DSC / libc patches / first GCC build | **Partial** (DSC/DEC gated; build on WSL — see guide) |
-| 6 | Package + REPL smoke | Not started |
+| 3 | Port frozen / deepfreeze | **Done** (deepfreeze + global strings aligned for AppPkg) |
+| 4 | Author monolithic Python312.inf (MIN) | **Done** (+ `Parser/myreadline.c`) |
+| 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
+| 6 | Package + REPL smoke | **Partial** — packaging scripts done; REPL smoke pending on hardware/QEMU |
 | 7 | Docs + CI | Not started |
 | 8 | Deferred (external pkgs, VS2022) | Deferred |
 
@@ -54,6 +54,20 @@
 5. **Phase 2:** Populated `PyMod-3.12.13` with EFI glue, UEFI-touched C/headers/Lib (Iteration 1), `Modules/config.c`. Ran `srcprep.py` → `Include/pyconfig.h` present (`PLATFORM "uefi"`).
 6. **Phase 3 start:** Copied `frozen_modules.mk` into `frozen/`.
 7. **Phase 4 start:** Generated MIN `Python312.inf` (241 sources, 9 omitted Ext refs). Commented excluded inittab entries in `PyMod-3.12.13/Modules/config.c`.
+
+### 2026-07-14 — Session 2 (WSL GCC)
+
+1. Include path fixes (`Include/internal`, HACL, efi Include).
+2. Aligned frozen/deepfreeze with AppPkg headers: `STRUCT_FOR_STR(dot)`, `_Py_LATIN1_CHR`, `_only_immortal`, single-char `_Py_ID`s needed by deepfreeze.
+3. Enabled core `Parser/myreadline.c` (not GNU `readline`).
+4. **First successful AppPkg build:** `Python312.efi`  
+   Path: `~/src/edk2-py312/edk2/Build/AppPkg/NOOPT_GCC/X64/AppPkg/Applications/Python/Python-3.12.13/Python312/DEBUG/Python312.efi` (or sibling `OUTPUT`/FV path as produced by this build).
+
+### 2026-07-14 — Session 3 (packaging)
+
+1. Implemented `create_python_pkg.sh` / `.bat` for PREFIX `fs0:\EFI` layout (`EFI/bin`, `EFI/lib/python3.12`, `EFI/stdlib/etc`).
+2. Staged sample package at `Python-3.12.13/pkg_out/` (local; do not commit).
+3. Next: copy `pkg_out/EFI` to a FAT volume / QEMU rootfs and run REPL smoke from `Py312ReadMe.txt`.
 
 ---
 
@@ -254,7 +268,7 @@ Not started. See plan for steps.
 1. **Windows agent cannot run GCC AppPkg build** — continue Phase 5 on Linux/WSL (see WSL GCC guide).
 2. **Frozen/deepfreeze artifacts missing** — gitignored; must run `make frozen` (or equivalent) before AppPkg build.
 3. **Stock CPython tree still has UEFI deltas** — same content as PyMod for forked files; cleaning to upstream vanilla is optional polish.
-4. **`create_python_pkg.*` still stubs** (exit 1).
+4. **`create_python_pkg.*` implemented** (Iteration 1 layout). REPL smoke still pending.
 5. **NASM sources** (`edk2stack.nasm`, `edk2handler.nasm`) and `asm_trampoline.S` need toolchain validation under EDK II GCC.
 6. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
 7. Duplicate `efi/src/module_config.c` remains under PyMod; INF uses `Modules/config.c` only.

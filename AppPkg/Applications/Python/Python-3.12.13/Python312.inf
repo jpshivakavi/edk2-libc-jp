@@ -128,6 +128,7 @@
   Parser/pegen_errors.c
   Parser/string_parser.c
   Parser/token.c
+  Parser/myreadline.c
   PyMod-3.12.13/Parser/tokenizer.c
   Python/Python-ast.c
   Python/Python-tokenize.c
@@ -303,8 +304,7 @@
   Modules/xxlimited_35.c
   Modules/xxsubtype.c
 
-# Iteration 2+ omitted in this INF:
-#  ../../Parser/myreadline.c
+# Iteration 2+ omitted in this INF (GNU readline module, not Parser/myreadline.c):
 #  ../../Modules/_ctypes/_ctypes.c
 #  ../../Modules/_ctypes/callbacks.c
 #  ../../Modules/_ctypes/callproc.c
