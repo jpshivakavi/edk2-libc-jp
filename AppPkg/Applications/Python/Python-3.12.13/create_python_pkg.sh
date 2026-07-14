@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 #
 # Stage Python 3.12.13 UEFI runtime tree for FAT / QEMU rootfs.
 #

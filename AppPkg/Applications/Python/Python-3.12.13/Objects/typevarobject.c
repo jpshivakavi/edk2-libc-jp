@@ -364,24 +364,26 @@ typevar_new_impl(PyTypeObject *type, PyObject *name, PyObject *constraints,
         }
     }
 
-    if (!PyTuple_CheckExact(constraints)) {
-        PyErr_SetString(PyExc_TypeError,
-                        "constraints must be a tuple");
-        return NULL;
-    }
-    Py_ssize_t n_constraints = PyTuple_GET_SIZE(constraints);
-    if (n_constraints == 1) {
-        PyErr_SetString(PyExc_TypeError,
-                        "A single constraint is not allowed");
-        Py_XDECREF(bound);
-        return NULL;
-    } else if (n_constraints == 0) {
-        constraints = NULL;
-    } else if (bound != NULL) {
-        PyErr_SetString(PyExc_TypeError,
-                        "Constraints cannot be combined with bound=...");
-        Py_XDECREF(bound);
-        return NULL;
+    if (constraints != NULL) {
+        if (!PyTuple_CheckExact(constraints)) {
+            PyErr_SetString(PyExc_TypeError,
+                            "constraints must be a tuple");
+            return NULL;
+        }
+        Py_ssize_t n_constraints = PyTuple_GET_SIZE(constraints);
+        if (n_constraints == 1) {
+            PyErr_SetString(PyExc_TypeError,
+                            "A single constraint is not allowed");
+            Py_XDECREF(bound);
+            return NULL;
+        } else if (n_constraints == 0) {
+            constraints = NULL;
+        } else if (bound != NULL) {
+            PyErr_SetString(PyExc_TypeError,
+                            "Constraints cannot be combined with bound=...");
+            Py_XDECREF(bound);
+            return NULL;
+        }
     }
     PyObject *module = caller();
     if (module == NULL) {
@@ -1362,7 +1364,16 @@ typealias_alloc(PyObject *name, PyObject *type_params, PyObject *compute_value,
         return NULL;
     }
     ta->name = Py_NewRef(name);
-    ta->type_params = Py_IsNone(type_params) ? NULL : Py_XNewRef(type_params);
+    if (
+        type_params == NULL
+        || Py_IsNone(type_params)
+        || (PyTuple_Check(type_params) && PyTuple_GET_SIZE(type_params) == 0)
+    ) {
+        ta->type_params = NULL;
+    }
+    else {
+        ta->type_params = Py_NewRef(type_params);
+    }
     ta->compute_value = Py_XNewRef(compute_value);
     ta->value = Py_XNewRef(value);
     ta->module = Py_XNewRef(module);

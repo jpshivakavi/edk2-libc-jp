@@ -1,6 +1,3 @@
-
-#include <stdbool.h>
-
 #include "Python.h"
 #include "pycore_flowgraph.h"
 #include "pycore_compile.h"
@@ -10,6 +7,8 @@
 #define NEED_OPCODE_METADATA
 #include "opcode_metadata.h"      // _PyOpcode_opcode_metadata, _PyOpcode_num_popped/pushed
 #undef NEED_OPCODE_METADATA
+
+#include <stdbool.h>
 
 
 #undef SUCCESS
@@ -645,6 +644,7 @@ push_except_block(ExceptStack *stack, cfg_instr *setup) {
     if (opcode == SETUP_WITH || opcode == SETUP_CLEANUP) {
         target->b_preserve_lasti = 1;
     }
+    assert(stack->depth <= CO_MAXBLOCKS);
     stack->handlers[++stack->depth] = target;
     return target;
 }
@@ -981,7 +981,17 @@ remove_redundant_nops(basicblock *bb) {
                 }
                 /* or if last instruction in BB and next BB has same line number */
                 if (next) {
-                    if (lineno == next->b_instr[0].i_loc.lineno) {
+                    location next_loc = NO_LOCATION;
+                    for (int next_i=0; next_i < next->b_iused; next_i++) {
+                        cfg_instr *instr = &next->b_instr[next_i];
+                        if (instr->i_opcode == NOP && instr->i_loc.lineno == NO_LOCATION.lineno) {
+                            /* Skip over NOPs without location, they will be removed */
+                            continue;
+                        }
+                        next_loc = instr->i_loc;
+                        break;
+                    }
+                    if (lineno == next_loc.lineno) {
                         continue;
                     }
                 }
@@ -1544,9 +1554,9 @@ optimize_basic_block(PyObject *const_cache, basicblock *bb, PyObject *consts)
             case KW_NAMES:
                 break;
             case PUSH_NULL:
-                if (nextop == LOAD_GLOBAL && (inst[1].i_opcode & 1) == 0) {
+                if (nextop == LOAD_GLOBAL && (bb->b_instr[i+1].i_oparg & 1) == 0) {
                     INSTR_SET_OP0(inst, NOP);
-                    inst[1].i_oparg |= 1;
+                    bb->b_instr[i+1].i_oparg |= 1;
                 }
                 break;
             default:

@@ -212,11 +212,11 @@ test_dict_inner(int count)
     for (i = 0; i < count; i++) {
         v = PyLong_FromLong(i);
         if (v == NULL) {
-            return -1;
+            goto error;
         }
         if (PyDict_SetItem(dict, v, v) < 0) {
             Py_DECREF(v);
-            return -1;
+            goto error;
         }
         Py_DECREF(v);
     }
@@ -230,11 +230,12 @@ test_dict_inner(int count)
         assert(v != UNINITIALIZED_PTR);
         i = PyLong_AS_LONG(v) + 1;
         o = PyLong_FromLong(i);
-        if (o == NULL)
-            return -1;
+        if (o == NULL) {
+            goto error;
+        }
         if (PyDict_SetItem(dict, k, o) < 0) {
             Py_DECREF(o);
-            return -1;
+            goto error;
         }
         Py_DECREF(o);
         k = v = UNINITIALIZED_PTR;
@@ -252,6 +253,9 @@ test_dict_inner(int count)
     } else {
         return 0;
     }
+error:
+    Py_DECREF(dict);
+    return -1;
 }
 
 
@@ -421,6 +425,41 @@ raise_error(void *unused)
 {
     PyErr_SetNone(PyExc_ValueError);
     return NULL;
+}
+
+static PyObject *
+py_buildvalue(PyObject *self, PyObject *args)
+{
+    const char *fmt;
+    PyObject *objs[10] = {NULL};
+    if (!PyArg_ParseTuple(args, "s|OOOOOOOOOO", &fmt,
+            &objs[0], &objs[1], &objs[2], &objs[3], &objs[4],
+            &objs[5], &objs[6], &objs[7], &objs[8], &objs[9]))
+    {
+        return NULL;
+    }
+    for(int i = 0; i < 10; i++) {
+        NULLABLE(objs[i]);
+    }
+    return Py_BuildValue(fmt,
+            objs[0], objs[1], objs[2], objs[3], objs[4],
+            objs[5], objs[6], objs[7], objs[8], objs[9]);
+}
+
+static PyObject *
+py_buildvalue_ints(PyObject *self, PyObject *args)
+{
+    const char *fmt;
+    unsigned int values[10] = {0};
+    if (!PyArg_ParseTuple(args, "s|IIIIIIIIII", &fmt,
+            &values[0], &values[1], &values[2], &values[3], &values[4],
+            &values[5], &values[6], &values[7], &values[8], &values[9]))
+    {
+        return NULL;
+    }
+    return Py_BuildValue(fmt,
+            values[0], values[1], values[2], values[3], values[4],
+            values[5], values[6], values[7], values[8], values[9]);
 }
 
 static int
@@ -780,6 +819,14 @@ test_thread_state(PyObject *self, PyObject *args)
     PyThread_free_lock(thread_done);
     if (!success)
         return NULL;
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+gilstate_ensure_release(PyObject *module, PyObject *Py_UNUSED(ignored))
+{
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyGILState_Release(state);
     Py_RETURN_NONE;
 }
 
@@ -1665,7 +1712,9 @@ test_structseq_newtype_doesnt_leak(PyObject *Py_UNUSED(self),
     descr.n_in_sequence = 1;
 
     PyTypeObject* structseq_type = PyStructSequence_NewType(&descr);
-    assert(structseq_type != NULL);
+    if (structseq_type == NULL) {
+        return NULL;
+    }
     assert(PyType_Check(structseq_type));
     assert(PyType_FastSubclass(structseq_type, Py_TPFLAGS_TUPLE_SUBCLASS));
     Py_DECREF(structseq_type);
@@ -2489,6 +2538,32 @@ type_get_version(PyObject *self, PyObject *type)
     return res;
 }
 
+static PyObject *
+type_modified(PyObject *self, PyObject *type)
+{
+    if (!PyType_Check(type)) {
+        PyErr_SetString(PyExc_TypeError, "argument must be a type");
+        return NULL;
+    }
+    PyType_Modified((PyTypeObject *)type);
+    Py_RETURN_NONE;
+}
+
+// Circumvents standard version assignment machinery - use with caution and only on
+// short-lived heap types
+static PyObject *
+type_assign_specific_version_unsafe(PyObject *self, PyObject *args)
+{
+    PyTypeObject *type;
+    unsigned int version;
+    if (!PyArg_ParseTuple(args, "Oi:type_assign_specific_version_unsafe", &type, &version)) {
+        return NULL;
+    }
+    assert(!PyType_HasFeature(type, Py_TPFLAGS_IMMUTABLETYPE));
+    type->tp_version_tag = version;
+    type->tp_flags |= Py_TPFLAGS_VALID_VERSION_TAG;
+    Py_RETURN_NONE;
+}
 
 static PyObject *
 type_assign_version(PyObject *self, PyObject *type)
@@ -2723,18 +2798,6 @@ test_frame_getvarstring(PyObject *self, PyObject *args)
 
 
 static PyObject *
-eval_get_func_name(PyObject *self, PyObject *func)
-{
-    return PyUnicode_FromString(PyEval_GetFuncName(func));
-}
-
-static PyObject *
-eval_get_func_desc(PyObject *self, PyObject *func)
-{
-    return PyUnicode_FromString(PyEval_GetFuncDesc(func));
-}
-
-static PyObject *
 gen_get_code(PyObject *self, PyObject *gen)
 {
     if (!PyGen_Check(gen)) {
@@ -2759,106 +2822,59 @@ eval_eval_code_ex(PyObject *mod, PyObject *pos_args)
 
     PyObject **c_kwargs = NULL;
 
-    if (!PyArg_UnpackTuple(pos_args,
-                           "eval_code_ex",
-                           2,
-                           8,
-                           &code,
-                           &globals,
-                           &locals,
-                           &args,
-                           &kwargs,
-                           &defaults,
-                           &kw_defaults,
-                           &closure))
+    if (!PyArg_ParseTuple(pos_args,
+                          "OO|OO!O!O!OO:eval_code_ex",
+                          &code,
+                          &globals,
+                          &locals,
+                          &PyTuple_Type, &args,
+                          &PyDict_Type, &kwargs,
+                          &PyTuple_Type, &defaults,
+                          &kw_defaults,
+                          &closure))
     {
         goto exit;
     }
 
-    if (!PyCode_Check(code)) {
-        PyErr_SetString(PyExc_TypeError,
-                        "code must be a Python code object");
-        goto exit;
-    }
-
-    if (!PyDict_Check(globals)) {
-        PyErr_SetString(PyExc_TypeError, "globals must be a dict");
-        goto exit;
-    }
-
-    if (locals && !PyMapping_Check(locals)) {
-        PyErr_SetString(PyExc_TypeError, "locals must be a mapping");
-        goto exit;
-    }
-    if (locals == Py_None) {
-        locals = NULL;
-    }
+    NULLABLE(code);
+    NULLABLE(globals);
+    NULLABLE(locals);
+    NULLABLE(kw_defaults);
+    NULLABLE(closure);
 
     PyObject **c_args = NULL;
     Py_ssize_t c_args_len = 0;
-
-    if (args)
-    {
-        if (!PyTuple_Check(args)) {
-            PyErr_SetString(PyExc_TypeError, "args must be a tuple");
-            goto exit;
-        } else {
-            c_args = &PyTuple_GET_ITEM(args, 0);
-            c_args_len = PyTuple_Size(args);
-        }
+    if (args) {
+        c_args = &PyTuple_GET_ITEM(args, 0);
+        c_args_len = PyTuple_Size(args);
     }
 
     Py_ssize_t c_kwargs_len = 0;
-
-    if (kwargs)
-    {
-        if (!PyDict_Check(kwargs)) {
-            PyErr_SetString(PyExc_TypeError, "keywords must be a dict");
-            goto exit;
-        } else {
-            c_kwargs_len = PyDict_Size(kwargs);
-            if (c_kwargs_len > 0) {
-                c_kwargs = PyMem_NEW(PyObject*, 2 * c_kwargs_len);
-                if (!c_kwargs) {
-                    PyErr_NoMemory();
-                    goto exit;
-                }
-
-                Py_ssize_t i = 0;
-                Py_ssize_t pos = 0;
-
-                while (PyDict_Next(kwargs,
-                                   &pos,
-                                   &c_kwargs[i],
-                                   &c_kwargs[i + 1]))
-                {
-                    i += 2;
-                }
-                c_kwargs_len = i / 2;
-                /* XXX This is broken if the caller deletes dict items! */
+    if (kwargs) {
+        c_kwargs_len = PyDict_Size(kwargs);
+        if (c_kwargs_len > 0) {
+            c_kwargs = PyMem_NEW(PyObject*, 2 * c_kwargs_len);
+            if (!c_kwargs) {
+                PyErr_NoMemory();
+                goto exit;
             }
+
+            Py_ssize_t i = 0;
+            Py_ssize_t pos = 0;
+            while (PyDict_Next(kwargs, &pos, &c_kwargs[i], &c_kwargs[i + 1])) {
+                i += 2;
+            }
+            c_kwargs_len = i / 2;
+            /* XXX This is broken if the caller deletes dict items! */
         }
     }
 
-
     PyObject **c_defaults = NULL;
     Py_ssize_t c_defaults_len = 0;
-
-    if (defaults && PyTuple_Check(defaults)) {
+    if (defaults) {
         c_defaults = &PyTuple_GET_ITEM(defaults, 0);
         c_defaults_len = PyTuple_Size(defaults);
     }
-
-    if (kw_defaults && !PyDict_Check(kw_defaults)) {
-        PyErr_SetString(PyExc_TypeError, "kw_defaults must be a dict");
-        goto exit;
-    }
-
-    if (closure && !PyTuple_Check(closure)) {
-        PyErr_SetString(PyExc_TypeError, "closure must be a tuple of cells");
-        goto exit;
-    }
-
 
     result = PyEval_EvalCodeEx(
         code,
@@ -3208,36 +3224,107 @@ test_atexit(PyObject *self, PyObject *Py_UNUSED(args))
 }
 
 
-static PyObject *
-sys_getobject(PyObject *Py_UNUSED(module), PyObject *arg)
-{
-    const char *name;
-    Py_ssize_t size;
-    if (!PyArg_Parse(arg, "z#", &name, &size)) {
-        return NULL;
-    }
-    PyObject *result = PySys_GetObject(name);
-    if (result == NULL) {
-        result = PyExc_AttributeError;
-    }
-    return Py_NewRef(result);
-}
-
-static PyObject *
-sys_setobject(PyObject *Py_UNUSED(module), PyObject *args)
-{
-    const char *name;
-    Py_ssize_t size;
-    PyObject *value;
-    if (!PyArg_ParseTuple(args, "z#O", &name, &size, &value)) {
-        return NULL;
-    }
-    NULLABLE(value);
-    RETURN_INT(PySys_SetObject(name, value));
-}
-
-
 static PyObject *test_buildvalue_issue38913(PyObject *, PyObject *);
+
+
+static void
+tracemalloc_track_race_thread(void *data)
+{
+    PyTraceMalloc_Track(123, 10, 1);
+    PyTraceMalloc_Untrack(123, 10);
+
+    PyThread_type_lock lock = (PyThread_type_lock)data;
+    PyThread_release_lock(lock);
+}
+
+// gh-128679: Test fix for tracemalloc.stop() race condition
+static PyObject *
+tracemalloc_track_race(PyObject *self, PyObject *args)
+{
+#define NTHREAD 50
+    PyObject *tracemalloc = NULL;
+    PyObject *stop = NULL;
+    PyThread_type_lock locks[NTHREAD];
+    memset(locks, 0, sizeof(locks));
+
+    // Call tracemalloc.start()
+    tracemalloc = PyImport_ImportModule("tracemalloc");
+    if (tracemalloc == NULL) {
+        goto error;
+    }
+    PyObject *start = PyObject_GetAttrString(tracemalloc, "start");
+    if (start == NULL) {
+        goto error;
+    }
+    PyObject *res = PyObject_CallNoArgs(start);
+    Py_DECREF(start);
+    if (res == NULL) {
+        goto error;
+    }
+    Py_DECREF(res);
+
+    stop = PyObject_GetAttrString(tracemalloc, "stop");
+    Py_CLEAR(tracemalloc);
+    if (stop == NULL) {
+        goto error;
+    }
+
+    // Start threads
+    for (size_t i = 0; i < NTHREAD; i++) {
+        PyThread_type_lock lock = PyThread_allocate_lock();
+        if (!lock) {
+            PyErr_NoMemory();
+            goto error;
+        }
+        locks[i] = lock;
+        PyThread_acquire_lock(lock, 1);
+
+        unsigned long thread;
+        thread = PyThread_start_new_thread(tracemalloc_track_race_thread,
+                                           (void*)lock);
+        if (thread == (unsigned long)-1) {
+            PyErr_SetString(PyExc_RuntimeError, "can't start new thread");
+            goto error;
+        }
+    }
+
+    // Call tracemalloc.stop() while threads are running
+    res = PyObject_CallNoArgs(stop);
+    Py_CLEAR(stop);
+    if (res == NULL) {
+        goto error;
+    }
+    Py_DECREF(res);
+
+    // Wait until threads complete with the GIL released
+    Py_BEGIN_ALLOW_THREADS
+    for (size_t i = 0; i < NTHREAD; i++) {
+        PyThread_type_lock lock = locks[i];
+        PyThread_acquire_lock(lock, 1);
+        PyThread_release_lock(lock);
+    }
+    Py_END_ALLOW_THREADS
+
+    // Free threads locks
+    for (size_t i=0; i < NTHREAD; i++) {
+        PyThread_type_lock lock = locks[i];
+        PyThread_free_lock(lock);
+    }
+    Py_RETURN_NONE;
+
+error:
+    Py_CLEAR(tracemalloc);
+    Py_CLEAR(stop);
+    for (size_t i=0; i < NTHREAD; i++) {
+        PyThread_type_lock lock = locks[i];
+        if (lock) {
+            PyThread_free_lock(lock);
+        }
+    }
+    return NULL;
+#undef NTHREAD
+}
+
 
 static PyMethodDef TestMethods[] = {
     {"set_errno",               set_errno,                       METH_VARARGS},
@@ -3267,6 +3354,8 @@ static PyMethodDef TestMethods[] = {
 #endif
     {"getbuffer_with_null_view", getbuffer_with_null_view,       METH_O},
     {"PyBuffer_SizeFromFormat",  test_PyBuffer_SizeFromFormat,   METH_VARARGS},
+    {"py_buildvalue",            py_buildvalue,                  METH_VARARGS},
+    {"py_buildvalue_ints",       py_buildvalue_ints,             METH_VARARGS},
     {"test_buildvalue_N",        test_buildvalue_N,              METH_NOARGS},
     {"test_buildvalue_issue38913", test_buildvalue_issue38913,   METH_NOARGS},
     {"test_get_statictype_slots", test_get_statictype_slots,     METH_NOARGS},
@@ -3274,6 +3363,7 @@ static PyMethodDef TestMethods[] = {
     {"test_get_type_qualname",    test_get_type_qualname,        METH_NOARGS},
     {"test_get_type_dict",        test_get_type_dict,            METH_NOARGS},
     {"_test_thread_state",      test_thread_state,               METH_VARARGS},
+    {"gilstate_ensure_release", gilstate_ensure_release,         METH_NOARGS},
 #ifndef MS_WINDOWS
     {"_spawn_pthread_waiter",   spawn_pthread_waiter,            METH_NOARGS},
     {"_end_spawned_pthread",    end_spawned_pthread,             METH_NOARGS},
@@ -3343,6 +3433,9 @@ static PyMethodDef TestMethods[] = {
     {"test_py_is_macros", test_py_is_macros, METH_NOARGS},
     {"test_py_is_funcs", test_py_is_funcs, METH_NOARGS},
     {"type_get_version", type_get_version, METH_O, PyDoc_STR("type->tp_version_tag")},
+    {"type_modified", type_modified, METH_O, PyDoc_STR("PyType_Modified")},
+    {"type_assign_specific_version_unsafe", type_assign_specific_version_unsafe, METH_VARARGS,
+     PyDoc_STR("forcefully assign type->tp_version_tag")},
     {"type_assign_version", type_assign_version, METH_O, PyDoc_STR("PyUnstable_Type_AssignVersionTag")},
     {"type_get_tp_bases", type_get_tp_bases, METH_O},
     {"type_get_tp_mro", type_get_tp_mro, METH_O},
@@ -3356,8 +3449,6 @@ static PyMethodDef TestMethods[] = {
     {"frame_new", frame_new, METH_VARARGS, NULL},
     {"frame_getvar", test_frame_getvar, METH_VARARGS, NULL},
     {"frame_getvarstring", test_frame_getvarstring, METH_VARARGS, NULL},
-    {"eval_get_func_name", eval_get_func_name, METH_O, NULL},
-    {"eval_get_func_desc", eval_get_func_desc, METH_O, NULL},
     {"gen_get_code", gen_get_code, METH_O, NULL},
     {"get_feature_macros", get_feature_macros, METH_NOARGS, NULL},
     {"test_code_api", test_code_api, METH_NOARGS, NULL},
@@ -3373,8 +3464,7 @@ static PyMethodDef TestMethods[] = {
     {"function_get_kw_defaults", function_get_kw_defaults, METH_O, NULL},
     {"function_set_kw_defaults", function_set_kw_defaults, METH_VARARGS, NULL},
     {"test_atexit", test_atexit, METH_NOARGS},
-    {"sys_getobject", sys_getobject, METH_O},
-    {"sys_setobject", sys_setobject, METH_VARARGS},
+    {"tracemalloc_track_race", tracemalloc_track_race, METH_NOARGS},
     {NULL, NULL} /* sentinel */
 };
 
@@ -3941,13 +4031,26 @@ PyInit__testcapi(void)
     PyModule_AddObject(m, "ULLONG_MAX", PyLong_FromUnsignedLongLong(ULLONG_MAX));
     PyModule_AddObject(m, "PY_SSIZE_T_MAX", PyLong_FromSsize_t(PY_SSIZE_T_MAX));
     PyModule_AddObject(m, "PY_SSIZE_T_MIN", PyLong_FromSsize_t(PY_SSIZE_T_MIN));
+    PyModule_AddObject(m, "SIZE_MAX", PyLong_FromSize_t(SIZE_MAX));
     PyModule_AddObject(m, "SIZEOF_WCHAR_T", PyLong_FromSsize_t(sizeof(wchar_t)));
+    PyModule_AddObject(m, "SIZEOF_VOID_P", PyLong_FromSsize_t(sizeof(void*)));
     PyModule_AddObject(m, "SIZEOF_TIME_T", PyLong_FromSsize_t(sizeof(time_t)));
+    PyModule_AddObject(m, "SIZEOF_PID_T", PyLong_FromSsize_t(sizeof(pid_t)));
     PyModule_AddObject(m, "Py_Version", PyLong_FromUnsignedLong(Py_Version));
     Py_INCREF(&PyInstanceMethod_Type);
     PyModule_AddObject(m, "instancemethod", (PyObject *)&PyInstanceMethod_Type);
 
     PyModule_AddIntConstant(m, "the_number_three", 3);
+
+    if (PyModule_AddIntMacro(m, Py_single_input)) {
+        return NULL;
+    }
+    if (PyModule_AddIntMacro(m, Py_file_input)) {
+        return NULL;
+    }
+    if (PyModule_AddIntMacro(m, Py_eval_input)) {
+        return NULL;
+    }
 
     TestError = PyErr_NewException("_testcapi.error", NULL, NULL);
     Py_INCREF(TestError);
@@ -3969,6 +4072,12 @@ PyInit__testcapi(void)
         return NULL;
     }
     if (_PyTestCapi_Init_Abstract(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_ByteArray(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Bytes(m) < 0) {
         return NULL;
     }
     if (_PyTestCapi_Init_Unicode(m) < 0) {
@@ -3998,7 +4107,22 @@ PyInit__testcapi(void)
     if (_PyTestCapi_Init_Float(m) < 0) {
         return NULL;
     }
+    if (_PyTestCapi_Init_Complex(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Numbers(m) < 0) {
+        return NULL;
+    }
     if (_PyTestCapi_Init_Dict(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Set(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_List(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Tuple(m) < 0) {
         return NULL;
     }
     if (_PyTestCapi_Init_Structmember(m) < 0) {
@@ -4016,10 +4140,28 @@ PyInit__testcapi(void)
     if (_PyTestCapi_Init_PyOS(m) < 0) {
         return NULL;
     }
+    if (_PyTestCapi_Init_Run(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_File(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Codec(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Sys(m) < 0) {
+        return NULL;
+    }
     if (_PyTestCapi_Init_Immortal(m) < 0) {
         return NULL;
     }
     if (_PyTestCapi_Init_GC(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Import(m) < 0) {
+        return NULL;
+    }
+    if (_PyTestCapi_Init_Eval(m) < 0) {
         return NULL;
     }
 
