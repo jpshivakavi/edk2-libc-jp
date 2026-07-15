@@ -7,6 +7,8 @@ Related docs:
 
 - Plan: [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)
 - Status: [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)
+- BKMs: [`Python-3.12.13/GCCCompilationBKMs.rst`](./Python-3.12.13/GCCCompilationBKMs.rst) (GCC setup summary)
+- ReadMe: [`Python-3.12.13/Py312ReadMe.txt`](./Python-3.12.13/Py312ReadMe.txt)
 - Tree: `AppPkg/Applications/Python/Python-3.12.13/`
 
 **Iteration 1:** no `edk2-libffi` / `edk2-openssl` / `edk2-zlib` / `edk2-pyreadline`.
@@ -264,31 +266,27 @@ Paste the **first real error** (not the summary) when asking for help.
 
 ---
 
-## 9. After a successful link (Phase 6 sketch)
+## 9. After a successful link (package + smoke)
 
-Packaging stubs still exit with error. Minimal manual stage:
+Use the packaging script (creates `lib-dynload` and stdlib etc.):
 
 ```bash
-OUT=~/python312-uefi-img
-mkdir -p "$OUT/EFI/bin" "$OUT/EFI/lib/python3.12"
-cp Build/AppPkg/NOOPT_GCC/X64/Python312.efi "$OUT/EFI/bin/"
-# Copy Lib (large) — or a minimal subset first:
-cp -a "$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13/Lib/." \
-      "$OUT/EFI/lib/python3.12/"
+cd "$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13"
+./create_python_pkg.sh GCC NOOPT X64 ~/py312_efi
 ```
 
-`pyconfig.h` uses `PREFIX "fs0:\\EFI"`, so on the Shell:
+`pyconfig.h` uses `PREFIX "fs0:\\EFI"`. On the Shell:
 
 ```text
 fs0:
 cd EFI\bin
-Python312
+Python312.efi
 ```
 
 Smoke (Iteration 1):
 
 ```text
->>> import sys; sys.platform
+>>> import sys; print(sys.version)   # expect 3.12.13
 >>> import os, json, math
 >>> import ssl   # should fail / not present
 ```

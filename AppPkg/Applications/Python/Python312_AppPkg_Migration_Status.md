@@ -22,7 +22,7 @@
 | 4 | Author monolithic Python312.inf (MIN) | **Done** (+ `Parser/myreadline.c`) |
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
-| 7 | Docs + CI | Not started |
+| 7 | Docs + CI | **In progress** — 7.1 Py312ReadMe, 7.2 GCCCompilationBKMs.rst |
 | 8 | Deferred (external pkgs, VS2022) | Deferred |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
@@ -281,9 +281,20 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 
 ---
 
-## Phase 7 / 8
+## Phase 7 — Docs + CI
 
-Phase 7 (docs + CI) and Phase 8 (external packages, VS2022) not started. See plan.
+| Step | Action | Result |
+|------|--------|--------|
+| 7.1 | `Py312ReadMe.txt` (3.6.8-style) | **Done** |
+| 7.2 | `GCCCompilationBKMs.rst` for 3.12.13 | **Done** |
+| 7.3 | GitHub Action (GCC + BUILD_PYTHON312) | Not started |
+| 7.4 | Root `Readme.md` pointers | Not started |
+| 7.5 | PyMod-only UEFI delta cleanup | Not started |
+| 7.6 | Upstream libc patches | Optional |
+
+## Phase 8
+
+External packages, VS2022 — deferred. See plan.
 
 ---
 
