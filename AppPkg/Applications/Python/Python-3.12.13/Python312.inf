@@ -1,5 +1,5 @@
 ## @file
-# Python312.inf — AppPkg monolithic module (Phase 8.1+: edk2-zlib)
+# Python312.inf — AppPkg monolithic module (Phase 8.1: vendored edk2-zlib)
 #
 # Generated during AppPkg migration. ENTRY_POINT = UefiMain.
 # SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -21,7 +21,6 @@
   ShellPkg/ShellPkg.dec
   StdLib/StdLib.dec
   AppPkg/AppPkg.dec
-  LibZlib/LibZlib.dec
 
 [LibraryClasses]
   UefiLib
@@ -37,7 +36,6 @@
   DevMedia
   BsdSocketLib
   EfiSocketLib
-  LibZlib
 
 [Protocols]
   gEfiCpuArchProtocolGuid
@@ -307,15 +305,29 @@
   Modules/xxsubtype.c
   Modules/zlibmodule.c
 
-# Phase 8+ still omitted (GNU readline module, not Parser/myreadline.c):
-#  ../../Modules/_ctypes/_ctypes.c
-#  ../../Modules/_ctypes/callbacks.c
-#  ../../Modules/_ctypes/callproc.c
-#  ../../Modules/_ctypes/cfield.c
-#  ../../Modules/_ctypes/stgdict.c
-#  ../../Modules/_hashopenssl.c
-#  ../../Modules/_ssl.c
-#  ../../Modules/readline.c
+# Vendored zlib (PyMod — same layout as 3.6.8 Modules/zlib; sources from edk2-zlib @ 8ae7f507)
+PyMod-$(PYTHON_VERSION)/Modules/zlib
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/adler32.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/compress.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/crc32.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/deflate.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/gzclose.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/gzlib.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/gzread.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/gzwrite.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/infback.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/inffast.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/inflate.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/inftrees.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/trees.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/uncompr.c
+  PyMod-$(PYTHON_VERSION)/Modules/zlib/zutil.c
+
+# Phase 8+ still omitted (vendored under PyMod-$(PYTHON_VERSION)/Modules/ when enabled):
+#  PyMod-$(PYTHON_VERSION)/Modules/readline.c + readline vendor tree
+#  PyMod-$(PYTHON_VERSION)/Modules/_hashopenssl.c + openssl vendor tree
+#  PyMod-$(PYTHON_VERSION)/Modules/_ssl.c
+#  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/* + libffi vendor tree (see 3.6.8 PyMod _ctypes)
 
 [BuildOptions]
-  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -DPy_BUILD_CORE -DHAVE_MEMMOVE
+  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -DPy_BUILD_CORE -DHAVE_MEMMOVE

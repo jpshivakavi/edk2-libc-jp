@@ -80,7 +80,7 @@ layout:
 
 Iteration 1 **omits** `_ssl`, `_ctypes`, **zlib** (and GNU readline). Those are
 present in some 3.6.8 builds (e.g. zlib as many `Modules/zlib/*.c` entries). So
-3.12 would grow **further** if Phase 8 external packages are enabled.
+3.12 would grow **further** when Phase 8 **vendored** OpenSSL/libffi (and zlib if not already in-tree) are enabled.
 
 ### 4. Build target: **NOOPT**
 

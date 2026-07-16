@@ -1,4 +1,4 @@
-PyMod-3.12.13 ó UEFI overlays for Python 3.12.13 (AppPkg)
+PyMod-3.12.13 ù UEFI overlays for Python 3.12.13 (AppPkg)
 
 Source of truth for all UEFI-specific C, headers, and stdlib Python patches.
 The stock tree under Python-3.12.13/ should match upstream CPython 3.12.13 for
@@ -10,7 +10,21 @@ copies PyMod *.h and *.py into the CPython tree (see Py312ReadMe.txt).
 
 EFI application glue lives only under PyMod-3.12.13/efi/ (not Python-3.12.13/efi/).
 
-Iteration 1: no ctypes/ssl/zlib/readline modules (external packages deferred).
+Iteration 1 omitted ctypes/ssl/zlib/readline until Phase 8 vendoring under PyMod/Modules/.
+
+External / third-party library layout (mirror Python 3.6.8 AppPkg):
+
+  Stock CPython module glue stays under Python-3.12.13/Modules/ when unchanged
+  (e.g. Modules/zlibmodule.c). Vendored library C sources and UEFI-adopted module
+  trees live under PyMod-3.12.13/Modules/; Python312.inf compiles PyMod paths.
+
+  Phase 8.1 (done):
+    Modules/zlib/          edk2-zlib @ 8ae7f507 (INF: PyMod-$(PYTHON_VERSION)/Modules/zlib/*.c)
+
+  Phase 8 planned (same pattern):
+    Modules/readline/      + PyMod readline.c when enabled
+    Modules/openssl/       (or split libcrypto) + _hashopenssl.c, _ssl.c
+    Modules/_ctypes/       + libffi vendor tree (see 3.6.8 PyMod _ctypes/libffi_msvc)
 
 Inventory (mirrored path = same relative path under PyMod-3.12.13/):
 
@@ -28,6 +42,7 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Modules/_sre/sre_lib.h
   Modules/_decimal/libmpdec/mpdecimal.h
   Modules/_hacl/include/krml/lowstar_endianness.h
+  Modules/zlib/              vendored zlib (edk2-zlib 8ae7f507); README.txt in tree
   Lib/os.py, pathlib.py, site.py, uefipath.py
   Lib/importlib/_bootstrap_external.py
   Lib/asyncio/uefi_events.py

@@ -4,7 +4,8 @@
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
 **Updated:** 2026-07-16  
-**Iteration:** Phase **8.1** — `edk2-zlib` / `zlib` enabled in INF + `config.c` (build smoke pending)  
+**Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline in-repo (3.6.8-style); **no** sandbox `PACKAGES_PATH`  
+**Iteration:** Phase **8.1** — vendored `Vendor/edk2-zlib` @ `8ae7f507` (WSL smoke pending)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
@@ -23,7 +24,7 @@
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
-| 8 | External packages | **Partial** — **8.1 zlib** wired; WSL build + `import zlib` pending |
+| 8 | Vendored third-party libs (FULL parity) | **Partial** — 8.1 needs INF pivot to 3.6.8-style zlib |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
 
@@ -33,7 +34,7 @@
 
 | Item | Choice |
 |------|--------|
-| External packages | None (`PACKAGES_PATH` = edk2 + edk2-libc only) |
+| External packages | **None on PACKAGES_PATH** — Phase 8 vendors libs inside edk2-libc |
 | Omit modules | `_ctypes`, `_ctypes_test`, `_ssl`, `_hashopenssl` / `_hashlib` (OpenSSL), `zlib`, `readline` |
 | Entry point | `UefiMain` |
 | INF | Monolithic `Python312.inf` (MIN, ~241 sources) |
@@ -292,15 +293,16 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 | 7.5 | PyMod-only UEFI delta cleanup | **Done** |
 | 7.6 | Upstream libc patches | **Deferred** (do later) |
 
-## Phase 8
+## Phase 8 — Vendored libraries (upstream FULL)
 
-External packages — **8.1 in progress** (`zlib` + **edk2-zlib**). Guide:
-[`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md). Order: 8.1 zlib → 8.2 readline → 8.3–8.4 openssl → 8.5 ctypes (see plan). VS2022 deferred.
+Per updated plan: **edk2-py312 module parity** without intel-sandbox packages. Order:
+8.1 zlib → 8.2 readline → 8.3–8.4 OpenSSL → 8.5 libffi/ctypes. Guide:
+[`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md).
 
 | Step | Action | Result |
 |------|--------|--------|
-| 8.1 | `edk2-zlib` + `zlib` in INF/`config.c` | **Partial** — code on branch; needs `PACKAGES_PATH` + rebuild + smoke |
-| 8.2–8.5 | readline, openssl, ctypes | Not started |
+| 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL rebuild + `import zlib` smoke pending |
+| 8.2–8.5 | readline, OpenSSL, libffi/ctypes | Not started |
 
 ---
 
