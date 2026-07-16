@@ -294,7 +294,7 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 
 ## Phase 8
 
-External packages, VS2022 — deferred. See plan.
+External packages — **next work** (easy → complex: **8.1 zlib** → **8.2 readline** → **8.3–8.4 openssl** → **8.5 ctypes**). See [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md) Phase 8. VS2022 and other items deferred within Phase 8.
 
 ---
 

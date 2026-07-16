@@ -26,7 +26,7 @@ then add a follow-on MSVC porting plan.
 | Excluded package | C modules / pieces to omit in Iteration 1 |
 |------------------|-------------------------------------------|
 | `edk2-libffi` | `_ctypes` (`Modules/_ctypes/*`), `_ctypes_test`, `PythonTestLib`, `LibFFI` library class / `.dec` |
-| `edk2-openssl` | `_ssl`, `_hashopenssl` (and any OpenSSL-backed `_hashlib` path), `OpensslLib` / `LibOpenSSL` |
+| `edk2-openssl` | `_ssl`, `_hashlib` (via `Modules/_hashopenssl.c`), `OpensslLib` / `LibOpenSSL` |
 | `edk2-zlib` | `zlib` (`Modules/zlibmodule.c` + in-tree zlib objs if linked via LibZlib), `LibZlib` |
 | `edk2-pyreadline` | `readline` (`Modules/readline.c`) — already optional/commented in current Ext INF |
 
@@ -597,12 +597,13 @@ If you switch layout, update `PyMod-.../Include/pyconfig.h` `PREFIX` / `EXEC_PRE
 2. Common Ext without external packages: e.g. `_json`, `_pickle`, `_struct`, `array`, `math`/`cmath`, `_datetime`, `_decimal`, `_asyncio`, `_socket` + BsdSocketLib/EfiSocketLib, in-tree hashes (`_md5`, `_sha*`, `_blake2`), `pyexpat`, etc.
 3. **Explicitly skip:** `_ctypes`, `_ssl`, `_hashopenssl`, `zlib`, `readline`, `_ctypes_test`
 
-**Iteration 2+ (separate follow-on)** — one package at a time:
+**Iteration 2+ (Phase 8)** — one external package at a time, **easy → complex** (see Phase 8):
 
-4. `zlib` + `edk2-zlib` on `PACKAGES_PATH`
-5. `_ssl` / `_hashopenssl` + `edk2-openssl`
-6. `_ctypes` (+ test) + `edk2-libffi`
-7. `readline` + `edk2-pyreadline` (optional)
+1. `zlib` + `edk2-zlib`
+2. `readline` + `edk2-pyreadline` (optional; REPL line editing)
+3. `_hashlib` + `edk2-openssl` (OpenSSL-backed hashes)
+4. `_ssl` + same `edk2-openssl` package
+5. `_ctypes`, `_ctypes_test` + `edk2-libffi`
 
 After each batch: rebuild + import test.
 
@@ -645,21 +646,101 @@ After each batch: rebuild + import test.
 
 ---
 
-## Phase 8 — Explicitly deferred (do later)
+## Phase 8 — External packages (Iteration 2+)
 
-Do **not** block GCC AppPkg Iteration 1 on these:
+**Goal:** Re-enable C extension modules that Iteration 1 omitted because they need
+out-of-tree EDK II packages. Add **one batch at a time**; after each batch: extend
+`PACKAGES_PATH`, `Python312.inf`, `PyMod-3.12.13/Modules/config.c`, rebuild, and
+run import smoke tests.
 
-1. **External packages and their modules**
-   - `edk2-libffi` → `_ctypes`, `_ctypes_test`
-   - `edk2-openssl` → `_ssl`, `_hashopenssl`
-   - `edk2-zlib` → `zlib`
-   - `edk2-pyreadline` → `readline`
-2. **VS2022 / MSFT** toolchain (NASM vs MASM, `/DUEFI_MSVC_64`, ctypes libffi_msvc, warning disables)
-3. Coexistence packaging of 3.6.8 and 3.12 on one volume
-4. Dynamic extension loading
-5. Free-threaded / experimental CPython builds
-6. Full CPython test suite on UEFI
-7. Matching full edk2-py312 Ext feature set (`FULL` INF)
+**Prerequisite:** Iteration 1 green (GCC / `BUILD_PYTHON312` / package / basic REPL).
+
+Do **not** block Iteration 1 on Phase 8. VS2022, coexistence packaging, dynamic
+`.so` loading, and full edk2-py312 `FULL` INF parity remain **after** these five
+batches unless noted.
+
+---
+
+### Iteration 1 omissions (inventory)
+
+These are commented out in `PyMod-3.12.13/Modules/config.c` and omitted from
+`Python312.inf` `[Sources]` / `[Packages]` / `[LibraryClasses]`:
+
+| Python module | C sources (typical) | External package | Notes |
+|---------------|-------------------|------------------|--------|
+| `zlib` | `Modules/zlibmodule.c` (+ link via `LibZlib`, not 3.6-style vendored `Modules/zlib/*.c` unless you choose that) | **edk2-zlib** | `import zlib`; used by `gzip`, some stdlib paths |
+| `readline` | `Modules/readline.c` | **edk2-pyreadline** | GNU **readline** module — not `Parser/myreadline.c` (already in INF) |
+| `hashlib` (OpenSSL path) | `Modules/_hashopenssl.c` | **edk2-openssl** | Registers as **`_hashlib`** in `config.c`; in-tree `_md5` / `_sha*` / `_blake2` / `_sha3` already work without this |
+| `ssl` | `Modules/_ssl.c` | **edk2-openssl** (same tree as `_hashlib`) | `import ssl`; usually enable **after** `_hashlib` smoke passes |
+| `_ctypes` | `Modules/_ctypes/_ctypes.c`, `callbacks.c`, `callproc.c`, `cfield.c`, `stgdict.c`, … | **edk2-libffi** | Callbacks, libffi, platform glue |
+| `_ctypes_test` | `Modules/_ctypes/_ctypes_test.c` | **edk2-libffi** | Optional test module; enable with `_ctypes` |
+
+**Iteration 1 `PACKAGES_PATH` (unchanged until Phase 8):**
+
+```text
+PACKAGES_PATH=<edk2>:<edk2-libc>
+```
+
+**Phase 8 adds one path segment per package**, e.g.:
+
+```text
+PACKAGES_PATH=<edk2>:<edk2-libc>:<edk2-zlib>/efi
+```
+
+(Exact subdirectory names match each package’s README — mirror **edk2-py312**
+`PACKAGES_PATH` when in doubt.)
+
+---
+
+### Recommended order: easy → complex
+
+Work **top to bottom**. Complexity is integration surface (INF, link, UEFI
+constraints, stdlib fallout), not just line count.
+
+| Step | Package | Enable in `config.c` | Why this order |
+|------|---------|----------------------|----------------|
+| **8.1** | **edk2-zlib** | `zlib` | Single extension, small API, no callbacks/asm; good first external link |
+| **8.2** | **edk2-pyreadline** | `readline` | One module; improves REPL only; no TLS/crypto |
+| **8.3** | **edk2-openssl** | `_hashlib` | One `.c` file; validates OpenSSL link before full `ssl` |
+| **8.4** | **edk2-openssl** (same) | `_ssl` | TLS, contexts, cert APIs; depends on OpenSSL + often on 8.3 |
+| **8.5** | **edk2-libffi** | `_ctypes`, then `_ctypes_test` | Hardest: libffi, `callproc`/callbacks, CPU helpers (NASM/GAS), optional `Lib/ctypes/*` via `srcprep` |
+
+---
+
+### Per-step checklist (repeat for 8.1 … 8.5)
+
+1. Clone/build the external package for **GCC / X64** (same as edk2-py312).
+2. Append package path to **`PACKAGES_PATH`** (keep `edk2` + `edk2-libc`).
+3. Copy UEFI deltas from **edk2-py31213/edk2-cpython** into **PyMod** if any
+   (`_ssl.c`, `_ctypes/*`, `zlibmodule.c`, `readline.c`, …).
+4. Uncomment **`extern PyInit_*`** and **`_PyImport_Inittab`** entries in
+   `PyMod-3.12.13/Modules/config.c`.
+5. Add **`[Sources]`**, **`[Packages]`**, **`[LibraryClasses]`** to
+   `Python312.inf` (mirror edk2-py312 `Python312.inf` / ExtLib for that module).
+6. Apply **StdLib patches** locally (unchanged policy); run **`srcprep.py`**.
+7. **`build -D BUILD_PYTHON312`** → **`create_python_pkg.sh`**.
+8. **Smoke** (minimum):
+
+| After step | Smoke |
+|------------|--------|
+| 8.1 | `import zlib`; `zlib.crc32(b"uefi")` |
+| 8.2 | `import readline` (if exposed); REPL line edit / history if supported |
+| 8.3 | `import hashlib`; `hashlib.sha256(b"x").hexdigest()` (OpenSSL path) |
+| 8.4 | `import ssl`; create default context (depth per firmware policy) |
+| 8.5 | `import ctypes`; simple `ctypes.c_int`; optional `_ctypes_test` |
+
+---
+
+### Phase 8 — Other deferred work (not external-package batches)
+
+Do after or in parallel with 8.1–8.5 only if needed:
+
+1. **VS2022 / MSFT** — NASM vs MASM, `/DUEFI_MSVC_64`, ctypes `libffi_msvc`, warning disables
+2. **Coexistence packaging** — Python 3.6.8 and 3.12.13 on one FAT volume
+3. **Dynamic extension loading** — `lib-dynload` beyond empty directory
+4. **Free-threaded / experimental** CPython builds
+5. **Full CPython test suite** on UEFI
+6. **edk2-py312 `FULL` INF parity** — all Ext batches above + any remaining diffs
 
 ---
 
@@ -679,7 +760,7 @@ Do **not** block GCC AppPkg Iteration 1 on these:
 | `stage0.sh` disk image | `create_python_pkg.sh` (+ optional later QEMU helpers) |
 | `ENTRY_POINT = UefiMain` | Keep initially |
 | Builtin name `uefi` / `uefipath` | Keep (do not force rename to 3.6.8 `edk2`) unless API compat required |
-| `_ctypes` / `_ssl` / `zlib` / `readline` | **Omitted in Iteration 1** |
+| `_ctypes` / `_ssl` / `zlib` / `readline` | **Omitted in Iteration 1** — Phase **8.1–8.5** (see plan) |
 
 ---
 
@@ -694,7 +775,7 @@ Do **not** block GCC AppPkg Iteration 1 on these:
 [ ] Phase 5  Libc patches + first GCC AppPkg link (PACKAGES_PATH = edk2 + edk2-libc only)
 [ ] Phase 6  Package, REPL smoke (no ssl/ctypes/zlib/readline)
 [ ] Phase 7  Docs + CI for Iteration 1
-[ ] Phase 8  (Later) external packages + VS2022
+[ ] Phase 8  External packages 8.1 zlib → 8.2 readline → 8.3–8.4 openssl → 8.5 ctypes
 ```
 
 ---
@@ -727,10 +808,10 @@ Do **not** block GCC AppPkg Iteration 1 on these:
 6. CI workflow producing a package artifact using `PACKAGES_PATH=edk2:edk2-libc` only.
 7. Verified GCC build: REPL smoke; confirm `import ssl` / `ctypes` / `zlib` / `readline` are unavailable.
 
-### Later iterations
+### Later iterations (Phase 8)
 
-8. Wire `edk2-zlib`, then `edk2-openssl`, then `edk2-libffi`, then optional `edk2-pyreadline`, with matching INF/`config.c` enables.
-9. VS2022 support.
+8. Wire external packages **in plan order**: **edk2-zlib** → **edk2-pyreadline** → **edk2-openssl** (`_hashlib` then `_ssl`) → **edk2-libffi** (`_ctypes`, `_ctypes_test`), updating INF + `config.c` each step.
+9. VS2022 support (Phase 8 “other deferred”).
 
 ---
 
