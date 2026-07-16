@@ -260,13 +260,6 @@ shutdown(how) -- shut down traffic in one or both directions\n\
 
 #ifndef MS_WINDOWS
 
-#ifdef UEFI_C_SOURCE
-int __cmsg_alignbytes()
-{
-   return sizeof(void*);
-}
-#endif
-
 /* Non-MS WINDOWS includes */
 #ifdef HAVE_NETDB_H
 #  include <netdb.h>
@@ -3271,10 +3264,7 @@ sock_setsockopt(PySocketSockObject *s, PyObject *args)
 
 done:
     if (res < 0) {
-#ifndef UEFI_C_SOURCE
-      // edk2-libc implements empty setsockopt() that always returns error    
         return s->errorhandler();
-#endif    
     }
 
     Py_RETURN_NONE;
@@ -4074,9 +4064,7 @@ sock_recvmsg_impl(PySocketSockObject *s, void *data)
 {
     struct sock_recvmsg *ctx = data;
 
-#ifndef UEFI_C_SOURCE    
     ctx->result = recvmsg(s->sock_fd, ctx->msg, ctx->flags);
-#endif    
     return  (ctx->result >= 0);
 }
 
@@ -4692,9 +4680,7 @@ sock_sendmsg_impl(PySocketSockObject *s, void *data)
 {
     struct sock_sendmsg *ctx = data;
 
-#ifndef UEFI_C_SOURCE    
     ctx->result = sendmsg(s->sock_fd, ctx->msg, ctx->flags);
-#endif    
     return (ctx->result >= 0);
 }
 

@@ -14,11 +14,7 @@
 #include <sys/sockio.h>
 #endif
 
-#ifdef UEFI_C_SOURCE
-#include <sys/termios.h>
-#else
 #include <termios.h>
-#endif 
 #include <sys/ioctl.h>
 
 /* HP-UX requires that this be included to pick up MDCD, MCTS, MDSR,
@@ -268,7 +264,6 @@ static PyObject *
 termios_tcsendbreak_impl(PyObject *module, int fd, int duration)
 /*[clinic end generated code: output=5945f589b5d3ac66 input=dc2f32417691f8ed]*/
 {
-#ifndef UEFI_C_SOURCE  
     termiosmodulestate *state = PyModule_GetState(module);
     int r;
 
@@ -279,7 +274,7 @@ termios_tcsendbreak_impl(PyObject *module, int fd, int duration)
     if (r == -1) {
         return PyErr_SetFromErrno(state->TermiosError);
     }
-#endif
+
     Py_RETURN_NONE;
 }
 
@@ -485,10 +480,9 @@ termios_tcsetwinsize_impl(PyObject *module, int fd, PyObject *winsz)
     }
     Py_XDECREF(tmp_item);
 
-
-#if defined(TIOCGWINSZ) && defined(TIOCSWINSZ)
     termiosmodulestate *state = PyModule_GetState(module);
 
+#if defined(TIOCGWINSZ) && defined(TIOCSWINSZ)
     struct winsize w;
     /* Get the old winsize because it might have
        more fields such as xpixel, ypixel. */
@@ -515,8 +509,6 @@ termios_tcsetwinsize_impl(PyObject *module, int fd, PyObject *winsz)
 
     Py_RETURN_NONE;
 #elif defined(TIOCGSIZE) && defined(TIOCSSIZE)
-    termiosmodulestate *state = PyModule_GetState(module);
-    
     struct ttysize s;
     int r;
     /* Get the old ttysize because it might have more fields. */
@@ -843,11 +835,9 @@ static struct constant {
     {"VSWTC", VSWTC},
     {"VSWTCH", VSWTCH},
 #endif
-#ifdef VSTART    
     {"VSTART", VSTART},
     {"VSTOP", VSTOP},
     {"VSUSP", VSUSP},
-#endif    
     {"VEOL", VEOL},
 #ifdef VREPRINT
     {"VREPRINT", VREPRINT},

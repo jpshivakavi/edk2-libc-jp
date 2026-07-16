@@ -454,12 +454,7 @@ seterror(Py_ssize_t iarg, const char *msg, int *levels, const char *fname,
         }
         if (iarg != 0) {
             PyOS_snprintf(p, sizeof(buf) - (p - buf),
-#ifndef UEFI_C_SOURCE                          
-                          "argument %zd",
-#else                          
-                          "argument %lld",
-#endif                          
-                          iarg);
+                          "argument %zd", iarg);
             i = 0;
             p += strlen(p);
             while (i < 32 && levels[i] > 0 && (int)(p-buf) < 220) {
@@ -547,22 +542,14 @@ converttuple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
         levels[0] = 0;
         if (toplevel) {
             PyOS_snprintf(msgbuf, bufsize,
-#ifndef UEFI_C_SOURCE                          
                           "expected %d argument%s, not %zd",
-#else                          
-                          "expected %d argument%s, not %lld",
-#endif
                           n,
                           n == 1 ? "" : "s",
                           len);
         }
         else {
             PyOS_snprintf(msgbuf, bufsize,
-#ifndef UEFI_C_SOURCE                          
                           "must be sequence of length %d, not %zd",
-#else                          
-                          "must be sequence of length %d, not %lld",
-#endif                          
                           n, len);
         }
         return msgbuf;

@@ -51,8 +51,8 @@ Source alignment (important):
   3.1 Tree layout
   ---------------
   AppPkg/Applications/Python/Python-3.12.13/
-    Python-3.12.13/          CPython 3.12.13 + UEFI deltas
-    PyMod-3.12.13/           UEFI overlays (.c/.h/.py); EFI entry (efi/)
+    Python-3.12.13/          Upstream CPython 3.12.13 sources (no in-tree UEFI forks)
+    PyMod-3.12.13/           UEFI overlays (.c/.h/.py); EFI entry (efi/); see README.txt
     Python312.inf            Monolithic EDK II module (Iteration 1 MIN)
     srcprep.py               Copies PyMod .h/.py into the CPython tree
     patches/                 StdLib patches (apply locally; see section 3.2)
@@ -89,6 +89,9 @@ Source alignment (important):
     python3 srcprep.py
 
   Run srcprep after changing PyMod-3.12.13/*.h or overlay *.py.
+
+  Do not add UEFI_C_SOURCE edits under Python-3.12.13/ for paths listed in
+  PyMod-3.12.13/README.txt; Python312.inf builds those .c files from PyMod.
 
   Frozen / deepfreeze artifacts are gitignored.  Before the first build on a
   clean tree, ensure Python/deepfreeze/deepfreeze.c and related frozen headers

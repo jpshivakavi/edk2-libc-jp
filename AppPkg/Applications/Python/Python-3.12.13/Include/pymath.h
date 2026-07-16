@@ -37,11 +37,7 @@
 
 // Py_IS_FINITE(X)
 // Return 1 if float or double arg is neither infinite nor NAN, else 0.
-#ifndef UEFI_C_SOURCE
 #define Py_IS_FINITE(X) isfinite(X)
-#else
-#define Py_IS_FINITE(X) finite(X)
-#endif
 
 // Py_INFINITY: Value that evaluates to a positive double infinity.
 #ifndef Py_INFINITY

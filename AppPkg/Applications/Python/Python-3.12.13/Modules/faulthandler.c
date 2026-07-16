@@ -591,10 +591,8 @@ faulthandler_thread(void *unused)
         errmsg = _Py_DumpTracebackThreads(thread.fd, thread.interp, NULL);
         ok = (errmsg == NULL);
 
-#ifndef UEFI_C_SOURCE        
         if (thread.exit)
             _exit(1);
-#endif        
     } while (ok && thread.repeat);
 
     /* The only way out */

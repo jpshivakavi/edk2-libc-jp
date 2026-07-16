@@ -2388,7 +2388,7 @@ extern "C" {
 static PerfMapState perf_map_state;
 
 PyAPI_FUNC(int) PyUnstable_PerfMapState_Init(void) {
-#if !defined(MS_WINDOWS) && !defined(UEFI_C_SOURCE)
+#ifndef MS_WINDOWS
     char filename[100];
     pid_t pid = getpid();
     // Use nofollow flag to prevent symlink attacks.

@@ -20,10 +20,6 @@ class complex "PyComplexObject *" "&PyComplex_Type"
 
 #include "clinic/complexobject.c.h"
 
-#ifdef UEFI_C_SOURCE
-#include "efi/cmath.h"
-#endif
-
 /* elementary operations on complex numbers */
 
 static Py_complex c_1 = {1., 0.};

@@ -12,10 +12,6 @@
    float.h.  We assume that FLT_RADIX is either 2 or 16. */
 #include <float.h>
 
-#ifdef UEFI_C_SOURCE
-#include "efi/cmath.h"
-#endif
-
 /* For _Py_log1p with workarounds for buggy handling of zeros. */
 #include "_math.h"
 

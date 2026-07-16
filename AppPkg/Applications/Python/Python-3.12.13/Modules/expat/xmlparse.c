@@ -117,12 +117,6 @@
 #  include <errno.h>
 #endif
 
-#ifdef UEFI_C_SOURCE
-#include <expat_config.h>
-#include <efi/random.h>
-#define GRND_NONBLOCK 0x0001
-#endif /* UEFI_C_SOURCE */
-
 #ifdef _WIN32
 #  include "winconfig.h"
 #endif
@@ -131,7 +125,7 @@
 #include "expat.h"
 #include "siphash.h"
 
-#if !defined(UEFI_C_SOURCE) && (defined(HAVE_GETRANDOM) || defined(HAVE_SYSCALL_GETRANDOM))
+#if defined(HAVE_GETRANDOM) || defined(HAVE_SYSCALL_GETRANDOM)
 #  if defined(HAVE_GETRANDOM)
 #    include <sys/random.h> /* getrandom */
 #  else

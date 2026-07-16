@@ -610,6 +610,9 @@ signal_strsignal_impl(PyObject *module, int signalnum)
     switch (signalnum) {
         /* Though being a UNIX, HP-UX does not provide strsignal(3). */
 #ifndef MS_WINDOWS
+        case SIGHUP:
+            res = "Hangup";
+            break;
         case SIGALRM:
             res = "Alarm clock";
             break;
@@ -619,14 +622,9 @@ signal_strsignal_impl(PyObject *module, int signalnum)
         case SIGQUIT:
             res = "Quit";
             break;
-#ifndef UEFI_C_SOURCE            
         case SIGCHLD:
             res = "Child exited";
             break;
-        case SIGHUP:
-            res = "Hangup";
-            break;
-#endif            
 #endif
         /* Custom redefinition of POSIX signals allowed on Windows. */
         case SIGINT:
@@ -1909,10 +1907,6 @@ PyErr_SetInterrupt(void)
 static int
 signal_install_handlers(void)
 {
-#ifdef UEFI_C_SOURCE
-    PyOS_setsig(SIGINT, SIG_DFL);  
-#endif  
-  
 #ifdef SIGPIPE
     PyOS_setsig(SIGPIPE, SIG_IGN);
 #endif

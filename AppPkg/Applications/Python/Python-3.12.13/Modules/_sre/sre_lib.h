@@ -372,12 +372,6 @@ SRE(count)(SRE_STATE* state, const SRE_CODE* pattern, Py_ssize_t maxcount)
         state->lastindex = ctx->lastindex; \
     } while (0)
 
-#ifdef UEFI_C_SOURCE
-#undef RETURN_ERROR
-#undef RETURN_FAILURE
-#undef RETURN_SUCCESS
-#endif
-
 #define RETURN_ERROR(i) do { return i; } while(0)
 #define RETURN_FAILURE do { ret = 0; goto exit; } while(0)
 #define RETURN_SUCCESS do { ret = 1; goto exit; } while(0)

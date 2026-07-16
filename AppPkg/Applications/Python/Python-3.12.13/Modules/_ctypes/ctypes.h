@@ -323,9 +323,6 @@ PyObject *_ctypes_callproc(PPROC pProc,
 #define FUNCFLAG_PYTHONAPI 0x4
 #define FUNCFLAG_USE_ERRNO 0x8
 #define FUNCFLAG_USE_LASTERROR 0x10
-#if defined(UEFI_C_SOURCE)
-#define FUNCFLAG_EFICALL 0x20
-#endif
 
 #define TYPEFLAG_ISPOINTER 0x100
 #define TYPEFLAG_HASPOINTER 0x200

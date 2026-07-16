@@ -94,7 +94,7 @@ _Py_bswap64(uint64_t word)
 static inline int
 _Py_popcount32(uint32_t x)
 {
-#if !defined(UEFI_C_SOURCE) && (defined(__clang__) || defined(__GNUC__))
+#if (defined(__clang__) || defined(__GNUC__))
 
 #if SIZEOF_INT >= 4
     Py_BUILD_ASSERT(sizeof(x) <= sizeof(unsigned int));

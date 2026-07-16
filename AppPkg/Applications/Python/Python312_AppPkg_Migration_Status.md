@@ -22,7 +22,7 @@
 | 4 | Author monolithic Python312.inf (MIN) | **Done** (+ `Parser/myreadline.c`) |
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
-| 7 | Docs + CI | **In progress** — 7.1 Py312ReadMe, 7.2 GCCCompilationBKMs.rst |
+| 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI deferred** (7.6 optional) |
 | 8 | Deferred (external pkgs, VS2022) | Deferred |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
@@ -287,9 +287,9 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 |------|--------|--------|
 | 7.1 | `Py312ReadMe.txt` (3.6.8-style) | **Done** |
 | 7.2 | `GCCCompilationBKMs.rst` for 3.12.13 | **Done** |
-| 7.3 | GitHub Action (GCC + BUILD_PYTHON312) | Not started |
-| 7.4 | Root `Readme.md` pointers | Not started |
-| 7.5 | PyMod-only UEFI delta cleanup | Not started |
+| 7.3 | GitHub Action (GCC + BUILD_PYTHON312) | **Deferred** (do later) |
+| 7.4 | Root `Readme.md` pointers | **Done** |
+| 7.5 | PyMod-only UEFI delta cleanup | **Done** |
 | 7.6 | Upstream libc patches | Optional |
 
 ## Phase 8
@@ -312,12 +312,12 @@ External packages, VS2022 — deferred. See plan.
 
 1. **Windows agent cannot run GCC AppPkg build** — continue on Linux/WSL (see WSL GCC guide).
 2. **Frozen/deepfreeze artifacts missing** — gitignored; must generate/copy before AppPkg build.
-3. **Stock CPython tree still has UEFI deltas** — same content as PyMod for forked files; cleaning to upstream vanilla is optional polish.
+3. ~~**Stock CPython tree still has UEFI deltas**~~ — **Done** (7.5): forked paths reverted to upstream 3.12.13; UEFI only under `PyMod-3.12.13/`. Run `srcprep.py` before build for overlay `.h`/`.py`.
 4. **`create_python_pkg.*` + basic REPL smoke** — **Done** (3.12.13 on UEFI Shell). Extended testing later.
 5. **Local StdLib dirt** may exist from prior `git apply` / `make patch_libc` — discard or keep locally; never stage for Python commits.
 6. **NASM sources** (`edk2stack.nasm`, `edk2handler.nasm`) and `asm_trampoline.S` need toolchain validation under EDK II GCC.
 7. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
-8. Duplicate `efi/src/module_config.c` remains under PyMod; INF uses `Modules/config.c` only.
+8. ~~Duplicate `efi/src/module_config.c`~~ — removed; INF uses `PyMod-3.12.13/Modules/config.c` only. Legacy `Python-3.12.13/efi/` tree removed.
 
 ---
 
@@ -332,4 +332,4 @@ On WSL Ubuntu, in order:
 3. **Required:** `git apply --ignore-whitespace Python-3.12.13/patches/*.patch` (0001 = `upipe`).
 4. `python3 srcprep.py` (if overlays changed).
 5. Ensure frozen/deepfreeze artifacts are present (gitignored).
-6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6). Next: Phase 7 or deeper smoke / Iteration 2.
+6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6). Next: deeper smoke, **7.3 CI**, **7.6** upstream patches, or Iteration 2.

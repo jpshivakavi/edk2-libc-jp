@@ -4,21 +4,11 @@
 #include <windows.h>
 #endif
 
-#if defined(UEFI_C_SOURCE)
-#include <Uefi.h>
-#endif
-
 #include <stdlib.h>               // qsort()
 
 #define EXPORT(x) Py_EXPORTED_SYMBOL x
 
 /* some functions handy for testing */
-
-EXPORT(int)
-_testfunc_pylist_append(PyObject *list, PyObject *item)
-{
-    return PyList_Append(list, item);
-}
 
 EXPORT(int)
 _testfunc_cbk_reg_int(int a, int b, int c, int d, int e,
@@ -434,13 +424,6 @@ EXPORT(int) _testfunc_i_bhilfd(signed char b, short h, int i, long l, float f, d
 */
     return (int)(b + h + i + l + f + d);
 }
-
-#if defined(UEFI_C_SOURCE)
-EFIAPI int _testfunc_i_bhilfd_efi64(signed char b, short h, int i, long l, float f, double d)
-{
-    return (int)(b + h + i + l + f + d);
-}
-#endif
 
 EXPORT(float) _testfunc_f_bhilfd(signed char b, short h, int i, long l, float f, double d)
 {
@@ -1162,148 +1145,15 @@ EXPORT(long) _test_i38748_runCallback(_test_i38748_funcType callback, int a, int
 
 #endif
 
-#if defined(UEFI_C_SOURCE)
-#define EXPORT_FUNC(sym) \
-      PyDict_SetItem(dlsyms, \
-                     PyUnicode_FromString(#sym), \
-                     PyLong_FromVoidPtr(sym))
-
-#define EXPORT_VAR(sym) \
-      PyDict_SetItem(dlsyms, \
-                     PyUnicode_FromString(#sym), \
-                     PyLong_FromVoidPtr(&sym))
-
-void register_symbols(PyObject *dlsyms)
+EXPORT(int)
+_testfunc_pylist_append(PyObject *list, PyObject *item)
 {
-   EXPORT_FUNC(_testfunc_pylist_append);
-   EXPORT_FUNC(_testfunc_cbk_reg_int);
-   EXPORT_FUNC(_testfunc_cbk_reg_double);
-   EXPORT_FUNC(_testfunc_cbk_large_struct);
-   EXPORT_FUNC(_testfunc_large_struct_update_value);
-   EXPORT_FUNC(_testfunc_reg_struct_update_value);
-   EXPORT_FUNC(_testfunc_array_in_struct2);
-    EXPORT_FUNC(_testfunc_array_in_struct3A);
-    EXPORT_FUNC(_testfunc_array_in_struct3B);
-    EXPORT_FUNC(_testfunc_array_in_struct3B_set_defaults);
-    EXPORT_FUNC(_testfunc_array_in_struct3C);
-    EXPORT_FUNC(_testfunc_array_in_struct3C_set_defaults);
-    EXPORT_FUNC(_testfunc_array_in_struct3D);
-    EXPORT_FUNC(_testfunc_array_in_struct3D_set_defaults);
-    EXPORT_FUNC(_testfunc_array_in_struct3E);
-    EXPORT_FUNC(_testfunc_array_in_struct3E_set_defaults);
-   EXPORT_FUNC(_testfunc_union_by_value1);
-   EXPORT_FUNC(_testfunc_union_by_value2);
-   EXPORT_FUNC(_testfunc_union_by_reference1);
-   EXPORT_FUNC(_testfunc_union_by_reference2);
-   EXPORT_FUNC(_testfunc_union_by_reference3);
-   EXPORT_FUNC(_testfunc_bitfield_by_value1);
-   EXPORT_FUNC(_testfunc_bitfield_by_reference1);
-   EXPORT_FUNC(_testfunc_bitfield_by_reference2);
-   EXPORT_FUNC(_testfunc_bitfield_by_value2);       
-   EXPORT_FUNC(testfunc_array);
-   EXPORT_FUNC(testfunc_Ddd);
-   EXPORT_FUNC(testfunc_DDD);
-   EXPORT_FUNC(testfunc_iii);
-   EXPORT_FUNC(myprintf);
-   EXPORT_FUNC(my_strtok);
-   EXPORT_FUNC(my_strchr);
-   EXPORT_FUNC(my_sqrt);
-   EXPORT_FUNC(my_qsort);
-   EXPORT_FUNC(_testfunc_ai8);
-   EXPORT_FUNC(_testfunc_v);
-   EXPORT_FUNC(_testfunc_i_bhilfd);
-#if defined(UEFI_C_SOURCE)
-   EXPORT_FUNC(_testfunc_i_bhilfd_efi64);
-#endif   
-   EXPORT_FUNC(_testfunc_f_bhilfd);
-   EXPORT_FUNC(_testfunc_d_bhilfd);
-   EXPORT_FUNC(_testfunc_D_bhilfD);   
-   EXPORT_FUNC(_testfunc_p_p);
-   EXPORT_FUNC(_testfunc_c_p_p);
-   EXPORT_FUNC(get_strchr);
-   EXPORT_FUNC(my_strdup);
-   EXPORT_FUNC(my_free);
-   EXPORT_FUNC(my_wcsdup);
-   EXPORT_FUNC(my_wcslen);
-   EXPORT_FUNC(_testfunc_callfuncp);
-   EXPORT_FUNC(_testfunc_deref_pointer);
-   EXPORT_FUNC(_testfunc_callback_with_pointer);
-   EXPORT_FUNC(_testfunc_q_bhilfdq);
-   EXPORT_FUNC(_testfunc_q_bhilfd);
-   EXPORT_FUNC(_testfunc_callback_i_if);
-   EXPORT_FUNC(_testfunc_callback_q_qf);
-   EXPORT_FUNC(getSPAMANDEGGS);
-   EXPORT_FUNC(_testfunc_byval);
-   EXPORT_FUNC(get_an_integer);
-   EXPORT_FUNC(integrate);
-   EXPORT_FUNC(*library_get);
-   EXPORT_FUNC(_py_func_si);
-   EXPORT_FUNC(_py_func);
-   EXPORT_FUNC(unpack_bitfields);
-   EXPORT_FUNC(tf_b);
-   EXPORT_FUNC(tf_B);
-   EXPORT_FUNC(tf_h);
-   EXPORT_FUNC(tf_H);
-   EXPORT_FUNC(tf_i);
-   EXPORT_FUNC(tf_I);
-   EXPORT_FUNC(tf_l);
-   EXPORT_FUNC(tf_L);
-   EXPORT_FUNC(tf_q);
-   EXPORT_FUNC(tf_Q);
-   EXPORT_FUNC(tf_f);
-   EXPORT_FUNC(tf_d);
-   EXPORT_FUNC(tf_D);
-   EXPORT_FUNC(tf_bb);
-   EXPORT_FUNC(tf_bB);
-   EXPORT_FUNC(tf_bh);
-   EXPORT_FUNC(tf_bH);
-   EXPORT_FUNC(tf_bi);
-   EXPORT_FUNC(tf_bI);
-   EXPORT_FUNC(tf_bl);
-   EXPORT_FUNC(tf_bL);
-   EXPORT_FUNC(tf_bq);
-   EXPORT_FUNC(tf_bQ);
-   EXPORT_FUNC(tf_bf);
-   EXPORT_FUNC(tf_bd);
-   EXPORT_FUNC(tf_bD);
-   EXPORT_FUNC(tv_i);
-   EXPORT_FUNC(PointInRect);
-   EXPORT_FUNC(ReturnRect);
-   EXPORT_FUNC(ret_2h_func);
-   EXPORT_FUNC(ret_8i_func);
-   EXPORT_FUNC(GetRectangle);
-   EXPORT_FUNC(TwoOutArgs);
-   
-   EXPORT_VAR(last_tfrsuv_arg);
-   EXPORT_VAR(last_tf_arg_s);
-   EXPORT_VAR(last_tf_arg_u);
-   EXPORT_VAR(an_integer);
-   EXPORT_VAR(left);
-   EXPORT_VAR(top);
-   EXPORT_VAR(right);
-   EXPORT_VAR(bottom);
+    return PyList_Append(list, item);
 }
-   
-#endif
-
-#if defined(UEFI_C_SOURCE)   
-static int _ctypes_test_exec(PyObject *module) {
-  PyModule_AddStringConstant(module, "__file__", "_ctypes_test");
-  PyObject* dlsyms = PyDict_New();
-  
-  register_symbols(dlsyms);
-      
-  PyObject_SetAttr(module,
-                   PyUnicode_FromString("__dlsyms__"),
-                   dlsyms);
-  return 0;
-}
-#endif   
 
 static struct PyModuleDef_Slot _ctypes_test_slots[] = {
-  {Py_mod_exec, _ctypes_test_exec},
-  {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
-  {0, NULL}
+    {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
+    {0, NULL}
 };
 
 static struct PyModuleDef _ctypes_testmodule = {
@@ -1321,5 +1171,5 @@ static struct PyModuleDef _ctypes_testmodule = {
 PyMODINIT_FUNC
 PyInit__ctypes_test(void)
 {
-  return PyModuleDef_Init(&_ctypes_testmodule);
+    return PyModuleDef_Init(&_ctypes_testmodule);
 }

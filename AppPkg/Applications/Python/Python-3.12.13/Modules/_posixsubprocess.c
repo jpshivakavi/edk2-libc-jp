@@ -72,23 +72,6 @@
 #define MAX_GROUPS 64
 #endif
 
-#ifndef UEFI_C_SOURCE
-#define NAMLEN(dirent) strlen((dirent)->d_name)
-#else
-#include <stdio.h>
-#include <efi/unistd.h>
-#include <efi/fs.h>
-
-#define NAMLEN(dirent) wcslen((dirent)->d_name)
-#define _exit exit
-
-void PyOS_BeforeFork(void) {}
-
-void PyOS_AfterFork_Child() {}
-
-void PyOS_AfterFork_Parent(void) {}
-#endif /* UEFI_C_SOURCE */   
-
 #define POSIX_CALL(call)   do { if ((call) == -1) goto error; } while (0)
 
 static struct PyModuleDef _posixsubprocessmodule;
@@ -427,11 +410,6 @@ _close_open_fds_maybe_unsafe(int start_fd, int *fds_to_keep,
                              Py_ssize_t fds_to_keep_len)
 {
     DIR *proc_fd_dir;
-    char *dm_name = NULL;
-#ifdef UEFI_C_SOURCE
-    char ascii_dm_name[PATH_MAX];
-#endif
-    
 #ifndef HAVE_DIRFD
     while (_is_fd_in_sorted_fd_sequence(start_fd, fds_to_keep,
                                         fds_to_keep_len)) {
@@ -465,16 +443,7 @@ _close_open_fds_maybe_unsafe(int start_fd, int *fds_to_keep,
         errno = 0;
         while ((dir_entry = readdir(proc_fd_dir))) {
             int fd;
-            dm_name = (char*)dir_entry->d_name;
-
-#ifdef UEFI_C_SOURCE
-            dm_name = path_to_ascii(ascii_dm_name, (wchar_t*)dm_name,
-                                    sizeof(ascii_dm_name));
-            if(dm_name == NULL) 
-               continue;
-#endif
-            
-            if ((fd = _pos_int_from_ascii(dm_name)) < 0)
+            if ((fd = _pos_int_from_ascii(dir_entry->d_name)) < 0)
                 continue;  /* Not a number. */
             if (fd != fd_used_by_opendir && fd >= start_fd &&
                 !_is_fd_in_sorted_fd_sequence(fd, fds_to_keep,

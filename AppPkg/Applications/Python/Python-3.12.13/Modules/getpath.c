@@ -18,10 +18,6 @@
 #  include <mach-o/dyld.h>
 #endif
 
-#ifdef UEFI_C_SOURCE
-#include "efi/environ.h"
-#endif
-
 /* Reference the precompiled getpath.py */
 #include "../Python/frozen_modules/getpath.h"
 
@@ -878,9 +874,7 @@ _PyConfig_InitPathConfig(PyConfig *config, int compute_path_config)
 #endif
 
     if (
-#if defined(UEFI_C_SOURCE)            
-        !decode_to_dict(dict, "os_name", "uefi") ||
-#elif defined(MS_WINDOWS)
+#ifdef MS_WINDOWS
         !decode_to_dict(dict, "os_name", "nt") ||
 #elif defined(__APPLE__)
         !decode_to_dict(dict, "os_name", "darwin") ||

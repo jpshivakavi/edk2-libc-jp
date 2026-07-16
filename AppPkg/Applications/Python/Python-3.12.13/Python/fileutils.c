@@ -51,9 +51,8 @@ int _Py_open_cloexec_works = -1;
 
 // mbstowcs() and mbrtowc() errors
 static const size_t DECODE_ERROR = ((size_t)-1);
-#ifdef HAVE_MBRTOWC
 static const size_t INCOMPLETE_CHARACTER = (size_t)-2;
-#endif
+
 
 static int
 get_surrogateescape(_Py_error_handler errors, int *surrogateescape)
@@ -1642,11 +1641,7 @@ _Py_open_impl(const char *pathname, int flags, int gil_held)
 
         do {
             Py_BEGIN_ALLOW_THREADS
-#ifndef UEFI_C_SOURCE                
             fd = open(pathname, flags);
-#else            
-            fd = open(pathname, flags, 0644);
-#endif            
             Py_END_ALLOW_THREADS
         } while (fd < 0
                  && errno == EINTR && !(async_err = PyErr_CheckSignals()));
@@ -1662,11 +1657,7 @@ _Py_open_impl(const char *pathname, int flags, int gil_held)
         Py_DECREF(pathname_obj);
     }
     else {
-#ifndef UEFI_C_SOURCE                
         fd = open(pathname, flags);
-#else            
-        fd = open(pathname, flags, 0644);
-#endif            
         if (fd < 0)
             return -1;
     }
@@ -2166,14 +2157,6 @@ _Py_isabs(const wchar_t *path)
         return 0;
     }
     return 1;
-#elif defined(UEFI_C_SOURCE)
-    int pos = 0;
-    const wchar_t *p = path;
-    while(p[pos] && p[pos] != L':')
-      pos++;
-    if(p[pos])
-      return 1;
-    return 0;
 #else
     return (path[0] == SEP);
 #endif
@@ -2425,13 +2408,6 @@ _Py_normpath_and_size(wchar_t *path, Py_ssize_t size, Py_ssize_t *normsize)
 #endif
 #define SEP_OR_END(x) (IS_SEP(x) || IS_END(x))
 
-#ifdef UEFI_C_SOURCE
-    int pos = 0;
-    wchar_t *p = p1;
-    while(p[pos] && p[pos] != L':')
-      pos++;
-#endif
-    
     // Skip leading '.\'
     if (p1[0] == L'.' && IS_SEP(&p1[1])) {
         path = &path[2];
@@ -2441,23 +2417,14 @@ _Py_normpath_and_size(wchar_t *path, Py_ssize_t size, Py_ssize_t *normsize)
         p1 = p2 = minP2 = path;
         lastC = SEP;
     }
-#if defined(MS_WINDOWS) || defined(UEFI_C_SOURCE)
+#ifdef MS_WINDOWS
     // Skip past drive segment and update minP2
     else if (p1[0] && p1[1] == L':') {
         *p2++ = *p1++;
         *p2++ = *p1++;
         minP2 = p2;
         lastC = L':';
-    }    
-#if defined(UEFI_C_SOURCE)
-    else if(p1[pos]) {
-        for(int i = 0; i <= pos; i++)
-          p2[i] = p1[i];
-        minP2 = p2;
-        lastC = L':';        
     }
-#endif /* UEFI_C_SOURCE */
-
     // Skip past all \\-prefixed paths, including \\?\, \\.\,
     // and network paths, including the first segment.
     else if (IS_SEP(&p1[0]) && IS_SEP(&p1[1])) {

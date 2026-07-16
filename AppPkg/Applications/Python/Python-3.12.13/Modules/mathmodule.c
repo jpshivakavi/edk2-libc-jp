@@ -65,11 +65,6 @@ raised for division by zero and mod by zero.
 #include "pycore_pymath.h"        // _PY_SHORT_FLOAT_REPR
 /* For DBL_EPSILON in _math.h */
 #include <float.h>
-
-#ifdef UEFI_C_SOURCE
-#include "efi/cmath.h"
-#endif
-
 /* For _Py_log1p with workarounds for buggy handling of zeros. */
 #include "_math.h"
 #include <stdbool.h>
@@ -1110,11 +1105,9 @@ FUNC2(atan2, m_atan2,
 FUNC1(atanh, atanh, 0,
       "atanh($module, x, /)\n--\n\n"
       "Return the inverse hyperbolic tangent of x.")
-#if defined(HAVE_CBRT)
 FUNC1(cbrt, cbrt, 0,
       "cbrt($module, x, /)\n--\n\n"
       "Return the cube root of x.")
-#endif
 
 /*[clinic input]
 math.ceil
@@ -1161,26 +1154,18 @@ FUNC1(cos, cos, 0,
 FUNC1(cosh, cosh, 1,
       "cosh($module, x, /)\n--\n\n"
       "Return the hyperbolic cosine of x.")
-#if defined(HAVE_ERF)    
 FUNC1A(erf, erf,
        "erf($module, x, /)\n--\n\n"
        "Error function at x.")
-#endif
-
-#if defined(HAVE_ERFC)    
 FUNC1A(erfc, erfc,
        "erfc($module, x, /)\n--\n\n"
        "Complementary error function at x.")
-#endif
-    
 FUNC1(exp, exp, 1,
       "exp($module, x, /)\n--\n\n"
       "Return e raised to the power of x.")
-#if defined(HAVE_EXP2)    
 FUNC1(exp2, exp2, 1,
       "exp2($module, x, /)\n--\n\n"
       "Return 2 raised to the power of x.")
-#endif    
 FUNC1(expm1, expm1, 1,
       "expm1($module, x, /)\n--\n\n"
       "Return exp(x)-1.\n\n"
@@ -3899,7 +3884,6 @@ Raises a TypeError, if x or y is not a double, or if steps is not an integer.
 Raises ValueError if steps is negative.
 [clinic start generated code]*/
 
-#if defined(HAVE_NEXTAFTER)
 static PyObject *
 math_nextafter_impl(PyObject *module, double x, double y, PyObject *steps)
 /*[clinic end generated code: output=cc6511f02afc099e input=7f2a5842112af2b4]*/
@@ -4013,7 +3997,6 @@ math_nextafter_impl(PyObject *module, double x, double y, PyObject *steps)
         }
     }
 }
-#endif
 
 
 /*[clinic input]
@@ -4025,7 +4008,6 @@ math.ulp -> double
 Return the value of the least significant bit of the float x.
 [clinic start generated code]*/
 
-#if defined(HAVE_NEXTAFTER)
 static double
 math_ulp_impl(PyObject *module, double x)
 /*[clinic end generated code: output=f5207867a9384dd4 input=31f9bfbbe373fcaa]*/
@@ -4046,7 +4028,6 @@ math_ulp_impl(PyObject *module, double x)
     }
     return x2 - x;
 }
-#endif
 
 static int
 math_exec(PyObject *module)
@@ -4108,25 +4089,17 @@ static PyMethodDef math_methods[] = {
     {"atan",            math_atan,      METH_O,         math_atan_doc},
     {"atan2",           _PyCFunction_CAST(math_atan2),     METH_FASTCALL,  math_atan2_doc},
     {"atanh",           math_atanh,     METH_O,         math_atanh_doc},
-#if defined(HAVE_CBRT)    
     {"cbrt",            math_cbrt,      METH_O,         math_cbrt_doc},
-#endif    
     MATH_CEIL_METHODDEF
     {"copysign",        _PyCFunction_CAST(math_copysign),  METH_FASTCALL,  math_copysign_doc},
     {"cos",             math_cos,       METH_O,         math_cos_doc},
     {"cosh",            math_cosh,      METH_O,         math_cosh_doc},
     MATH_DEGREES_METHODDEF
     MATH_DIST_METHODDEF
-#if defined(HAVE_ERF)    
     {"erf",             math_erf,       METH_O,         math_erf_doc},
-#endif
-#if defined(HAVE_ERFC)    
     {"erfc",            math_erfc,      METH_O,         math_erfc_doc},
-#endif    
     {"exp",             math_exp,       METH_O,         math_exp_doc},
-#if defined(HAVE_EXP2)    
     {"exp2",            math_exp2,      METH_O,         math_exp2_doc},
-#endif    
     {"expm1",           math_expm1,     METH_O,         math_expm1_doc},
     {"fabs",            math_fabs,      METH_O,         math_fabs_doc},
     MATH_FACTORIAL_METHODDEF
@@ -4163,10 +4136,8 @@ static PyMethodDef math_methods[] = {
     MATH_PROD_METHODDEF
     MATH_PERM_METHODDEF
     MATH_COMB_METHODDEF
-#if defined(HAVE_NEXTAFTER)    
     MATH_NEXTAFTER_METHODDEF
     MATH_ULP_METHODDEF
-#endif    
     {NULL,              NULL}           /* sentinel */
 };
 

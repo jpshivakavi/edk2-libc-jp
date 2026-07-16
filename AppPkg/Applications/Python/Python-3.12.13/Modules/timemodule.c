@@ -8,10 +8,6 @@
 
 #include <ctype.h>
 
-#ifdef UEFI_C_SOURCE
-#include "efi/time.h"
-#endif
-
 #ifdef HAVE_SYS_TIMES_H
 #  include <sys/times.h>
 #endif

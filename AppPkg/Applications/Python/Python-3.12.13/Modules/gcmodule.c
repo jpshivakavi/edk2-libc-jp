@@ -1067,11 +1067,7 @@ show_stats_each_generations(GCState *gcstate)
 
     for (int i = 0; i < NUM_GENERATIONS && pos < sizeof(buf); i++) {
         pos += PyOS_snprintf(buf+pos, sizeof(buf)-pos,
-#ifndef UEFI_C_SOURCE                             
                              " %zd",
-#else
-                             " %lld",
-#endif                             
                              gc_list_size(GEN_HEAD(gcstate, i)));
     }
 
@@ -1316,11 +1312,7 @@ gc_collect_main(PyThreadState *tstate, int generation,
     if (gcstate->debug & DEBUG_STATS) {
         double d = _PyTime_AsSecondsDouble(_PyTime_GetPerfCounter() - t1);
         PySys_WriteStderr(
-#ifndef UEFI_C_SOURCE
             "gc: done, %zd unreachable, %zd uncollectable, %.4fs elapsed\n",
-#else
-            "gc: done, %lld unreachable, %lld uncollectable, %.4fs elapsed\n",
-#endif            
             n+m, n, d);
     }
 

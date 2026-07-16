@@ -29,22 +29,16 @@ import sys
 import _warnings
 import marshal
 
-_names = sys.builtin_module_names
 
 _MS_WINDOWS = (sys.platform == 'win32')
-_UEFI = 'uefi' in _names
-
 if _MS_WINDOWS:
     import nt as _os
     import winreg
-elif 'posix' in _names:
+else:
     import posix as _os
-elif 'uefi' in _names:
-    import uefi as _os
 
 
-
-if _MS_WINDOWS or _UEFI:
+if _MS_WINDOWS:
     path_separators = ['\\', '/']
 else:
     path_separators = ['/']
@@ -98,7 +92,7 @@ def _unpack_uint16(data):
     return int.from_bytes(data, 'little')
 
 
-if _MS_WINDOWS or _UEFI:
+if _MS_WINDOWS:
     def _path_join(*path_parts):
         """Replacement for os.path.join()."""
         if not path_parts:
@@ -174,7 +168,7 @@ def _path_isdir(path):
     return _path_is_mode_type(path, 0o040000)
 
 
-if _MS_WINDOWS or _UEFI:
+if _MS_WINDOWS:
     def _path_isabs(path):
         """Replacement for os.path.isabs."""
         if not path:

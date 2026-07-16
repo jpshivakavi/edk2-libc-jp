@@ -18,10 +18,6 @@
 #include <float.h>
 #include <stdlib.h>               // strtol()
 
-#ifdef UEFI_C_SOURCE
-#include "efi/cmath.h"
-#endif
-
 /*[clinic input]
 class float "PyObject *" "&PyFloat_Type"
 [clinic start generated code]*/

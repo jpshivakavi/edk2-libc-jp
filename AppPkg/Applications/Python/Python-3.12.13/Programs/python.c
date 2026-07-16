@@ -2,14 +2,7 @@
 
 #include "Python.h"
 
-#ifdef UEFI_C_SOURCE
-int
-main(int argc, char **argv)
-{
-   *stderr = *stdout;
-   return Py_BytesMain(argc, argv);
-}
-#elif defined(MS_WINDOWS)
+#ifdef MS_WINDOWS
 int
 wmain(int argc, wchar_t **argv)
 {

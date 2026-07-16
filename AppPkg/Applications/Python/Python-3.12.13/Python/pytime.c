@@ -3,11 +3,6 @@
 #  include <winsock2.h>           // struct timeval
 #endif
 
-#ifdef UEFI_C_SOURCE
-#include "efi/cmath.h"
-#include "efi/time.h"
-#endif
-
 #if defined(__APPLE__)
 #  include <mach/mach_time.h>     // mach_absolute_time(), mach_timebase_info()
 

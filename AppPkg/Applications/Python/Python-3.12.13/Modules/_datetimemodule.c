@@ -23,10 +23,6 @@
 #  include <winsock2.h>         /* struct timeval */
 #endif
 
-#ifdef UEFI_C_SOURCE
-# include "efi/cmath.h"
-#endif
-
 #define PyDate_Check(op) PyObject_TypeCheck(op, &PyDateTime_DateType)
 #define PyDate_CheckExact(op) Py_IS_TYPE(op, &PyDateTime_DateType)
 

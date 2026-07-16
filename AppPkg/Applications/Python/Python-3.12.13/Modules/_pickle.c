@@ -1780,12 +1780,7 @@ memo_get(PickleState *st, PicklerObject *self, PyObject *key)
     if (!self->bin) {
         pdata[0] = GET;
         PyOS_snprintf(pdata + 1, sizeof(pdata) - 1,
-#ifndef UEFI_C_SOURCE                      
-                      "%zd\n",
-#else
-                      "%lld\n",
-#endif                      
-                      *value);
+                      "%zd\n", *value);
         len = strlen(pdata);
     }
     else {
@@ -1841,12 +1836,7 @@ memo_put(PickleState *st, PicklerObject *self, PyObject *obj)
     else if (!self->bin) {
         pdata[0] = PUT;
         PyOS_snprintf(pdata + 1, sizeof(pdata) - 1,
-#ifndef UEFI_C_SOURCE                      
-                      "%zd\n",
-#else
-                      "%lld\n",
-#endif                      
-                      idx);
+                      "%zd\n", idx);
         len = strlen(pdata);
     }
     else {
