@@ -22,7 +22,7 @@
 | 4 | Author monolithic Python312.inf (MIN) | **Done** (+ `Parser/myreadline.c`) |
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
-| 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI deferred** (7.6 optional) |
+| 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
 | 8 | Deferred (external pkgs, VS2022) | Deferred |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
@@ -290,7 +290,7 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 | 7.3 | GitHub Action (GCC + BUILD_PYTHON312) | **Deferred** (do later) |
 | 7.4 | Root `Readme.md` pointers | **Done** |
 | 7.5 | PyMod-only UEFI delta cleanup | **Done** |
-| 7.6 | Upstream libc patches | Optional |
+| 7.6 | Upstream libc patches | **Deferred** (do later) |
 
 ## Phase 8
 
@@ -304,7 +304,7 @@ External packages, VS2022 — deferred. See plan.
 - **Required** before GCC build / after a clean checkout:
   `git apply --ignore-whitespace AppPkg/Applications/Python/Python-3.12.13/patches/*.patch`
 - Patch 0001 (`upipe`) is mandatory to link; see `Py312ReadMe.txt` and WSL GCC guide §4.
-- Optional later: upstream the four patches to tianocore/edk2-libc.
+- **7.6 (upstream):** keep applying `patches/*.patch` locally until a tianocore/edk2-libc PR lands; tracking upstream is **deferred**.
 
 ---
 
@@ -332,4 +332,4 @@ On WSL Ubuntu, in order:
 3. **Required:** `git apply --ignore-whitespace Python-3.12.13/patches/*.patch` (0001 = `upipe`).
 4. `python3 srcprep.py` (if overlays changed).
 5. Ensure frozen/deepfreeze artifacts are present (gitignored).
-6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6). Next: deeper smoke, **7.3 CI**, **7.6** upstream patches, or Iteration 2.
+6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6). Next: deeper smoke or Iteration 2; **7.3 CI** and **7.6 upstream patches** later.
