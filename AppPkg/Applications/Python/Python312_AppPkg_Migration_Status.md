@@ -3,9 +3,9 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-16  
-**Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline in-repo (3.6.8-style); **no** sandbox `PACKAGES_PATH`  
-**Iteration:** Phase **8.1** — vendored `Vendor/edk2-zlib` @ `8ae7f507` (WSL smoke pending)  
+**Updated:** 2026-07-16 (8.1 zlib validated on WSL)  
+**Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
+**Iteration:** Phase **8.2** next (readline); **8.1 zlib** complete  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
@@ -24,7 +24,7 @@
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
-| 8 | Vendored third-party libs (FULL parity) | **Partial** — 8.1 needs INF pivot to 3.6.8-style zlib |
+| 8 | Vendored third-party libs (FULL parity) | **Partial** — **8.1 Done**; 8.2–8.5 not started |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
 
@@ -75,6 +75,12 @@
 1. Re-synced AppPkg core from **`~/src/edk2-py31213/edk2-cpython`** (3.12.13; not `edk2-py312` 3.12.0).
 2. GCC rebuild + `create_python_pkg.sh` → `py312_efi/` (`EFI/bin/Python312.efi`, `lib/python3.12`, empty `lib-dynload`).
 3. **Basic REPL smoke on UEFI Shell:** version **3.12.13**, no “platform dependent libraries” warning, Iteration‑1 expectations OK. Deeper stdlib/module testing deferred.
+
+### 2026-07-16 — Session 5 (Phase 8.1 zlib)
+
+1. Vendored edk2-zlib @ `8ae7f507` under `PyMod-3.12.13/Modules/zlib/`; `Python312.inf` uses `PyMod-$(PYTHON_VERSION)/Modules/zlib/*.c` (no `LibZlib`).
+2. WSL build `BUILD_PYTHON312` (GCC / NOOPT / X64) succeeded with `PACKAGES_PATH=edk2:edk2-libc` only.
+3. UEFI Shell: `import zlib` OK; `zlib.crc32(b"uefi")` matches Windows host Python 3.12.
 
 ---
 
@@ -301,7 +307,7 @@ Per updated plan: **edk2-py312 module parity** without intel-sandbox packages. O
 
 | Step | Action | Result |
 |------|--------|--------|
-| 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL rebuild + `import zlib` smoke pending |
+| 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL GCC/NOOPT/X64 build; `import zlib`; `zlib.crc32(b"uefi")` matches Windows CPython 3.12 |
 | 8.2–8.5 | readline, OpenSSL, libffi/ctypes | Not started |
 
 ---
@@ -340,4 +346,6 @@ On WSL Ubuntu, in order:
 3. **Required:** `git apply --ignore-whitespace Python-3.12.13/patches/*.patch` (0001 = `upipe`).
 4. `python3 srcprep.py` (if overlays changed).
 5. Ensure frozen/deepfreeze artifacts are present (gitignored).
-6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6). Next: deeper smoke or Iteration 2; **7.3 CI** and **7.6 upstream patches** later.
+6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6).
+7. ~~Phase **8.1** zlib vendored build + `import zlib` / CRC parity~~ — **Done** (WSL).
+8. Next: Phase **8.2** readline (or **7.3** CI / **7.6** upstream patches when ready).
