@@ -21,8 +21,10 @@ External / third-party library layout (mirror Python 3.6.8 AppPkg):
   Phase 8.1 (done):
     Modules/zlib/          edk2-zlib @ 8ae7f507 (INF: PyMod-$(PYTHON_VERSION)/Modules/zlib/*.c)
 
-  Phase 8 planned (same pattern):
-    Modules/readline/      + PyMod readline.c when enabled
+  Phase 8.2 (done):
+    Modules/readline/      edk2-pyreadline @ 1e9face (readline.py + pyreadline/; staged to Lib by create_python_pkg)
+
+  Phase 8 planned:
     Modules/openssl/       (or split libcrypto) + _hashopenssl.c, _ssl.c
     Modules/_ctypes/       + libffi vendor tree (see 3.6.8 PyMod _ctypes/libffi_msvc)
 
@@ -42,7 +44,8 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Modules/_sre/sre_lib.h
   Modules/_decimal/libmpdec/mpdecimal.h
   Modules/_hacl/include/krml/lowstar_endianness.h
-  Modules/zlib/              vendored zlib (edk2-zlib 8ae7f507); README.txt in tree
+  Modules/zlib/              vendored zlib (edk2-zlib 8ae7f507)
+  Modules/readline/          vendored pyreadline (edk2-pyreadline 1e9face)
   Lib/os.py, pathlib.py, site.py, uefipath.py
   Lib/importlib/_bootstrap_external.py
   Lib/asyncio/uefi_events.py

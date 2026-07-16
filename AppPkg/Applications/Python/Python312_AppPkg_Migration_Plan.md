@@ -36,7 +36,7 @@ vendored `libffi_msvc` for `_ctypes`).
 | Module / feature | edk2-py312 (reference) | Upstream AppPkg approach (Phase 8) |
 |------------------|------------------------|--------------------------------------|
 | `zlib` | intel-sandbox **edk2-zlib** @ `8ae7f507` | **`PyMod-3.12.13/Modules/zlib/`** + stock `Modules/zlibmodule.c` |
-| `readline` | `edk2-pyreadline` | **`PyMod-.../Modules/readline/`** (vendor) + `PyMod-.../Modules/readline.c` |
+| `readline` | `edk2-pyreadline` | **`PyMod-.../Modules/readline/`** (`readline.py` + `pyreadline/`); **edk2console** in INF; staged by `create_python_pkg` |
 | `_hashlib` (OpenSSL) | `edk2-openssl` | **`PyMod-.../Modules/openssl/`** (or libcrypto tree) + `_hashopenssl.c` in PyMod when forked |
 | `ssl` | same OpenSSL package | Same OpenSSL tree under PyMod + `_ssl.c` |
 | `_ctypes` / `_ctypes_test` | `edk2-libffi` | **`PyMod-.../Modules/_ctypes/`** + vendored libffi (3.6.8: `libffi_msvc` under PyMod) |
@@ -728,7 +728,7 @@ PACKAGES_PATH=<edk2>:<edk2-libc>
 | Step | Vendored lib | Enable in `config.c` | Primary work |
 |------|--------------|----------------------|--------------|
 | **8.1** | **edk2-zlib (vendored)** | `zlib` | **`PyMod-3.12.13/Modules/zlib/`** from commit `8ae7f507` — see [`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md) |
-| **8.2** | **readline** | `readline` | Vendor readline/libedit; UEFI `pyconfig.h` / module deltas from edk2-cpython |
+| **8.2** | **edk2-pyreadline** | `readline` (stdlib) | **`PyMod-3.12.13/Modules/readline/`** — see [`Python312_Phase8_8.2_Readline.md`](./Python312_Phase8_8.2_Readline.md) |
 | **8.3** | **OpenSSL** | `_hashlib` | Vendor minimal libcrypto (+ headers); `_hashopenssl.c`; UEFI build flags |
 | **8.4** | **OpenSSL** (same) | `_ssl` | Add libssl pieces + `_ssl.c`; smoke after 8.3 |
 | **8.5** | **libffi** | `_ctypes`, `_ctypes_test` | Vendor libffi for GCC X64; `_ctypes/*`; hardest batch |

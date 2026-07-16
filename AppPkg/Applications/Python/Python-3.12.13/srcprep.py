@@ -16,6 +16,11 @@ def copyDirTree(root_src_dir, root_dst_dir):
     """
     for src_dir, _dirs, files in os.walk(root_src_dir):
         dst_dir = src_dir.replace(root_src_dir, root_dst_dir, 1)
+        # Vendored pyreadline lives under Modules/readline/; package script stages it.
+        if os.path.normpath(dst_dir).replace("\\", "/").endswith("Modules/readline"):
+            continue
+        if "/Modules/readline/" in os.path.normpath(dst_dir).replace("\\", "/"):
+            continue
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         for file_ in files:

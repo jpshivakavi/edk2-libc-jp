@@ -323,8 +323,8 @@ PyMod-$(PYTHON_VERSION)/Modules/zlib
   PyMod-$(PYTHON_VERSION)/Modules/zlib/uncompr.c
   PyMod-$(PYTHON_VERSION)/Modules/zlib/zutil.c
 
-# Phase 8+ still omitted (vendored under PyMod-$(PYTHON_VERSION)/Modules/ when enabled):
-#  PyMod-$(PYTHON_VERSION)/Modules/readline.c + readline vendor tree
+# Phase 8.2 — pyreadline vendored under PyMod/Modules/readline (staged by create_python_pkg.*)
+#  (uses built-in edk2console; not Modules/readline.c / GNU readline)
 #  PyMod-$(PYTHON_VERSION)/Modules/_hashopenssl.c + openssl vendor tree
 #  PyMod-$(PYTHON_VERSION)/Modules/_ssl.c
 #  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/* + libffi vendor tree (see 3.6.8 PyMod _ctypes)

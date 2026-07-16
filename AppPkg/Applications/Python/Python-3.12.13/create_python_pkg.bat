@@ -70,6 +70,13 @@ xcopy "%PYTHON_SRC%\Lib\*" "%OUT_FOLDER%\EFI\lib\python3.12\" /Y /S /I /Q >nul
 if exist "%PYTHON_SRC%\PyMod-3.12.13\Lib\" (
   xcopy "%PYTHON_SRC%\PyMod-3.12.13\Lib\*" "%OUT_FOLDER%\EFI\lib\python3.12\" /Y /S /I /Q >nul
 )
+set "READLINE_VENDOR=%PYTHON_SRC%\PyMod-3.12.13\Modules\readline"
+if exist "%READLINE_VENDOR%\pyreadline\" (
+  if exist "%READLINE_VENDOR%\readline.py" (
+    copy /Y "%READLINE_VENDOR%\readline.py" "%OUT_FOLDER%\EFI\lib\python3.12\readline.py" >nul
+    xcopy "%READLINE_VENDOR%\pyreadline\*" "%OUT_FOLDER%\EFI\lib\python3.12\pyreadline\" /Y /S /I /Q >nul
+  )
+)
 if exist "%EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\" (
   xcopy "%EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\*" "%OUT_FOLDER%\EFI\stdlib\etc\" /Y /S /I /Q >nul
 )

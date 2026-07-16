@@ -118,6 +118,19 @@ if [[ -d "${PYTHON_SRC}/PyMod-3.12.13/Lib" ]]; then
   fi
 fi
 
+# Phase 8.2: pyreadline vendor (PyMod/Modules/readline → lib/python3.12)
+READLINE_VENDOR="${PYTHON_SRC}/PyMod-3.12.13/Modules/readline"
+if [[ -d "${READLINE_VENDOR}/pyreadline" && -f "${READLINE_VENDOR}/readline.py" ]]; then
+  cp -f "${READLINE_VENDOR}/readline.py" "${LIB_DIR}/readline.py"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude '__pycache__/' "${READLINE_VENDOR}/pyreadline/" "${LIB_DIR}/pyreadline/"
+  else
+    rm -rf "${LIB_DIR}/pyreadline"
+    cp -a "${READLINE_VENDOR}/pyreadline" "${LIB_DIR}/"
+  fi
+  echo "Staged pyreadline from ${READLINE_VENDOR}"
+fi
+
 if [[ -d "${EDK2_LIBC_PATH}/StdLib/Efi/StdLib/etc" ]]; then
   cp -a "${EDK2_LIBC_PATH}/StdLib/Efi/StdLib/etc/." "${ETC_DIR}/"
 fi
@@ -141,4 +154,5 @@ echo
 echo "Smoke checks:"
 echo "  import sys; print(sys.version, sys.platform); print(sys.path)"
 echo "  import os; print(os.listdir('fs0:\\\\'))"
-echo "  # expect ImportError for: ssl, ctypes, zlib, readline"
+echo "  # expect ImportError for: ssl, ctypes"
+echo "  import readline; import zlib"

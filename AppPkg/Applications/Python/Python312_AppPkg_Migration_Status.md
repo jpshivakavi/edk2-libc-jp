@@ -5,7 +5,7 @@
 **Started:** 2026-07-14  
 **Updated:** 2026-07-16 (8.1 zlib validated on WSL)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
-**Iteration:** Phase **8.2** next (readline); **8.1 zlib** complete  
+**Iteration:** Phase **8.2** readline — implemented; WSL package + smoke pending  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
@@ -81,6 +81,12 @@
 1. Vendored edk2-zlib @ `8ae7f507` under `PyMod-3.12.13/Modules/zlib/`; `Python312.inf` uses `PyMod-$(PYTHON_VERSION)/Modules/zlib/*.c` (no `LibZlib`).
 2. WSL build `BUILD_PYTHON312` (GCC / NOOPT / X64) succeeded with `PACKAGES_PATH=edk2:edk2-libc` only.
 3. UEFI Shell: `import zlib` OK; `zlib.crc32(b"uefi")` matches Windows host Python 3.12.
+
+### 2026-07-16 — Session 6 (Phase 8.2 readline)
+
+1. Vendored edk2-pyreadline @ `1e9faced` under `PyMod-3.12.13/Modules/readline/` (not GNU `readline.c`).
+2. `create_python_pkg.sh` / `.bat` stage `readline.py` + `pyreadline/` into `EFI/lib/python3.12/`.
+3. `srcprep.py` skips `Modules/readline/`; fixed `pyreadline/__init__.py` import typo.
 
 ---
 
@@ -302,13 +308,15 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 ## Phase 8 — Vendored libraries (upstream FULL)
 
 Per updated plan: **edk2-py312 module parity** without intel-sandbox packages. Order:
-8.1 zlib → 8.2 readline → 8.3–8.4 OpenSSL → 8.5 libffi/ctypes. Guide:
-[`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md).
+8.1 zlib → 8.2 readline → 8.3–8.4 OpenSSL → 8.5 libffi/ctypes. Guides:
+[`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md),
+[`Python312_Phase8_8.2_Readline.md`](./Python312_Phase8_8.2_Readline.md).
 
 | Step | Action | Result |
 |------|--------|--------|
 | 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL GCC/NOOPT/X64 build; `import zlib`; `zlib.crc32(b"uefi")` matches Windows CPython 3.12 |
-| 8.2–8.5 | readline, OpenSSL, libffi/ctypes | Not started |
+| 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** in tree — repackage + `import readline` smoke pending |
+| 8.3–8.5 | OpenSSL, libffi/ctypes | Not started |
 
 ---
 
