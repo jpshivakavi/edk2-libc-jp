@@ -3,9 +3,9 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-14  
-**Iteration:** 1 (no edk2-libffi / edk2-openssl / edk2-zlib / edk2-pyreadline)  
-**Target repo:** `c:\Users\njayapra\github\edk2-libc`  
+**Updated:** 2026-07-16  
+**Iteration:** Phase **8.1** — `edk2-zlib` / `zlib` enabled in INF + `config.c` (build smoke pending)  
+**Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
 
@@ -23,7 +23,7 @@
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
-| 8 | Deferred (external pkgs, VS2022) | Deferred |
+| 8 | External packages | **Partial** — **8.1 zlib** wired; WSL build + `import zlib` pending |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
 
@@ -294,7 +294,13 @@ with `PACKAGES_PATH=<edk2>:<edk2-libc>` only.
 
 ## Phase 8
 
-External packages — **next work** (easy → complex: **8.1 zlib** → **8.2 readline** → **8.3–8.4 openssl** → **8.5 ctypes**). See [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md) Phase 8. VS2022 and other items deferred within Phase 8.
+External packages — **8.1 in progress** (`zlib` + **edk2-zlib**). Guide:
+[`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md). Order: 8.1 zlib → 8.2 readline → 8.3–8.4 openssl → 8.5 ctypes (see plan). VS2022 deferred.
+
+| Step | Action | Result |
+|------|--------|--------|
+| 8.1 | `edk2-zlib` + `zlib` in INF/`config.c` | **Partial** — code on branch; needs `PACKAGES_PATH` + rebuild + smoke |
+| 8.2–8.5 | readline, openssl, ctypes | Not started |
 
 ---
 

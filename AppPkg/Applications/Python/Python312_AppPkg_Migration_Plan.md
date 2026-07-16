@@ -699,7 +699,9 @@ constraints, stdlib fallout), not just line count.
 
 | Step | Package | Enable in `config.c` | Why this order |
 |------|---------|----------------------|----------------|
-| **8.1** | **edk2-zlib** | `zlib` | Single extension, small API, no callbacks/asm; good first external link |
+| Step | Package | Enable in `config.c` | Why this order |
+|------|---------|----------------------|----------------|
+| **8.1** | **edk2-zlib** | `zlib` | Single extension, small API, no callbacks/asm; good first external link — **see** [`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md) |
 | **8.2** | **edk2-pyreadline** | `readline` | One module; improves REPL only; no TLS/crypto |
 | **8.3** | **edk2-openssl** | `_hashlib` | One `.c` file; validates OpenSSL link before full `ssl` |
 | **8.4** | **edk2-openssl** (same) | `_ssl` | TLS, contexts, cert APIs; depends on OpenSSL + often on 8.3 |
