@@ -382,6 +382,6 @@ Smoke (Iteration 1):
 
 1. Building with only `edk2` on `PACKAGES_PATH` (AppPkg/StdLib not found).
 2. Forgetting `EDK2_LIBC_PATH` (INF `-I$(EDK2_LIBC_PATH)/...` breaks).
-3. Adding openssl/ffi/zlib paths by habit from edk2-py312 — **not for vendored AppPkg** (Phase 8 in-tree).
+3. Extra **`PACKAGES_PATH`** segments for `LibFFI` / `LibZlib` / OpenSSL — AppPkg **vendors** those under **`PyMod-3.12.13/Modules/`**; use **`~/src/edk2-py312`** submodules only as the **copy/reference** source (INF lists, include paths, commits), not as live EDK packages.
 4. Running **`edksetup.sh`** from **`~/src/edk2`** while **`Build/`** and past green builds used **`~/src/edk2-py312/edk2`** — `create_python_pkg.sh` will not find `Python312.efi`.
 5. Applying patches to the wrong libc checkout (must be the same tree as `EDK2_LIBC_PATH`).

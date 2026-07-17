@@ -9,8 +9,18 @@ After **8.1** zlib and **8.2** readline. **Before** OpenSSL **8.3–8.4** on thi
 | INF | `Python312.inf` libffi + `_ctypes` `[Sources]` |
 | Built-ins | `PyMod-3.12.13/Modules/config.c` — `_ctypes`, `_ctypes_test` |
 
-**Reference:** edk2-py312 `edk2-libffi` @ **`1fcd48b`** (LibFFI.inf file list) and
-`edk2-cpython/Modules/_ctypes/` (UEFI `#if UEFI_C_SOURCE` / `FUNCFLAG_EFICALL`).
+**Standard reference (external deps):** always diff against the matching tree under
+**`~/src/edk2-py312`** (or `edk2-py312/` on Windows) — do not guess INF flags or
+file lists from upstream CPython alone.
+
+| Vendored piece | edk2-py312 submodule / path |
+|----------------|-------------------------------|
+| libffi sources + include paths | **`edk2-libffi`** @ **`1fcd48b`** — `EFI/LibFFI/LibFFI.inf`, `EFI/LibFFI/Include/`, `EFI/LibFFI/libffi/include/`, `src/x86/asmnames.h` |
+| `_ctypes` UEFI deltas | **`edk2-cpython/Modules/_ctypes/`** (`UEFI_C_SOURCE`, `FUNCFLAG_EFICALL`) |
+
+AppPkg mirrors **`LibFFI.inf`**: `CC_FLAGS` and **`PP_FLAGS`** both use `include/` +
+`libffi/include/` (needed for `unix64.S` / `fficonfig.h`). No `malloc_closure.c` on GCC
+(same as **`edk2-cpython/efi/PythonPkg/PythonExtLib.inf`**).
 
 Build with **`edksetup.sh` in `~/src/edk2-py312/edk2`** (see WSL GCC guide §7).
 
@@ -41,7 +51,11 @@ import _ctypes_test   # optional
 
 ## Refresh vendored libffi
 
-Copy sources listed in `edk2-libffi/EFI/LibFFI/LibFFI.inf` into `Modules/libffi/`
-and headers from `edk2-libffi/EFI/LibFFI/Include/`.
+From **`edk2-py312/edk2-libffi`** (commit **`1fcd48b`**):
 
-Refresh `_ctypes` UEFI files from `edk2-cpython/Modules/_ctypes/` when syncing the port.
+1. `[Sources]` in `EFI/LibFFI/LibFFI.inf` → `PyMod-.../Modules/libffi/src/` (incl. `src/x86/*.S`, `asmnames.h`).
+2. `EFI/LibFFI/Include/*` → `Modules/libffi/include/`.
+3. `EFI/LibFFI/libffi/include/ffi_common.h`, `tramp.h` → `Modules/libffi/libffi/include/`.
+4. `[BuildOptions]` `GCC:*_*_X64_PP_FLAGS` → same `-I` pair in `Python312.inf`.
+
+Refresh `_ctypes` from **`edk2-py312/edk2-cpython/Modules/_ctypes/`** when syncing.

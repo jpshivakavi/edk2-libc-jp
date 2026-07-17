@@ -47,9 +47,15 @@ vendored `libffi_msvc` for `_ctypes`).
 | `ssl` | same OpenSSL package | Same OpenSSL tree under PyMod + `_ssl.c` |
 | `_ctypes` / `_ctypes_test` | `edk2-libffi` | **`PyMod-.../Modules/_ctypes/`** + vendored libffi (3.6.8: `libffi_msvc` under PyMod) |
 
-**Reference only (do not require for upstream build):** intel-sandbox `edk2-zlib`, `edk2-openssl`,
-`edk2-libffi`, `edk2-pyreadline` — use their INF/source lists when choosing what to vendor, then
-delete any `LibZlib` / `LibOpenSSL` / `LibFFI` `.dec` dependencies from `Python312.inf`.
+**Standard reference for extension modules with external deps:** the local
+**`edk2-py312`** workspace (submodules **`edk2-zlib`**, **`edk2-openssl`**, **`edk2-libffi`**,
+**`edk2-pyreadline`**, plus **`edk2-cpython`** for UEFI module glue). When vendoring into AppPkg,
+copy **INF `[Sources]`**, **include paths** (`CC_FLAGS` / **`PP_FLAGS`** for `.S` files), and
+commit pins from those trees — not from stock CPython or invented flags.
+
+**Upstream PR (do not require edk2-py312 on `PACKAGES_PATH`):** vendor the same files into
+**`PyMod-3.12.13/Modules/<vendor>/`**, then remove any `LibZlib` / `LibOpenSSL` / `LibFFI` `.dec`
+dependencies from `Python312.inf`.
 
 **Licenses:** add or extend third-party notices in root `Readme.md` (and per-tree `README.txt`
 under each **`PyMod-3.12.13/Modules/<vendor>/`** tree) for zlib, OpenSSL, libffi, readline.
