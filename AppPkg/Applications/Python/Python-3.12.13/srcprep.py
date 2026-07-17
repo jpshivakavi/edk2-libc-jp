@@ -21,6 +21,9 @@ def copyDirTree(root_src_dir, root_dst_dir):
             continue
         if "/Modules/readline/" in os.path.normpath(dst_dir).replace("\\", "/"):
             continue
+        norm_dst = os.path.normpath(dst_dir).replace("\\", "/")
+        if norm_dst.endswith("Modules/libffi") or "/Modules/libffi/" in norm_dst:
+            continue
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         for file_ in files:

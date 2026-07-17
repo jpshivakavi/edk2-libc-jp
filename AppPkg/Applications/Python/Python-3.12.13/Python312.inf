@@ -325,9 +325,29 @@ PyMod-$(PYTHON_VERSION)/Modules/zlib
 
 # Phase 8.2 — pyreadline vendored under PyMod/Modules/readline (staged by create_python_pkg.*)
 #  (uses built-in edk2console; not Modules/readline.c / GNU readline)
-#  PyMod-$(PYTHON_VERSION)/Modules/_hashopenssl.c + openssl vendor tree
+
+# Phase 8.5 — vendored edk2-libffi + UEFI _ctypes (PyMod overlays from edk2-cpython)
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callbacks.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callproc.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/cfield.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/stgdict.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/malloc_closure.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes_test.c
+
+PyMod-$(PYTHON_VERSION)/Modules/libffi
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/closures.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/debug.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/prep_cif.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/raw_api.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/types.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/ffi64.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/ffiw64.c
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/unix64.S
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/win64.S
+
+# Phase 8.3–8.4 (later): PyMod-$(PYTHON_VERSION)/Modules/_hashopenssl.c + openssl vendor
 #  PyMod-$(PYTHON_VERSION)/Modules/_ssl.c
-#  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/* + libffi vendor tree (see 3.6.8 PyMod _ctypes)
 
 [BuildOptions]
-  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -DPy_BUILD_CORE -DHAVE_MEMMOVE
+  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/libffi/include -DNO_MSABI_VA_FUNCS -DPy_BUILD_CORE -DHAVE_MEMMOVE

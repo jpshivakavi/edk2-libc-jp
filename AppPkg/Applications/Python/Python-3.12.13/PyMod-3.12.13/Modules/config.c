@@ -85,9 +85,9 @@ extern PyObject* PyInit__string(void);
   extern PyObject* PyInit__decimal(void);
   extern PyObject* PyInit_xxlimited(void);
   extern PyObject* PyInit_zlib(void);
-  /* Phase 8+ omit: edk2-libffi / openssl / pyreadline
   extern PyObject* PyInit__ctypes(void);
   extern PyObject* PyInit__ctypes_test(void);
+  /* Phase 8+ omit: openssl / pyreadline
   extern PyObject* PyInit__ssl(void);
   extern PyObject* PyInit__hashlib(void);
   */
@@ -190,7 +190,9 @@ struct _inittab _PyImport_Inittab[] = {
     {"_decimal", PyInit__decimal},
     {"xxlimited", PyInit_xxlimited},
     {"zlib", PyInit_zlib},
-    /* Phase 8+ omitted: _ctypes, _ctypes_test, _ssl, _hashlib */
+    {"_ctypes", PyInit__ctypes},
+    {"_ctypes_test", PyInit__ctypes_test},
+    /* Phase 8+ omitted: _ssl, _hashlib */
     {"_posixsubprocess", PyInit__posixsubprocess},
     {"edk2console", PyInit_edk2console},
     {"pyexpat", PyInit_pyexpat},

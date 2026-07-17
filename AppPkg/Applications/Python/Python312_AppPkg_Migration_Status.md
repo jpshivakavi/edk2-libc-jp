@@ -5,7 +5,7 @@
 **Started:** 2026-07-14  
 **Updated:** 2026-07-17 (8.2 readline validated; milestone tag `python312-apppkg-8.2`)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
-**Iteration:** Phase **8.5** libffi / `_ctypes` — next (OpenSSL **8.3–8.4** deferred until after 8.5)  
+**Iteration:** Phase **8.5** libffi / `_ctypes` — **in progress** (OpenSSL **8.3–8.4** after 8.5)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Milestone tag:** [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` — MIN build + package; **8.1** zlib; **8.2** readline (import + Tab); pyreadline docstring fix  
@@ -328,13 +328,14 @@ Per updated plan: **edk2-py312 module parity** without intel-sandbox packages.
 
 Guides:
 [`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md),
-[`Python312_Phase8_8.2_Readline.md`](./Python312_Phase8_8.2_Readline.md).
+[`Python312_Phase8_8.2_Readline.md`](./Python312_Phase8_8.2_Readline.md),
+[`Python312_Phase8_8.5_Ctypes.md`](./Python312_Phase8_8.5_Ctypes.md).
 
 | Step | Action | Result |
 |------|--------|--------|
 | 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL GCC/NOOPT/X64 build; `import zlib`; `zlib.crc32(b"uefi")` matches Windows CPython 3.12 |
 | 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** — package staging; UEFI `import readline`; REPL Tab/history |
-| 8.5 | libffi + `Modules/_ctypes/*` | **Next** — not started |
+| 8.5 | libffi + `Modules/_ctypes/*` | **In progress** — vendored in tree; WSL build + smoke pending |
 | 8.3–8.4 | OpenSSL + `_hashopenssl.c` / `_ssl.c` | Not started (after 8.5) |
 
 ---

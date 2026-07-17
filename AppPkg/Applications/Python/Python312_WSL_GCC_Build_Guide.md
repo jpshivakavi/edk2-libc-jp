@@ -55,21 +55,43 @@ On older Ubuntu, if `nasm` is too old, install a newer `.deb` (same approach as
 
 ---
 
-## 2. Prepare edk2
+## 2. Prepare edk2 (BaseTools + `edksetup.sh`)
+
+**Use the tree that already works for you:** `edk2-py312/edk2` (not a separate
+`~/src/edk2` clone unless you have verified AppPkg builds there). Session 2 in
+`Python312_AppPkg_Migration_Status.md` recorded **`Python312.efi`** under:
+
+`~/src/edk2-py312/edk2/Build/AppPkg/NOOPT_GCC/X64/...`
+
+### Option A — **Recommended (matches edk2-py312 / your green builds)**
 
 ```bash
 mkdir -p ~/src
-cd ~/src
+cd ~/src/edk2-py312/edk2
 
-# If you do not already have edk2:
-git clone https://github.com/tianocore/edk2.git
-cd edk2
+# One-time (or after BaseTools updates):
+make -C BaseTools
+
+export EDK_TOOLS_PATH=$HOME/src/edk2-py312/edk2/BaseTools
+. edksetup.sh    # sets WORKSPACE to this edk2 tree
+```
+
+Windows path equivalent: `/mnt/c/Users/njayapra/github/edk2-py312/edk2`.
+
+### Option B — Standalone tianocore `edk2` (only if you maintain it separately)
+
+```bash
+mkdir -p ~/src
+cd ~/src/edk2
 git submodule update --init
-
 make -C BaseTools
 export EDK_TOOLS_PATH=$HOME/src/edk2/BaseTools
 . edksetup.sh
 ```
+
+If `build` fails immediately from Option B but works from Option A, keep using
+**Option A** for AppPkg Python312; `create_python_pkg.sh` expects **`WORKSPACE`**
+to be the same tree where **`Build/AppPkg/.../Python312.efi`** was produced.
 
 Edit `Conf/target.txt` (under the edk2 tree) as needed:
 
@@ -79,10 +101,10 @@ TOOL_CHAIN_TAG        = GCC
 TARGET_ARCH           = X64
 ```
 
-Quick smoke (optional):
+Quick smoke (optional; run after **Option A** `edksetup`):
 
 ```bash
-export PACKAGES_PATH=$HOME/src/edk2:$HOME/src/edk2-libc
+export PACKAGES_PATH=$HOME/src/edk2-py312/edk2:$HOME/src/edk2-libc
 export EDK2_LIBC_PATH=$HOME/src/edk2-libc
 build -a X64 -b NOOPT -t GCC \
   -p $EDK2_LIBC_PATH/AppPkg/AppPkg.dsc \
@@ -209,20 +231,38 @@ test -f Python/frozen_modules/importlib._bootstrap.h && echo frozen OK
 
 ---
 
-## 7. Build Python312 (Iteration 1 MIN)
+## 7. Build Python312 (AppPkg)
+
+Run from the **same edk2 tree as §2 Option A** (`edk2-py312/edk2`). Source
+Python + INF live in **`edk2-libc`** (fork); BaseTools + **`Build/`** live under
+**`edk2-py312/edk2`**.
 
 ```bash
-export PACKAGES_PATH=$HOME/src/edk2:$HOME/src/edk2-libc
-export EDK2_LIBC_PATH=$HOME/src/edk2-libc
-# If using /mnt/c paths, set both to those absolute paths instead.
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc    # jpshivakavi fork on feature/python-3.12.13-apppkg
+export PACKAGES_PATH=$HOME/src/edk2-py312/edk2:$EDK2_LIBC_PATH
 
-cd $HOME/src/edk2
-export EDK_TOOLS_PATH=$HOME/src/edk2/BaseTools
+cd $HOME/src/edk2-py312/edk2
+export EDK_TOOLS_PATH=$PWD/BaseTools
 . edksetup.sh
 
 build -a X64 -b NOOPT -t GCC \
   -p "$EDK2_LIBC_PATH/AppPkg/AppPkg.dsc" \
   -D BUILD_PYTHON312
+```
+
+Expected artifact (path may vary slightly by toolchain):
+
+```text
+~/src/edk2-py312/edk2/Build/AppPkg/NOOPT_GCC/X64/Python312.efi
+# or .../Python312/DEBUG/Python312.efi
+```
+
+**Packaging** (must use the same shell so **`WORKSPACE`** still points at
+`edk2-py312/edk2`):
+
+```bash
+cd "$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13"
+./create_python_pkg.sh GCC NOOPT X64 ~/py312_efi
 ```
 
 Notes:
@@ -313,6 +353,6 @@ Smoke (Iteration 1):
 
 1. Building with only `edk2` on `PACKAGES_PATH` (AppPkg/StdLib not found).
 2. Forgetting `EDK2_LIBC_PATH` (INF `-I$(EDK2_LIBC_PATH)/...` breaks).
-3. Adding openssl/ffi/zlib paths by habit from edk2-py312 — **not for Iteration 1**.
-4. Running Windows `build` from PowerShell against this INF before WSL GCC is green.
+3. Adding openssl/ffi/zlib paths by habit from edk2-py312 — **not for vendored AppPkg** (Phase 8 in-tree).
+4. Running **`edksetup.sh`** from **`~/src/edk2`** while **`Build/`** and past green builds used **`~/src/edk2-py312/edk2`** — `create_python_pkg.sh` will not find `Python312.efi`.
 5. Applying patches to the wrong libc checkout (must be the same tree as `EDK2_LIBC_PATH`).
