@@ -5,6 +5,8 @@
 #include <ffi_cfi.h>
 #include "asmnames.h"
 #include "edk2_libffi_asm.h"
+
+#if defined(HAVE_AS_CFI_PSEUDO_OP)
         .cfi_sections   .debug_frame
 #endif
 
