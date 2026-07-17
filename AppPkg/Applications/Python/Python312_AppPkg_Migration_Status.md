@@ -3,9 +3,9 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-16 (8.1 zlib validated on WSL)  
+**Updated:** 2026-07-17 (8.2 readline validated on UEFI Shell)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
-**Iteration:** Phase **8.2** readline — implemented; WSL package + smoke pending  
+**Iteration:** Phase **8.3–8.4** OpenSSL (`_hashlib`, `_ssl`) — next  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
@@ -24,7 +24,7 @@
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
-| 8 | Vendored third-party libs (FULL parity) | **Partial** — **8.1 Done**; 8.2–8.5 not started |
+| 8 | Vendored third-party libs (FULL parity) | **Partial** — **8.1–8.2 Done**; 8.3–8.5 not started |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
 
@@ -87,6 +87,12 @@
 1. Vendored edk2-pyreadline @ `1e9faced` under `PyMod-3.12.13/Modules/readline/` (not GNU `readline.c`).
 2. `create_python_pkg.sh` / `.bat` stage `readline.py` + `pyreadline/` into `EFI/lib/python3.12/`.
 3. `srcprep.py` skips `Modules/readline/`; fixed `pyreadline/__init__.py` import typo.
+
+### 2026-07-17 — Session 7 (Phase 8.2 readline smoke)
+
+1. WSL: `git pull`, `create_python_pkg.sh` (Staged pyreadline); full `EFI/` tree deployed.
+2. UEFI Shell: `import readline` OK; REPL **Tab** completion / line editing works (edk2console + pyreadline).
+3. **Benign:** `SyntaxWarning` in `pyreadline/modes/basemode.py` docstring (`\space`) — same as edk2-py312 vendor @ `1e9face`; no AppPkg patch.
 
 ---
 
@@ -315,7 +321,7 @@ Per updated plan: **edk2-py312 module parity** without intel-sandbox packages. O
 | Step | Action | Result |
 |------|--------|--------|
 | 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL GCC/NOOPT/X64 build; `import zlib`; `zlib.crc32(b"uefi")` matches Windows CPython 3.12 |
-| 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** in tree — repackage + `import readline` smoke pending |
+| 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** — package staging; UEFI `import readline`; REPL Tab/history |
 | 8.3–8.5 | OpenSSL, libffi/ctypes | Not started |
 
 ---
@@ -356,4 +362,5 @@ On WSL Ubuntu, in order:
 5. Ensure frozen/deepfreeze artifacts are present (gitignored).
 6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6).
 7. ~~Phase **8.1** zlib vendored build + `import zlib` / CRC parity~~ — **Done** (WSL).
-8. Next: Phase **8.2** readline (or **7.3** CI / **7.6** upstream patches when ready).
+8. ~~Phase **8.2** readline package + `import readline` / REPL Tab~~ — **Done** (UEFI Shell).
+9. Next: Phase **8.3–8.4** vendored OpenSSL + `_ssl` / `_hashlib` (or **7.3** CI / **7.6** when ready).
