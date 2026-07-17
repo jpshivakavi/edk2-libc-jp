@@ -3,9 +3,9 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-17 (8.5 libffi build notes; 8.2 milestone `python312-apppkg-8.2`)  
+**Updated:** 2026-07-17 (8.5 ctypes / `_ctypes_test` UEFI smoke **Done**)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
-**Iteration:** Phase **8.5** libffi / `_ctypes` — **in progress** (OpenSSL **8.3–8.4** after 8.5)  
+**Iteration:** Phase **8.5** **Done**; next **8.3–8.4** OpenSSL (after 8.5)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Build WORKSPACE (interim):** `~/src/edk2-py312/edk2` — see [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §0–§7  
 **Build WORKSPACE (target):** tianocore `~/src/edk2` + `PACKAGES_PATH=edk2:edk2-libc` (Phase 7.3 CI; not verified green yet)  
@@ -27,7 +27,7 @@
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
-| 8 | Vendored third-party libs (FULL parity) | **Partial** — **8.1–8.2 Done**; **8.5 next**; 8.3–8.4 OpenSSL after 8.5 |
+| 8 | Vendored third-party libs (FULL parity) | **Partial** — **8.1–8.2, 8.5 Done**; **8.3–8.4** OpenSSL next |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
 
@@ -105,7 +105,8 @@
    - **Include paths:** `Modules/libffi/include` + `Modules/libffi/libffi/include` (`ffi_common.h`, `tramp.h`, `ffi_cfi.h`); `src/x86/asmnames.h`, `internal64.h`.
    - **`GCC:*_*_X64_PP_FLAGS`:** libffi `-I` paths only (match `LibFFI.inf`; **no** `-fcf-protection=none` on GCC 5.x).
    - **`edk2_libffi_asm.h`** + `#include` from **`unix64.S` / `win64.S`** (AppPkg-only CET neutralizer).
-3. **WSL build:** in progress — after pull, delete stale `Build/.../Python312` if `.S` preprocess still shows `_cet_endbr`; then full rebuild + UEFI `import ctypes` smoke pending.
+3. **WSL build:** **Done** (GCC / NOOPT / X64, `BUILD_PYTHON312`) after `d7834063` (`win64.S` ifdef fix).
+4. **UEFI Shell:** `import ctypes`, `ctypes.c_int(42)`, `import _ctypes_test` — **Done**.
 
 ---
 
@@ -134,6 +135,7 @@
 | Tag | Commit | Scope |
 |-----|--------|--------|
 | `python312-apppkg-8.2` | `cb80b42b` | Phases 0–6 done; **8.1** zlib + **8.2** readline smoke; packaging warnings + basemode SyntaxWarning fix |
+| *(planned)* `python312-apppkg-8.5` | `d7834063` or HEAD after status commit | **8.5** libffi + `_ctypes` / `_ctypes_test` GCC build + UEFI smoke |
 
 Checkout: `git fetch origin tag python312-apppkg-8.2 && git checkout python312-apppkg-8.2`
 
@@ -347,8 +349,8 @@ Guides:
 |------|--------|--------|
 | 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL GCC/NOOPT/X64 build; `import zlib`; `zlib.crc32(b"uefi")` matches Windows CPython 3.12 |
 | 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** — package staging; UEFI `import readline`; REPL Tab/history |
-| 8.5 | libffi + `Modules/_ctypes/*` | **In progress** — vendored + INF/build-option fixes on branch; WSL link + UEFI smoke pending |
-| 8.3–8.4 | OpenSSL + `_hashopenssl.c` / `_ssl.c` | Not started (after 8.5) |
+| 8.5 | libffi + `Modules/_ctypes/*` | **Done** — GCC/NOOPT/X64; UEFI `import ctypes`, `c_int(42)`, `_ctypes_test` |
+| 8.3–8.4 | OpenSSL + `_hashopenssl.c` / `_ssl.c` | Not started (next) |
 
 ### 8.5 — Why edk2-py312 did not hit the same libffi asm issues
 
@@ -404,4 +406,5 @@ On WSL Ubuntu, in order:
 6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6).
 7. ~~Phase **8.1** zlib vendored build + `import zlib` / CRC parity~~ — **Done** (WSL).
 8. ~~Phase **8.2** readline package + `import readline` / REPL Tab~~ — **Done** (UEFI Shell).
-9. Next: Phase **8.5** vendored libffi + `_ctypes` / `_ctypes_test` (then **8.3–8.4** OpenSSL; or **7.3** CI / **7.6** when ready).
+9. ~~Phase **8.5** libffi + ctypes GCC build + UEFI smoke~~ — **Done**.
+10. Next: Phase **8.3–8.4** OpenSSL (`_hashlib` / `_ssl`), or **7.3** CI / **7.6** when ready. Optional: tag **`python312-apppkg-8.5`** at current HEAD.
