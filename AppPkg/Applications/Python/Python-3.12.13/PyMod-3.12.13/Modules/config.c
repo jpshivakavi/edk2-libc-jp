@@ -88,7 +88,7 @@ extern PyObject* PyInit__string(void);
   extern PyObject* PyInit__ctypes(void);
   extern PyObject* PyInit__ctypes_test(void);
   extern PyObject* PyInit__hashlib(void);
-  /* Phase 8.4: extern PyObject* PyInit__ssl(void); */
+  extern PyObject* PyInit__ssl(void);
   extern PyObject* PyInit__posixsubprocess(void);
   extern PyObject* PyInit_edk2console(void);
   extern PyObject* PyInit_pyexpat(void);
@@ -191,7 +191,7 @@ struct _inittab _PyImport_Inittab[] = {
     {"_ctypes", PyInit__ctypes},
     {"_ctypes_test", PyInit__ctypes_test},
     {"_hashlib", PyInit__hashlib},
-    /* Phase 8.4 omitted: _ssl */
+    {"_ssl", PyInit__ssl},
     {"_posixsubprocess", PyInit__posixsubprocess},
     {"edk2console", PyInit_edk2console},
     {"pyexpat", PyInit_pyexpat},

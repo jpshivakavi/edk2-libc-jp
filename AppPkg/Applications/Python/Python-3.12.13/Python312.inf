@@ -986,8 +986,54 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_efi.c
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_rdrand.nasm
 
-# Phase 8.4 (later): libssl + _ssl.c
-#  PyMod-$(PYTHON_VERSION)/Modules/_ssl.c
+# Phase 8.4 — libssl + _ssl (same vendored OpenSSL tree as 8.3)
+  Modules/_ssl.c
+
+# libssl sources (44 files) — from LibOpenSSL.inf ssl/ only
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_ciph.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/s3_enc.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/d1_lib.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_init.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/methods.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/s3_cbc.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/tls13_enc.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/t1_lib.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/t1_trce.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/statem.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/extensions.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/extensions_srvr.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/extensions_cust.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/statem_clnt.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/extensions_clnt.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/statem_dtls.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/statem_srvr.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/statem/statem_lib.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/pqueue.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/s3_msg.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/s3_lib.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_rsa.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_lib.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/bio_ssl.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/tls_srp.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_cert.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_utst.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/t1_enc.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_txt.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/d1_srtp.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/record/ssl3_record.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/record/ssl3_record_tls13.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/record/rec_layer_d1.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/record/dtls1_bitmap.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/record/ssl3_buffer.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/record/rec_layer_s3.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_stat.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_mcnf.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_err.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_asn1.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_conf.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/d1_msg.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/packet.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_sess.c
 
 
 [BuildOptions]

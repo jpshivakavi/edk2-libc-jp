@@ -10,13 +10,13 @@ Layout in this tree (mirrors edk2-openssl repo root):
 
   e_os.h             OpenSSL internal OS abstraction (required on -I vendor root)
   crypto/            libcrypto sources (subset compiled — see Python312.inf)
+  ssl/               libssl sources (Phase 8.4 — see Python312.inf)
   engines/           engine stubs referenced by LibOpenSSL.inf
   include/           public OpenSSL headers (<openssl/*.h>)
   efi/include/       UEFI opensslconf.h, buildinf.h, dso_conf.h
   efi/src/           rand_efi.c, eng_dyn.c, ui_openssl.c (LibOpenSSL glue)
 
-Phase 8.3 links **libcrypto only** (LibOpenSSL.inf minus ssl/ and *.nasm).
-Phase 8.4 adds ssl/ sources and Modules/_ssl.c from the same vendor tree.
+Phase 8.3 links **libcrypto only**; Phase 8.4 adds **libssl** (`ssl/`) and `Modules/_ssl.c`.
 
 Monolithic Python312.inf [BuildOptions] (match LibOpenSSL.inf):
 
