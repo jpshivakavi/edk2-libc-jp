@@ -3,14 +3,14 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-17 (8.3 OpenSSL `_hashlib` / `hashlib` GCC + UEFI smoke **Done**)  
+**Updated:** 2026-07-17 (Phase **8** vendored libs **Done** — 8.4 `_ssl` UEFI smoke **Done**)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
-**Iteration:** Phase **8.3** **Done**; next **8.4** `_ssl` (same OpenSSL tree)  
+**Iteration:** Phase **8** **Done** (8.1–8.3, 8.5, 8.4); next **7.3** CI / **7.6** / upstream PR prep  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Build WORKSPACE (interim):** `~/src/edk2-py312/edk2` — see [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §0–§7  
 **Build WORKSPACE (target):** tianocore `~/src/edk2` + `PACKAGES_PATH=edk2:edk2-libc` (Phase 7.3 CI; not verified green yet)  
 **Branch:** `feature/python-3.12.13-apppkg`  
-**Milestone tags:** [`python312-apppkg-8.3`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.3) @ `c86de4d4` (**8.3** hashlib); [`python312-apppkg-8.5`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.5) @ `c8a77115` (**8.5** ctypes); [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` (**8.1** zlib, **8.2** readline)
+**Milestone tags:** [`python312-apppkg-8.4`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.4) @ `89e208b8` (**8.4** ssl); [`python312-apppkg-8.3`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.3) @ `c86de4d4` (**8.3** hashlib); [`python312-apppkg-8.5`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.5) @ `c8a77115` (**8.5** ctypes); [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` (**8.1** zlib, **8.2** readline)
 **Source port:** `c:\Users\njayapra\github\edk2-py312` — **standard reference** for extension modules that depend on external packages (`edk2-zlib`, `edk2-libffi`, `edk2-openssl`, `edk2-pyreadline`, `edk2-cpython` glue); see migration plan table. Use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync.
 
 ---
@@ -27,7 +27,7 @@
 | 5 | Wire DSC / libc patches / first GCC build | **Done** — `Python312.efi` built (GCC / NOOPT / X64) |
 | 6 | Package + REPL smoke | **Done** — `create_python_pkg.*`, `py312_efi` layout, basic REPL on UEFI Shell (3.12.13, no exec_prefix warning) |
 | 7 | Docs + CI | **Partial** — 7.1–7.2, **7.4–7.5** done; **7.3 CI** and **7.6 upstream patches deferred** (later) |
-| 8 | Vendored third-party libs (FULL parity) | **Partial** — **8.1–8.3, 8.5 Done**; **8.4** `_ssl` next |
+| 8 | Vendored third-party libs (FULL parity) | **Done** — 8.1 zlib, 8.2 readline, 8.5 libffi/ctypes, 8.3–8.4 OpenSSL (`_hashlib`, `_ssl`) |
 
 **Legend:** Not started · In progress · Partial · Blocked · Done · Skipped
 
@@ -38,8 +38,8 @@
 | Item | Choice |
 |------|--------|
 | External packages | **None on PACKAGES_PATH** — Phase 8 vendors libs inside edk2-libc |
-| Omit modules (remaining) | `_ssl` only (libssl — Phase **8.4**) |
-| Enabled vendored ext | `zlib`, `readline`, `_ctypes` / `_ctypes_test`, `_hashlib` (OpenSSL libcrypto) |
+| Omit modules (remaining) | *(none — Phase 8 vendored ext enabled in `config.c`)* |
+| Vendored built-ins | `zlib`, `readline`, `_ctypes` / `_ctypes_test`, `_hashlib`, `_ssl` |
 | Entry point | `UefiMain` |
 | INF | Monolithic `Python312.inf` (MIN, ~241 sources) |
 | Overlay | `PyMod-3.12.13` + `srcprep.py` |
@@ -118,6 +118,13 @@
 3. **WSL build:** **Done** (GCC / NOOPT / X64, `BUILD_PYTHON312`).
 4. **UEFI Shell:** `import hashlib`; `hashlib.sha256(b"x").hexdigest()` — **Done** (matches Windows CPython 3.12.8 reference).
 
+### 2026-07-17 — Session 10 (Phase 8.4 OpenSSL `_ssl`)
+
+1. Vendored **`ssl/`** libssl + `Modules/_ssl.c` + `config.c` (commit **`89e208b8`**; see [`Python312_Phase8_8.4_Ssl.md`](./Python312_Phase8_8.4_Ssl.md)).
+2. **WSL build:** **Done** (GCC / NOOPT / X64, `BUILD_PYTHON312`).
+3. **UEFI Shell:** `import ssl`; `ssl.OPENSSL_VERSION_INFO` → **OpenSSL 1.1.1f** tuple `(1, 1, 1, 6, 5)` — **not** comparable to Windows CPython 3.12.8 **3.0.x** (expected; same as edk2-py312 **1.1.1f** vendor).
+4. **`ssl.create_default_context()`** — **Done**.
+
 ---
 
 ## Phase 0 — Prerequisites and baseline capture
@@ -147,8 +154,9 @@
 | `python312-apppkg-8.2` | `cb80b42b` | Phases 0–6 done; **8.1** zlib + **8.2** readline smoke; packaging warnings + basemode SyntaxWarning fix |
 | `python312-apppkg-8.5` | `c8a77115` | **8.1–8.2** + **8.5** libffi/`ctypes`/`_ctypes_test` GCC + UEFI smoke |
 | `python312-apppkg-8.3` | `c86de4d4` | **8.3** vendored libcrypto + `_hashlib`; `e_os.h` + `rand_rdrand.nasm` link fixes; UEFI hashlib smoke |
+| `python312-apppkg-8.4` | `89e208b8` | **8.4** libssl + `_ssl`; UEFI `import ssl` / default context smoke |
 
-Checkout: `git fetch origin tag python312-apppkg-8.3 && git checkout python312-apppkg-8.3`
+Checkout: `git fetch origin tag python312-apppkg-8.4 && git checkout python312-apppkg-8.4`
 
 ### patch/ inventory
 
@@ -355,7 +363,8 @@ Guides:
 [`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md),
 [`Python312_Phase8_8.2_Readline.md`](./Python312_Phase8_8.2_Readline.md),
 [`Python312_Phase8_8.5_Ctypes.md`](./Python312_Phase8_8.5_Ctypes.md),
-[`Python312_Phase8_8.3_Hashlib.md`](./Python312_Phase8_8.3_Hashlib.md).
+[`Python312_Phase8_8.3_Hashlib.md`](./Python312_Phase8_8.3_Hashlib.md),
+[`Python312_Phase8_8.4_Ssl.md`](./Python312_Phase8_8.4_Ssl.md).
 
 | Step | Action | Result |
 |------|--------|--------|
@@ -363,7 +372,7 @@ Guides:
 | 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** — package staging; UEFI `import readline`; REPL Tab/history |
 | 8.5 | libffi + `Modules/_ctypes/*` | **Done** — GCC/NOOPT/X64; UEFI `import ctypes`, `c_int(42)`, `_ctypes_test` |
 | 8.3 | OpenSSL libcrypto + `_hashopenssl.c` → `_hashlib` | **Done** — GCC/NOOPT/X64; UEFI `hashlib.sha256(b"x")` matches Windows 3.12.8 |
-| 8.4 | libssl + `Modules/_ssl.c` | Not started (next) |
+| 8.4 | libssl + `Modules/_ssl.c` | **Done** — GCC/NOOPT/X64; UEFI `import ssl`, `create_default_context()` (OpenSSL **1.1.1f** on UEFI) |
 
 ### 8.5 — Why edk2-py312 did not hit the same libffi asm issues
 
@@ -421,4 +430,5 @@ On WSL Ubuntu, in order:
 8. ~~Phase **8.2** readline package + `import readline` / REPL Tab~~ — **Done** (UEFI Shell).
 9. ~~Phase **8.5** libffi + ctypes GCC build + UEFI smoke~~ — **Done**.
 10. ~~Phase **8.3** OpenSSL libcrypto + `_hashlib` GCC build + UEFI smoke~~ — **Done** (tag **`python312-apppkg-8.3`** @ `c86de4d4`).
-11. Next: Phase **8.4** `_ssl`, or **7.3** CI / **7.6** when ready.
+11. ~~Phase **8.4** `_ssl` GCC build + UEFI smoke~~ — **Done** (tag **`python312-apppkg-8.4`** @ `89e208b8`).
+12. Next: **7.3** CI (tianocore `~/src/edk2`), **7.6** libc patches upstream, EFI size notes, upstream PR.
