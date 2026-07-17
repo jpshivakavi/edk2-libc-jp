@@ -21,6 +21,7 @@ Detailed migration and status:
   ../Python312_AppPkg_Migration_Plan.md
   ../Python312_AppPkg_Migration_Status.md
   ../Python312_WSL_GCC_Build_Guide.md
+  ../Python312_UEFI_Startup_Messages.md   (boot-time Print / REPL banner)
   GCCCompilationBKMs.rst          (GCC build BKMs; companion to 3.6.8 BKMs)
 
 Source alignment (important):

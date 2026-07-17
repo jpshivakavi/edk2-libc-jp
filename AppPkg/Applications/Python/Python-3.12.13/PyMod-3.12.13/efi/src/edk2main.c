@@ -102,9 +102,6 @@ UefiMain (
       Print(L"Failed to open input console: %r\n", status);      
    }
    
-   Print(L"Image base: 0x%lx\n", loaded_image_protocol->ImageBase);
-   Print(L"UefiMain: 0x%lx\n", UefiMain);
-   
    EFI_SHELL_PARAMETERS_PROTOCOL *args_protocol = NULL;
 
    status = systab->BootServices->OpenProtocol(
