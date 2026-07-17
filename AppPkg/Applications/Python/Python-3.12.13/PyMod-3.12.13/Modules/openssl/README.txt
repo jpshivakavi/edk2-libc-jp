@@ -8,6 +8,7 @@ Standard reference: edk2-py312 submodule edk2-openssl @ 59db29b27df724b3af1fb5cb
 
 Layout in this tree (mirrors edk2-openssl repo root):
 
+  e_os.h             OpenSSL internal OS abstraction (required on -I vendor root)
   crypto/            libcrypto sources (subset compiled — see Python312.inf)
   engines/           engine stubs referenced by LibOpenSSL.inf
   include/           public OpenSSL headers (<openssl/*.h>)
@@ -28,5 +29,5 @@ non-threaded OpenSSL via threads_none.c).
 
 License: OpenSSL license in LICENSE at edk2-openssl root (also under include/).
 
-Refresh: rsync crypto/, engines/, include/, efi/ from edk2-openssl; regenerate
-[Sources] with tools/gen_openssl_libcrypto_sources.py from LibOpenSSL.inf.
+Refresh: rsync crypto/, engines/, include/, efi/ from edk2-openssl; copy repo-root
+e_os.h; regenerate [Sources] with tools/gen_openssl_libcrypto_sources.py from LibOpenSSL.inf.

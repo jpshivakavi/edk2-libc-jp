@@ -352,7 +352,7 @@ PyMod-$(PYTHON_VERSION)/Modules/libffi
 # Phase 8.3 — vendored edk2-openssl libcrypto + _hashlib (_hashopenssl.c)
   Modules/_hashopenssl.c
 
-# libcrypto sources (630 files) — from LibOpenSSL.inf minus ssl/ and *.nasm
+# libcrypto sources — from LibOpenSSL.inf minus ssl/; plus rand_rdrand.nasm (rand_efi.c)
 PyMod-$(PYTHON_VERSION)/Modules/openssl
   PyMod-$(PYTHON_VERSION)/Modules/openssl/engines/e_padlock.c
   PyMod-$(PYTHON_VERSION)/Modules/openssl/engines/e_capi.c
@@ -984,6 +984,7 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/eng_dyn.c
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/ui_openssl.c
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_efi.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_rdrand.nasm
 
 # Phase 8.4 (later): libssl + _ssl.c
 #  PyMod-$(PYTHON_VERSION)/Modules/_ssl.c

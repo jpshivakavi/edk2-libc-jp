@@ -32,7 +32,7 @@ def main():
             continue
         if "/ssl/" in p or p.startswith("../../ssl/"):
             continue
-        if p.endswith(".nasm"):
+        if p.endswith(".nasm") and "rand_rdrand" not in p:
             continue
         if not p.startswith("../"):
             continue

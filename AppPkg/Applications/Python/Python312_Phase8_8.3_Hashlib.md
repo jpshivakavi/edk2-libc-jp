@@ -10,8 +10,8 @@ After **8.1** zlib, **8.2** readline, and **8.5** libffi on this fork. **Before*
 | Built-ins | `PyMod-3.12.13/Modules/config.c` — `{"_hashlib", PyInit__hashlib}` |
 
 **Standard reference:** **`~/src/edk2-py312/edk2-openssl`** — `efi/LibOpenSSL/LibOpenSSL.inf`
-(commit **`59db29b`**). Phase 8.3 uses the same libcrypto file list **minus** `ssl/` and `*.nasm`
-(8.4 adds SSL).
+(commit **`59db29b`**). Phase 8.3 uses the same libcrypto file list **minus** `ssl/`, plus
+**`efi/src/rand_rdrand.nasm`** (required by `rand_efi.c`; other `*.nasm` in LibOpenSSL stay out until needed).
 
 **No** `LibOpenSSL.dec` / extra `PACKAGES_PATH` segment.
 
@@ -51,5 +51,6 @@ OpenSSL-backed `_hashlib` path used by `hashlib` for additional algorithms and `
 From **`edk2-py312/edk2-openssl`** (pin commit in `Modules/openssl/README.txt`):
 
 1. `rsync` `crypto/`, `engines/`, `include/`, `efi/` into `PyMod-.../Modules/openssl/`.
-2. Re-run `gen_openssl_libcrypto_sources.py` after any `LibOpenSSL.inf` change upstream.
-3. Mirror `[BuildOptions]` `-I` paths from `LibOpenSSL.inf` in `Python312.inf`.
+2. Copy **`e_os.h`** from edk2-openssl repo root into `Modules/openssl/` (LibOpenSSL `-I` root).
+3. Re-run `gen_openssl_libcrypto_sources.py` after any `LibOpenSSL.inf` change upstream.
+4. Mirror `[BuildOptions]` `-I` paths from `LibOpenSSL.inf` in `Python312.inf`.
