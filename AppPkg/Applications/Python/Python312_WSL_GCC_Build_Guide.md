@@ -17,22 +17,47 @@ Related docs:
 
 ## 0. Layout you will use
 
-Example paths (adjust to yours):
+### Interim (today — your working setup)
+
+Python312 **build artifacts** live under the **edk2** tree inside **edk2-py312**,
+not a standalone `~/src/edk2` clone (unless you have verified that tree builds AppPkg).
 
 ```text
-~/src/edk2              # tianocore/edk2
-~/src/edk2-libc         # this repo, branch feature/python-3.12.13-apppkg
+~/src/edk2-py312/edk2     # WORKSPACE + BaseTools + Build/  (edksetup here)
+~/src/edk2-libc           # jpshivakavi fork, branch feature/python-3.12.13-apppkg
+~/src/edk2-py312          # optional: frozen/deepfreeze copy source only
 ```
 
-If the repo already lives on the Windows side:
+```bash
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc
+export PACKAGES_PATH=$HOME/src/edk2-py312/edk2:$EDK2_LIBC_PATH
+# edksetup in ~/src/edk2-py312/edk2 — see §2 Option A, §7
+```
+
+Windows paths (example):
 
 ```text
-/mnt/c/Users/njayapra/github/edk2
-/mnt/c/Users/njayapra/github/edk2-libc
+/mnt/c/Users/njayapra/github/edk2-py312/edk2
+/mnt/c/Users/njayapra/github/edk2-libc-jp   # or edk2-libc if same remote
 ```
 
-Using `/mnt/c/...` works but is slower. Prefer cloning or copying under `~/src`
-for builds.
+Using `/mnt/c/...` works but is slower. Prefer `~/src/...` under WSL for builds.
+
+### Target (upstream PR / CI — no edk2-py312 repo)
+
+Same commands with **tianocore/edk2** only:
+
+```text
+~/src/edk2              # tianocore/edk2 — WORKSPACE + BaseTools + Build/
+~/src/edk2-libc         # contribution tree
+PACKAGES_PATH=$HOME/src/edk2:$HOME/src/edk2-libc
+```
+
+**Not there yet:** standalone `~/src/edk2` has failed or been untested for AppPkg
+Python312 in this migration; use **edk2-py312/edk2** until §2 Option B is green.
+**Phase 7.3 CI** should use the target layout. When switching, only change
+**which edk2 tree** you `cd` into for `edksetup.sh`; keep **`EDK2_LIBC_PATH`**
+and **`-p .../AppPkg/AppPkg.dsc -D BUILD_PYTHON312`** unchanged.
 
 ---
 
@@ -78,7 +103,11 @@ export EDK_TOOLS_PATH=$HOME/src/edk2-py312/edk2/BaseTools
 
 Windows path equivalent: `/mnt/c/Users/njayapra/github/edk2-py312/edk2`.
 
-### Option B — Standalone tianocore `edk2` (only if you maintain it separately)
+### Option B — Standalone tianocore `edk2` (**target** for upstream / CI)
+
+Use this once Hello/AppPkg smoke and **`BUILD_PYTHON312`** both succeed from
+`~/src/edk2` (same `PACKAGES_PATH` pattern as Option A, with `$HOME/src/edk2`
+as the first segment).
 
 ```bash
 mkdir -p ~/src

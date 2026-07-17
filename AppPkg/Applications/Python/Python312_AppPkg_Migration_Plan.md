@@ -27,6 +27,12 @@ then add a follow-on MSVC porting plan.
 PACKAGES_PATH=<edk2>:<edk2-libc>
 ```
 
+**Interim build workspace:** many green AppPkg builds today use **`edk2-py312/edk2`**
+as **`WORKSPACE`** (BaseTools + `Build/`) while **`edk2-libc`** holds Python sources —
+documented in [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md).
+**Exit criterion:** `BUILD_PYTHON312` succeeds with **tianocore/edk2** only (no
+edk2-py312 checkout required); track under **Phase 7.3 CI**.
+
 No **intel-sandbox** (or other) sibling EDK packages on `PACKAGES_PATH` for the contribution.
 Match **edk2-py312 FULL** module surface (`zlib`, `readline`, OpenSSL-backed `hashlib`/`ssl`, GCC
 `_ctypes`) by **vendoring third-party library sources inside this repository**, following the

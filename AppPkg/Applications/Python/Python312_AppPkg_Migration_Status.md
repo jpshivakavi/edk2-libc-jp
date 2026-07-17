@@ -7,6 +7,8 @@
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
 **Iteration:** Phase **8.5** libffi / `_ctypes` — **in progress** (OpenSSL **8.3–8.4** after 8.5)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
+**Build WORKSPACE (interim):** `~/src/edk2-py312/edk2` — see [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §0–§7  
+**Build WORKSPACE (target):** tianocore `~/src/edk2` + `PACKAGES_PATH=edk2:edk2-libc` (Phase 7.3 CI; not verified green yet)  
 **Branch:** `feature/python-3.12.13-apppkg`  
 **Milestone tag:** [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` — MIN build + package; **8.1** zlib; **8.2** readline (import + Tab); pyreadline docstring fix  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
