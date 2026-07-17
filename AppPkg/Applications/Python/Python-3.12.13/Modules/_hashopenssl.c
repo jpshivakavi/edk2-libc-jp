@@ -38,7 +38,7 @@
 #include <openssl/err.h>
 
 
-#ifndef OPENSSL_THREADS
+#if !defined(OPENSSL_THREADS) && !defined(UEFI_C_SOURCE)
 #  error "OPENSSL_THREADS is not defined, Python requires thread-safe OpenSSL"
 #endif
 
