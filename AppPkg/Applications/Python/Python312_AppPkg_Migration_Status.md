@@ -3,11 +3,12 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-17 (8.2 readline validated on UEFI Shell)  
+**Updated:** 2026-07-17 (8.2 readline validated; milestone tag `python312-apppkg-8.2`)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
 **Iteration:** Phase **8.3–8.4** OpenSSL (`_hashlib`, `_ssl`) — next  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
 **Branch:** `feature/python-3.12.13-apppkg`  
+**Milestone tag:** [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` — MIN build + package; **8.1** zlib; **8.2** readline (import + Tab); pyreadline docstring fix  
 **Source port:** `c:\Users\njayapra\github\edk2-py312` (use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync)
 
 ---
@@ -115,6 +116,14 @@
 | `edk2-py312` | `d8ad35d0a82ed8e19626f6c255374ac55a248efb` | 2026-07-14 |
 | `edk2-cpython` | `4d18b177996c6fa10c0309ae1533c2b869a224c0` | `py31213-working-good-20260714` |
 | Version | `3.12.13` | `Include/patchlevel.h` |
+
+### Milestone tags (`jpshivakavi/edk2-libc-jp`)
+
+| Tag | Commit | Scope |
+|-----|--------|--------|
+| `python312-apppkg-8.2` | `cb80b42b` | Phases 0–6 done; **8.1** zlib + **8.2** readline smoke; packaging warnings + basemode SyntaxWarning fix |
+
+Checkout: `git fetch origin tag python312-apppkg-8.2 && git checkout python312-apppkg-8.2`
 
 ### patch/ inventory
 
