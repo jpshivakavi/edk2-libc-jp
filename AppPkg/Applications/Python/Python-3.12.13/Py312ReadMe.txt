@@ -2,8 +2,8 @@
                                    ReadMe
                                 Version 3.12.13
                                  AppPkg port
-                               Iteration 1 (GCC)
-                               15 July 2026
+                               FULL (Phase 8, GCC)
+                               17 July 2026
 
 
 1. OVERVIEW
@@ -29,21 +29,27 @@ Source alignment (important):
   Do not bulk-sync from ~/src/edk2-py312/edk2-cpython (that tree was 3.12.0).
 
 
-2. RELEASE NOTES (Iteration 1)
-============================
+2. RELEASE NOTES (FULL — edk2-py312 module parity on fork)
+========================================================
   1)  All C extension modules are statically linked into Python312.efi.
   2)  Dynamically loadable extensions (.so / .pyd) are not supported.
   3)  Pure Python stdlib lives under EFI\lib\python3.12\ on the target volume.
   4)  An empty EFI\lib\python3.12\lib-dynload\ directory is required so
       getpath can resolve exec_prefix (no .pyd files are needed).
-  5)  Iteration 1 PACKAGES_PATH = <edk2>;<edk2-libc> only (no edk2-libffi,
-      edk2-openssl, edk2-zlib, or edk2-pyreadline).
-  6)  Built-in modules _ctypes, _ssl, _hashlib/openssl, zlib, and the GNU
-      readline extension module are omitted.  Parser/myreadline.c provides
-      interactive line editing for the REPL.
+  5)  PACKAGES_PATH = <edk2>;<edk2-libc> only.  Third-party libs are **vendored**
+      under PyMod-3.12.13/Modules/ (zlib, libffi, OpenSSL, pyreadline) — do **not**
+      add intel-sandbox edk2-zlib / edk2-openssl / edk2-libffi / edk2-pyreadline
+      to PACKAGES_PATH.
+  6)  **Phase 8 built-ins (static):** zlib, pyreadline (package + edk2console),
+      _ctypes / _ctypes_test, _hashlib (OpenSSL libcrypto), _ssl (OpenSSL libssl).
+      OpenSSL on UEFI is **1.1.1f** (edk2-openssl vendor) — ssl.OPENSSL_VERSION_INFO
+      will **not** match Windows CPython 3.12.x linked to OpenSSL 3.x.
   7)  User-specific site configuration is limited; see site.py on the target.
   8)  Environment variable support is partial (UEFI environ); PYTHONHOME
       can override prefix if the EFI tree is not on fs0:.
+
+  Milestone tags (fork jpshivakavi/edk2-libc-jp): python312-apppkg-8.2 … 8.5,
+  8.3, 8.4 — see ../Python312_AppPkg_Migration_Status.md.
 
 
 3. GETTING AND BUILDING PYTHON
@@ -54,7 +60,7 @@ Source alignment (important):
   AppPkg/Applications/Python/Python-3.12.13/
     Python-3.12.13/          Upstream CPython 3.12.13 sources (no in-tree UEFI forks)
     PyMod-3.12.13/           UEFI overlays (.c/.h/.py); EFI entry (efi/); see README.txt
-    Python312.inf            Monolithic EDK II module (Iteration 1 MIN)
+    Python312.inf            Monolithic EDK II module (core + Phase 8 vendored libs)
     srcprep.py               Copies PyMod .h/.py into the CPython tree
     patches/                 StdLib patches (apply locally; see section 3.2)
     create_python_pkg.sh     Stage EFI runtime tree for FAT / hardware
@@ -102,11 +108,14 @@ Source alignment (important):
   3.4 Built-in module set (config.c)
   -----------------------------------
   Enabled extensions are listed in PyMod-3.12.13/Modules/config.c
-  (_PyImport_Inittab).  To add a module in a later iteration, edit config.c,
-  Python312.inf [Sources], and LibraryClasses, then rebuild.
+  (_PyImport_Inittab).  Python312.inf lists all linked .c / asm sources.
 
-  Iteration 1 explicitly omitted from config.c (need external packages):
-    _ctypes, _ctypes_test, zlib, _ssl, _hashlib
+  Phase 8 vendored (enabled on feature/python-3.12.13-apppkg):
+    zlib, readline (pyreadline in EFI lib tree), _ctypes, _ctypes_test,
+    _hashlib, _ssl
+
+  Vendor trees: PyMod-3.12.13/Modules/zlib/, libffi/, openssl/, readline/
+  Guides: ../Python312_Phase8_8.1_Zlib.md … 8.5, 8.3, 8.4 under AppPkg/Applications/Python/
 
   3.5 Environment variables (build host)
   --------------------------------------
@@ -140,7 +149,7 @@ Source alignment (important):
 
 4. PYTHON-RELATED PATHS AND FILES (TARGET)
 ==========================================
-Iteration 1 PREFIX (from PyMod Include/pyconfig.h):
+Iteration 1 PREFIX (unchanged for FULL; from PyMod Include/pyconfig.h):
 
   PLATFORM     uefi
   PREFIX       fs0:\EFI
@@ -179,16 +188,16 @@ Copies Python312.efi, Lib/, and stdlib etc/ into <out>\EFI\...
 Copy the EFI\ tree to a FAT32 UEFI volume.  Map the volume in Shell (e.g. fs0:).
 
 
-6. EXAMPLE: SOCKET SUPPORT (already enabled in Iteration 1 MIN)
-===============================================================
-Iteration 1 Python312.inf already includes socketmodule.c and links
-BsdSocketLib / EfiSocketLib.  _socket is registered in config.c.
+6. EXAMPLE: SOCKET SUPPORT (enabled)
+====================================
+Python312.inf includes socketmodule.c and links BsdSocketLib / EfiSocketLib.
+_socket is registered in config.c.
 
 To disable sockets: remove or comment the socket entries in config.c and
 Python312.inf, drop BsdSocketLib from [LibraryClasses], and rebuild.
 
-Iteration 2 example (not enabled): _ssl requires edk2-openssl, config.c,
-and Python312.inf changes — see migration plan Phase 8.
+_ssl uses the same vendored OpenSSL tree as _hashlib (Phase 8.3–8.4); no
+separate edk2-openssl on PACKAGES_PATH.
 
 
 7. RUNNING PYTHON
@@ -201,26 +210,22 @@ Run from a FAT partition under the UEFI Shell.
 
 Expected banner includes 3.12.13 and platform uefi.
 
-REPL smoke (basic):
+REPL smoke (FULL — after create_python_pkg):
 
   >>> import sys
   >>> print(sys.version)
   >>> print(sys.platform)
-  >>> print(sys.path)
-  >>> import os, json, hashlib
+  >>> import os, json
+  >>> import zlib; import readline; import ctypes; import hashlib; import ssl
+  >>> hashlib.sha256(b"x").hexdigest()
+  >>> ssl.create_default_context()
 
-Iteration 1 — these imports must fail:
-
-  >>> import ssl
-  >>> import ctypes
-  >>> import zlib
-  >>> import readline
-
-Interactive input uses Parser/myreadline.c and edk2console (not GNU readline).
+Interactive input: pyreadline (staged under EFI\lib\python3.12\) plus
+Parser/myreadline.c and edk2console (not GNU readline.so).
 
 
-8. SUPPORTED C MODULES (Iteration 1)
-======================================
+8. SUPPORTED C MODULES (FULL)
+=============================
 Built-in table: PyMod-3.12.13/Modules/config.c
 
 Core / always present:
@@ -235,10 +240,10 @@ UEFI_C_SOURCE extensions (static, in Python312.efi):
   _xxsubinterpreters, _xxinterpchannels, audioop, _csv, _socket,
   _md5, _sha1, _blake2, _sha3, binascii, _multibytecodec, _decimal,
   xxlimited, _posixsubprocess, edk2console, pyexpat, _typing, _json,
-  _multiprocessing, _zoneinfo, _pickle, _statistics, _sha2, mmap, termios
+  _multiprocessing, _zoneinfo, _pickle, _statistics, _sha2, mmap, termios,
+  zlib, _ctypes, _ctypes_test, _hashlib, _ssl
 
-Not built in Iteration 1 (external package or deferred):
-  _ctypes, _ctypes_test, zlib, _ssl, _hashlib (OpenSSL), readline (GNU module)
+Pure Python readline: import readline (pyreadline copied by create_python_pkg.*)
 
 Interpreter / frozen (not separate import names):
   Deep-frozen stdlib fragments, getpath, ceval, etc. are inside the EFI image.
@@ -250,12 +255,11 @@ The create_python_pkg scripts copy AppPkg/.../Python-3.12.13/Lib (and PyMod
 Lib overlays when present) to EFI\lib\python3.12\.
 
 Not every CPython 3.12.13 Lib file is validated on UEFI.  Start with modules
-you need and extend testing over time.  Packages that depend on omitted C
-extensions (ssl, ctypes, zlib) will fail at import until Iteration 2.
+you need and extend testing over time.
 
-Suggested smoke imports (no extra C modules):
-  encodings, json, hashlib, re, os, pathlib (if os/stat sufficient),
-  collections, functools, typing, datetime
+Suggested smoke imports:
+  encodings, json, hashlib, ssl, re, os, pathlib, collections, datetime,
+  zlib, ctypes, readline
 
 
 10. TROUBLESHOOTING

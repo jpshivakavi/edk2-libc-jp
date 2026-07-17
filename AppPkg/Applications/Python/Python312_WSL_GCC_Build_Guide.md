@@ -1,7 +1,10 @@
-# Build Python 3.12.13 (AppPkg Iteration 1) with GCC on WSL Ubuntu
+# Build Python 3.12.13 (AppPkg FULL / Phase 8) with GCC on WSL Ubuntu
 
 Guide for the **edk2-libc AppPkg** migration tree (not the old `edk2-py312`
 `make python` flow). Follow these steps on **WSL2 Ubuntu** (20.04 / 22.04 / 24.04).
+
+On branch **`feature/python-3.12.13-apppkg`** (fork), **Phase 8** vendored libs
+are in **`Python312.inf`** — `zlib`, `readline`, `_ctypes`, OpenSSL `_hashlib` / `_ssl`.
 
 Related docs:
 
@@ -11,7 +14,12 @@ Related docs:
 - ReadMe: [`Python-3.12.13/Py312ReadMe.txt`](./Python-3.12.13/Py312ReadMe.txt)
 - Tree: `AppPkg/Applications/Python/Python-3.12.13/`
 
-**Iteration 1:** no `edk2-libffi` / `edk2-openssl` / `edk2-zlib` / `edk2-pyreadline`.
+**PACKAGES_PATH:** `<edk2>:<edk2-libc>` only. Vendored zlib/openssl/libffi/readline
+live under **`PyMod-3.12.13/Modules/`** — do **not** add sandbox `edk2-*` packages.
+Phase guides: `Python312_Phase8_8.1_Zlib.md` … `8.5`, `8.3`, `8.4`.
+
+**Deferred (plan):** Phase **7.3** CI and upstream PR until **Visual Studio** AppPkg
+builds are working; this guide remains the GCC reference.
 
 ---
 
@@ -163,7 +171,7 @@ ls AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
 ## 4. Apply libc patches (**required** setup — Phase 5.2)
 
 These come from `edk2-py312` and are **not** in upstream edk2-libc yet.
-**Iteration 1 policy:** keep **zero StdLib divergence** on the Git branch;
+**StdLib patch policy (FULL and MIN):** keep **zero StdLib divergence** on the Git branch;
 apply patches locally as a build prerequisite (re-apply after a clean
 checkout). **Patch 0001 (`upipe`) is required** to link; 0002–0004 are
 strongly recommended for GCC runtime.
@@ -298,7 +306,8 @@ Notes:
 
 - Use `GCC` or `GCC5` to match `Conf/target.txt` / `tools_def.txt`.
 - `NOOPT` matches the current edk2-py312 default; try `RELEASE` later.
-- **Do not** add openssl/zlib/libffi to `PACKAGES_PATH` for Iteration 1.
+- **Do not** add openssl/zlib/libffi **packages** to `PACKAGES_PATH` — they are vendored in-repo.
+- First OpenSSL link is large (~600+ libcrypto + libssl `.c`); allow long compile times.
 
 Expected output (when successful):
 
@@ -321,7 +330,9 @@ Work the errors in this order and append each batch to
 | `pyconfig.h` / `efi/*.h` not found | Re-run `srcprep.py`; check INF `-I.../Include` and `-I.../PyMod-3.12.13/efi/Include` |
 | NASM errors on `edk2stack.nasm` / `edk2handler.nasm` | Install newer nasm; compare flags with edk2-py312 `Python312.inf` |
 | GAS / `asm_trampoline.S` | May need `| GCC` path flags or temp stub for first link — copy approach from edk2-py312 CoreLib |
-| `PyInit__ctypes` / `_ssl` / `zlib` undefined | Ensure those stay **commented** in `PyMod-3.12.13/Modules/config.c` and out of INF |
+| `PyInit__ctypes` / `_ssl` / `zlib` undefined | Enable in `PyMod-3.12.13/Modules/config.c` and matching `[Sources]` in `Python312.inf` (FULL); see Phase 8 guides |
+| OpenSSL `e_os.h` missing | Vendor repo-root `PyMod-.../Modules/openssl/e_os.h` (see Phase 8.3 Status) |
+| OpenSSL `OPENSSL_ia32_rdseed_bytes` | Add `PyMod-.../Modules/openssl/efi/src/rand_rdrand.nasm` to INF |
 | Missing frozen `*.h` | Restore from edk2-cpython or run freeze |
 | Stack protector / `StackCheckLib` | edk2-py312 sets `StackCheckLibNull` in its DSC; AppPkg may need the same if GCC complains |
 
@@ -352,13 +363,17 @@ cd EFI\bin
 Python312.efi
 ```
 
-Smoke (Iteration 1):
+Smoke (FULL — matches `create_python_pkg.sh` hints):
 
 ```text
 >>> import sys; print(sys.version)   # expect 3.12.13
 >>> import os, json, math
->>> import ssl   # should fail / not present
+>>> import zlib; import readline; import ctypes; import hashlib; import ssl
+>>> hashlib.sha256(b"x").hexdigest()
+>>> ssl.create_default_context()
 ```
+
+`ssl.OPENSSL_VERSION_INFO` on UEFI reflects vendored **OpenSSL 1.1.1f**, not desktop 3.12.x **3.0.x**.
 
 ---
 
@@ -368,12 +383,13 @@ Smoke (Iteration 1):
 [ ] apt packages + nasm/gcc/python3
 [ ] edk2 BaseTools + edksetup.sh
 [ ] PACKAGES_PATH / EDK2_LIBC_PATH set (edk2 + edk2-libc only)
-[ ] branch feature/python-3.12.13-apppkg
+[ ] branch feature/python-3.12.13-apppkg (Phase 8 FULL)
 [ ] git apply --ignore-whitespace patches/*.patch (upipe.c present)
 [ ] python3 srcprep.py
+[ ] frozen/deepfreeze artifacts present
 [ ] build -D BUILD_PYTHON312 -t GCC
 [ ] Python312.efi produced
-[ ] (later) manual EFI tree + REPL smoke
+[ ] create_python_pkg.sh + UEFI REPL smoke (zlib, readline, ctypes, hashlib, ssl)
 ```
 
 ---
