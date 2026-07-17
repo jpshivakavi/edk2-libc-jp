@@ -3,7 +3,7 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-17 (8.2 readline validated; milestone tag `python312-apppkg-8.2`)  
+**Updated:** 2026-07-17 (8.5 libffi build notes; 8.2 milestone `python312-apppkg-8.2`)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
 **Iteration:** Phase **8.5** libffi / `_ctypes` — **in progress** (OpenSSL **8.3–8.4** after 8.5)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
@@ -96,6 +96,16 @@
 1. WSL: `git pull`, `create_python_pkg.sh` (Staged pyreadline); full `EFI/` tree deployed.
 2. UEFI Shell: `import readline` OK; REPL **Tab** completion / line editing works (edk2console + pyreadline).
 3. **Benign:** `SyntaxWarning` in `pyreadline/modes/basemode.py` docstring (`\space`) — same as edk2-py312 vendor @ `1e9face`; no AppPkg patch.
+
+### 2026-07-17 — Session 8 (Phase 8.5 libffi / `_ctypes` — WSL build)
+
+1. Vendored **edk2-libffi** @ `1fcd48b` under `PyMod-3.12.13/Modules/libffi/`; UEFI **`_ctypes`** from **edk2-cpython**; enabled in `config.c` + `Python312.inf` (see [`Python312_Phase8_8.5_Ctypes.md`](./Python312_Phase8_8.5_Ctypes.md)).
+2. **GCC build fixes** (reference: **edk2-py312** `edk2-libffi` / `PythonExtLib.inf`, not stock CPython alone):
+   - **No `malloc_closure.c`** on GCC (same as `edk2-cpython/efi/PythonPkg/PythonExtLib.inf`; use libffi **`ffi_closure_alloc`** / `HAVE_FFI_CLOSURE_ALLOC`).
+   - **Include paths:** `Modules/libffi/include` + `Modules/libffi/libffi/include` (`ffi_common.h`, `tramp.h`, `ffi_cfi.h`); `src/x86/asmnames.h`, `internal64.h`.
+   - **`GCC:*_*_X64_PP_FLAGS`:** libffi `-I` paths only (match `LibFFI.inf`; **no** `-fcf-protection=none` on GCC 5.x).
+   - **`edk2_libffi_asm.h`** + `#include` from **`unix64.S` / `win64.S`** (AppPkg-only CET neutralizer).
+3. **WSL build:** in progress — after pull, delete stale `Build/.../Python312` if `.S` preprocess still shows `_cet_endbr`; then full rebuild + UEFI `import ctypes` smoke pending.
 
 ---
 
@@ -337,8 +347,22 @@ Guides:
 |------|--------|--------|
 | 8.1 | `PyMod-3.12.13/Modules/zlib/` + `zlibmodule.c` | **Done** — WSL GCC/NOOPT/X64 build; `import zlib`; `zlib.crc32(b"uefi")` matches Windows CPython 3.12 |
 | 8.2 | `PyMod-3.12.13/Modules/readline/` (edk2-pyreadline @ 1e9face) | **Done** — package staging; UEFI `import readline`; REPL Tab/history |
-| 8.5 | libffi + `Modules/_ctypes/*` | **In progress** — vendored in tree; WSL build + smoke pending |
+| 8.5 | libffi + `Modules/_ctypes/*` | **In progress** — vendored + INF/build-option fixes on branch; WSL link + UEFI smoke pending |
 | 8.3–8.4 | OpenSSL + `_hashopenssl.c` / `_ssl.c` | Not started (after 8.5) |
+
+### 8.5 — Why edk2-py312 did not hit the same libffi asm issues
+
+Same **`unix64.S` / `win64.S`** sources as **edk2-py312** (`edk2-libffi` @ `1fcd48b`). Differences are **EDK module layout and preprocess flags**, not a different libffi tree.
+
+| | **edk2-py312 (`PythonPkg`)** | **AppPkg (`Python312.inf`)** |
+|---|------------------------------|------------------------------|
+| **libffi** | Separate module **`edk2-libffi/EFI/LibFFI/LibFFI.inf`** (`LIBRARY_CLASS = LibFFI`); linked via **`PythonPkg.dsc`** + **`LibFFI.dec`** | **Monolithic** — libffi `.c` / `.S` compiled inside **`Python312.inf`** with all of CPython |
+| **`_ctypes`** | C sources only in **`PythonExtLib.inf`** (no libffi asm, no **`malloc_closure.c`** on GCC) | **`PyMod-.../Modules/_ctypes/*.c`** in same INF as libffi |
+| **`.S` preprocess** | **`$(PP) $(PP_FLAGS) $(INC)`** — only LibFFI **`CC_FLAGS` / `PP_FLAGS`** `-I` paths; **no `@cc_resp.txt`** on the preprocessor line | **`$(PP) $(DEPS_FLAGS) $(PP_RESP)`** — inherits **application** response file (same flag soup as thousands of `.c` files) |
+| **CET / `_CET_ENDBR`** | Preprocessor typically leaves **`_CET_ENDBR`** unexpanded (no IBT on **`PP`**); **`.iiii`** assembles cleanly | Host GCC with **IBT/CET** via **`PP_RESP`** expands **`_CET_ENDBR` → `_cet_endbr`** → assembler error on **`.iiii`** |
+| **Mitigation (AppPkg)** | N/A | **`edk2_libffi_asm.h`** included last from **`unix64.S` / `win64.S`**; **`PP_FLAGS`** = libffi `-I` only (avoid **`-fcf-protection=none`** on GCC 5.x); clean **`Build/.../Python312`** after asm changes |
+
+**Takeaway:** When vendoring external libs into the monolith, mirror **edk2-py312 submodule file lists and include paths**, and expect **extra `BuildOptions`** (especially **`PP_FLAGS`**) that the standalone **`LibFFI.inf`** library build got “for free” by not using **`PP_RESP`**.
 
 ---
 
@@ -360,8 +384,9 @@ Guides:
 4. **`create_python_pkg.*` + basic REPL smoke** — **Done** (3.12.13 on UEFI Shell). Extended testing later.
 5. **Local StdLib dirt** may exist from prior `git apply` / `make patch_libc` — discard or keep locally; never stage for Python commits.
 6. **NASM sources** (`edk2stack.nasm`, `edk2handler.nasm`) and `asm_trampoline.S` need toolchain validation under EDK II GCC.
-7. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
-8. ~~Duplicate `efi/src/module_config.c`~~ — removed; INF uses `PyMod-3.12.13/Modules/config.c` only. Legacy `Python-3.12.13/efi/` tree removed.
+7. **Phase 8.5 libffi `.S` + CET:** use **`edk2_libffi_asm.h`** in vendored **`unix64.S` / `win64.S`**; do not rely on **`-fcf-protection=none`** (unsupported on GCC 5.x). Stale **`unix64.iiii`** → delete **`Build/.../Python312`**. Phase 8 §8.5 table.
+8. **`Modules/main.c`** still from CoreLib stock path — confirm vs 3.12 CLI/`PyConfig` expectations under UEFI.
+9. ~~Duplicate `efi/src/module_config.c`~~ — removed; INF uses `PyMod-3.12.13/Modules/config.c` only. Legacy `Python-3.12.13/efi/` tree removed.
 
 ---
 

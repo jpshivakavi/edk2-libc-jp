@@ -17,6 +17,10 @@ Linked into monolithic Python312.inf (no LibFFI.dec on PACKAGES_PATH).
 Python312.inf: -I include/ + libffi/include/ on CC_FLAGS and X64 PP_FLAGS
 (edk2-libffi LibFFI.inf); -DNO_MSABI_VA_FUNCS.
 
+AppPkg-only (not in upstream edk2-libffi tree): `include/edk2_libffi_asm.h` included
+from `unix64.S` / `win64.S` — neutralizes `_CET_ENDBR` when monolithic PP uses
+`pp_resp.txt` (see Migration Status Phase 8 §8.5).
+
 _ctypes C sources with UEFI deltas live in PyMod-3.12.13/Modules/_ctypes/
 (copied from edk2-cpython 3.12.13 UEFI port).
 

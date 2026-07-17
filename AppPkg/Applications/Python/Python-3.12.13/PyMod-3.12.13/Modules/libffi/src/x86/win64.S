@@ -4,8 +4,7 @@
 #include <ffi.h>
 #include <ffi_cfi.h>
 #include "asmnames.h"
-
-#if defined(HAVE_AS_CFI_PSEUDO_OP)
+#include "edk2_libffi_asm.h"
         .cfi_sections   .debug_frame
 #endif
 

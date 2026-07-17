@@ -32,6 +32,7 @@
 #include <ffi.h>
 #include "internal64.h"
 #include "asmnames.h"
+#include "edk2_libffi_asm.h"
 
 	.text
 
