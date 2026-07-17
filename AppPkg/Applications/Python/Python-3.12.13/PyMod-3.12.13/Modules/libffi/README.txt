@@ -9,7 +9,7 @@ Standard reference: edk2-py312 checkout, submodule edk2-libffi @ 1fcd48b
 Layout in this tree:
 
   include/           ffi.h, fficonfig.h, ffitarget.h (edk2-libffi/EFI/LibFFI/Include)
-  libffi/include/    ffi_common.h, tramp.h (edk2-libffi/EFI/LibFFI/libffi/include)
+  libffi/include/    ffi_common.h, tramp.h, ffi_cfi.h (edk2-libffi/EFI/LibFFI/libffi/include)
   src/               closures.c, debug.c, prep_cif.c, raw_api.c, types.c
   src/x86/           ffi64.c, ffiw64.c, unix64.S, win64.S, internal64.h, asmnames.h
 

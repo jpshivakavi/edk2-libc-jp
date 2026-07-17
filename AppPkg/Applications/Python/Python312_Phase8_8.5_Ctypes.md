@@ -56,6 +56,8 @@ From **`edk2-py312/edk2-libffi`** (commit **`1fcd48b`**):
 1. `[Sources]` in `EFI/LibFFI/LibFFI.inf` → `PyMod-.../Modules/libffi/src/` (incl. `src/x86/*.S`, `asmnames.h`).
 2. `EFI/LibFFI/Include/*` → `Modules/libffi/include/`.
 3. `EFI/LibFFI/libffi/include/ffi_common.h`, `tramp.h` → `Modules/libffi/libffi/include/`.
-4. `[BuildOptions]` `GCC:*_*_X64_PP_FLAGS` → same `-I` pair in `Python312.inf`.
+4. `[BuildOptions]` `GCC:*_*_X64_PP_FLAGS` → same `-I` pair plus **`-fcf-protection=none`**
+   (libffi `unix64.S` / `win64.S` use `_CET_ENDBR`; host GCC with IBT enabled otherwise
+   emits `_cet_endbr` and the EDK assembler step fails — UEFI firmware does not use CET here).
 
 Refresh `_ctypes` from **`edk2-py312/edk2-cpython/Modules/_ctypes/`** when syncing.
