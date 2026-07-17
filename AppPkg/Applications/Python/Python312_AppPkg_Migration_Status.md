@@ -10,7 +10,7 @@
 **Build WORKSPACE (interim):** `~/src/edk2-py312/edk2` — see [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §0–§7  
 **Build WORKSPACE (target):** tianocore `~/src/edk2` + `PACKAGES_PATH=edk2:edk2-libc` (Phase 7.3 CI; not verified green yet)  
 **Branch:** `feature/python-3.12.13-apppkg`  
-**Milestone tag:** [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` — MIN build + package; **8.1** zlib; **8.2** readline (import + Tab); pyreadline docstring fix  
+**Milestone tags:** [`python312-apppkg-8.5`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.5) @ `c8a77115` (adds **8.5** ctypes); [`python312-apppkg-8.2`](https://github.com/jpshivakavi/edk2-libc-jp/releases/tag/python312-apppkg-8.2) @ `cb80b42b` ( **8.1** zlib, **8.2** readline)
 **Source port:** `c:\Users\njayapra\github\edk2-py312` — **standard reference** for extension modules that depend on external packages (`edk2-zlib`, `edk2-libffi`, `edk2-openssl`, `edk2-pyreadline`, `edk2-cpython` glue); see migration plan table. Use **`~/src/edk2-py31213/edk2-cpython`** for 3.12.13 sources; `~/src/edk2-py312/edk2-cpython` was 3.12.0 and must not be used for sync.
 
 ---
@@ -135,7 +135,7 @@
 | Tag | Commit | Scope |
 |-----|--------|--------|
 | `python312-apppkg-8.2` | `cb80b42b` | Phases 0–6 done; **8.1** zlib + **8.2** readline smoke; packaging warnings + basemode SyntaxWarning fix |
-| *(planned)* `python312-apppkg-8.5` | `d7834063` or HEAD after status commit | **8.5** libffi + `_ctypes` / `_ctypes_test` GCC build + UEFI smoke |
+| `python312-apppkg-8.5` | `c8a77115` | **8.1–8.2** + **8.5** libffi/`ctypes`/`_ctypes_test` GCC + UEFI smoke |
 
 Checkout: `git fetch origin tag python312-apppkg-8.2 && git checkout python312-apppkg-8.2`
 
