@@ -619,13 +619,15 @@ If you switch layout, update `PyMod-.../Include/pyconfig.h` `PREFIX` / `EXEC_PRE
 2. Common Ext without external packages: e.g. `_json`, `_pickle`, `_struct`, `array`, `math`/`cmath`, `_datetime`, `_decimal`, `_asyncio`, `_socket` + BsdSocketLib/EfiSocketLib, in-tree hashes (`_md5`, `_sha*`, `_blake2`), `pyexpat`, etc.
 3. **Explicitly skip:** `_ctypes`, `_ssl`, `_hashopenssl`, `zlib`, `readline`, `_ctypes_test`
 
-**Iteration 2+ (Phase 8 — vendored)** — one batch at a time, **easy → complex**:
+**Iteration 2+ (Phase 8 — vendored)** — one batch at a time:
 
 1. **8.1** `zlib` — `PyMod-3.12.13/Modules/zlib/` (commit `8ae7f507`); **no** `LibZlib`
-2. **8.2** `readline` — vendored readline/libedit + `Modules/readline.c`
-3. **8.3** `_hashlib` — vendored OpenSSL + `_hashopenssl.c`
-4. **8.4** `ssl` — same OpenSSL tree + `_ssl.c`
-5. **8.5** `_ctypes`, `_ctypes_test` — vendored libffi (GCC X64) + `_ctypes` sources + CPU helpers
+2. **8.2** `readline` — vendored edk2-pyreadline (pure Python + `edk2console`)
+3. **8.5** `_ctypes`, `_ctypes_test` — vendored libffi (GCC X64) + `_ctypes` sources + CPU helpers
+4. **8.3** `_hashlib` — vendored OpenSSL + `_hashopenssl.c`
+5. **8.4** `ssl` — same OpenSSL tree + `_ssl.c`
+
+**Fork execution order (2026-07-17):** after **8.2**, do **8.5** then **8.3–8.4**. `_ctypes` has no OpenSSL dependency; OpenSSL remains the largest vendored tree.
 
 After each batch: rebuild + import smoke. **`PACKAGES_PATH` stays `edk2:edk2-libc` for all steps.**
 
@@ -723,15 +725,17 @@ PACKAGES_PATH=<edk2>:<edk2-libc>
 
 ---
 
-### Recommended order: easy → complex
+### Recommended order (plan step IDs)
 
 | Step | Vendored lib | Enable in `config.c` | Primary work |
 |------|--------------|----------------------|--------------|
 | **8.1** | **edk2-zlib (vendored)** | `zlib` | **`PyMod-3.12.13/Modules/zlib/`** from commit `8ae7f507` — see [`Python312_Phase8_8.1_Zlib.md`](./Python312_Phase8_8.1_Zlib.md) |
 | **8.2** | **edk2-pyreadline** | `readline` (stdlib) | **`PyMod-3.12.13/Modules/readline/`** — see [`Python312_Phase8_8.2_Readline.md`](./Python312_Phase8_8.2_Readline.md) |
-| **8.3** | **OpenSSL** | `_hashlib` | Vendor minimal libcrypto (+ headers); `_hashopenssl.c`; UEFI build flags |
+| **8.5** | **libffi** | `_ctypes`, `_ctypes_test` | Vendor libffi for GCC X64; `_ctypes/*`; **next on fork after 8.2** |
+| **8.3** | **OpenSSL** | `_hashlib` | Vendor libcrypto (+ headers); `_hashopenssl.c`; UEFI build flags |
 | **8.4** | **OpenSSL** (same) | `_ssl` | Add libssl pieces + `_ssl.c`; smoke after 8.3 |
-| **8.5** | **libffi** | `_ctypes`, `_ctypes_test` | Vendor libffi for GCC X64; `_ctypes/*`; hardest batch |
+
+**Do 8.5 before 8.3–8.4** on `feature/python-3.12.13-apppkg` unless you need ssl/hashlib first; step numbers are unchanged for docs/smoke tables below.
 
 ---
 
@@ -812,7 +816,7 @@ Maintainers may prefer **MIN merged first**, then vendored batches in follow-ups
 [ ] Phase 5  Libc patches + first GCC AppPkg link (PACKAGES_PATH = edk2 + edk2-libc only)
 [ ] Phase 6  Package, REPL smoke (no ssl/ctypes/zlib/readline)
 [ ] Phase 7  Docs + CI for Iteration 1
-[ ] Phase 8  Vendored libs 8.1 zlib → 8.2 readline → 8.3–8.4 OpenSSL → 8.5 libffi/ctypes (PACKAGES_PATH unchanged)
+[ ] Phase 8  Vendored libs: 8.1 zlib → 8.2 readline → **8.5 libffi/ctypes** → 8.3–8.4 OpenSSL (PACKAGES_PATH unchanged)
 ```
 
 ---
@@ -847,7 +851,7 @@ Maintainers may prefer **MIN merged first**, then vendored batches in follow-ups
 
 ### Upstream FULL (Phase 8 — same `PACKAGES_PATH`)
 
-8. Vendored batches **8.1–8.5** in plan order (zlib → readline → OpenSSL → ctypes), updating INF + `config.c` + license notices each step.
+8. Vendored batches **8.1–8.5** (fork order after 8.2: **8.5** then **8.3–8.4**), updating INF + `config.c` + license notices each step.
 9. VS2022 support (Phase 8 optional / parallel).
 
 ---
