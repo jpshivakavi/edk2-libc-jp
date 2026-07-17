@@ -129,6 +129,8 @@ if [[ -d "${READLINE_VENDOR}/pyreadline" && -f "${READLINE_VENDOR}/readline.py" 
     cp -a "${READLINE_VENDOR}/pyreadline" "${LIB_DIR}/"
   fi
   echo "Staged pyreadline from ${READLINE_VENDOR}"
+else
+  echo "Warning: ${READLINE_VENDOR} missing; import readline will fail until Phase 8.2 vendor is present."
 fi
 
 if [[ -d "${EDK2_LIBC_PATH}/StdLib/Efi/StdLib/etc" ]]; then

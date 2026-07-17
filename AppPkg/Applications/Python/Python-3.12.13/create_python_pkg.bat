@@ -75,7 +75,10 @@ if exist "%READLINE_VENDOR%\pyreadline\" (
   if exist "%READLINE_VENDOR%\readline.py" (
     copy /Y "%READLINE_VENDOR%\readline.py" "%OUT_FOLDER%\EFI\lib\python3.12\readline.py" >nul
     xcopy "%READLINE_VENDOR%\pyreadline\*" "%OUT_FOLDER%\EFI\lib\python3.12\pyreadline\" /Y /S /I /Q >nul
+    echo Staged pyreadline from %READLINE_VENDOR%
   )
+) else (
+  echo Warning: %READLINE_VENDOR% missing; import readline will fail.
 )
 if exist "%EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\" (
   xcopy "%EDK2_LIBC_PATH%\StdLib\Efi\StdLib\etc\*" "%OUT_FOLDER%\EFI\stdlib\etc\" /Y /S /I /Q >nul
