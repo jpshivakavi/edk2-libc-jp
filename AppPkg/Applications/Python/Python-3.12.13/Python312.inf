@@ -332,7 +332,7 @@ PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callbacks.c
 PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callproc.c
 PyMod-$(PYTHON_VERSION)/Modules/_ctypes/cfield.c
 PyMod-$(PYTHON_VERSION)/Modules/_ctypes/stgdict.c
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/malloc_closure.c
+# No malloc_closure.c — edk2-cpython PythonExtLib.inf uses libffi ffi_closure_alloc (HAVE_FFI_CLOSURE_ALLOC).
 PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes_test.c
 
 PyMod-$(PYTHON_VERSION)/Modules/libffi
