@@ -15,3 +15,6 @@ This is **not** GNU readline C sources. UEFI uses:
 so `import readline` works at runtime. No extra INF [Sources] for Phase 8.2.
 
 License: doc/COPYING in upstream repo (copied as COPYING here).
+
+AppPkg delta vs 1e9face: `pyreadline/modes/basemode.py` docstring uses `\\space`
+(CPython 3.12 SyntaxWarning for `\space` in docstrings).

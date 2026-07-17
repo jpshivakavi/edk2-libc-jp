@@ -516,7 +516,7 @@ class BaseMode(object):
         """Paste windows clipboard. If enable_ipython_paste_list_of_lists is 
         True then try to convert tabseparated data to repr of list of lists or 
         repr of array.
-        If enable_ipython_paste_for_paths==True then change \\ to / and spaces to \space"""
+        If enable_ipython_paste_for_paths==True then change \\ to / and spaces to \\space"""
         if self.enable_win32_clipboard:
                 import pyreadline.clipboard as clipboard
             
