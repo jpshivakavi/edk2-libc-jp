@@ -40,6 +40,19 @@ def make_string_literal(b: bytes) -> str:
     return "".join(res)
 
 
+def make_byte_array_initializer(b: bytes) -> str:
+    """Brace initializer for char[N]; avoids MSVC C4295 on co_code_adaptive."""
+    if not b:
+        return "{}"
+    parts = []
+    for i in range(0, len(b), 16):
+        chunk = b[i:i + 16]
+        parts.append(", ".join(f"0x{c:02x}" for c in chunk))
+    if len(parts) == 1:
+        return "{" + parts[0] + "}"
+    return "{\n        " + ",\n        ".join(parts) + "\n    }"
+
+
 CO_FAST_LOCAL = 0x20
 CO_FAST_CELL = 0x40
 CO_FAST_FREE = 0x80
@@ -250,7 +263,7 @@ class Printer:
         # Derived values
         nlocals, ncellvars, nfreevars = \
             get_localsplus_counts(code, localsplusnames, localspluskinds)
-        co_code_adaptive = make_string_literal(code.co_code)
+        co_code_adaptive = make_byte_array_initializer(code.co_code)
         self.write("static")
         with self.indent():
             self.write(f"struct _PyCode_DEF({len(code.co_code)})")
