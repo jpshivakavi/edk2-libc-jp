@@ -6,6 +6,8 @@ support lands in `Python312.inf`.
 
 **GCC reference (same tree):** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)
 
+**GCC vs VS2022 (INF splits, flags, libffi, OpenSSL glue):** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md)
+
 **Plan / status:**
 
 - [`Python312_VS2022_Port_Plan.md`](./Python312_VS2022_Port_Plan.md)
@@ -227,28 +229,43 @@ Expect **24** `.h` files (typical 3.12 set).
 
 ---
 
-## 7. Build Python312 with VS2022 (Phase V3+ — not yet)
-
-**Blocked until** `Python312.inf` gains MSFT `[BuildOptions]` and toolchain-split sources
-(see port plan Phase V3–V4).
-
-Placeholder command (do not expect success until MSVC port lands):
+## 7. Build Python312 with VS2022 (Phase V3–V4)
 
 ```cmd
 set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp
 set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%
-cd c:\Users\njayapra\github\edk2
+set NASM_PREFIX=C:\NASM\
+cd /d c:\Users\njayapra\github\edk2
 call edksetup.bat
-build -t VS2022 -a X64 -b RELEASE -p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc -D BUILD_PYTHON312
+build -t VS2022 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312
 ```
 
-**Packaging** (after a successful build):
+Artifact (typical):
+
+```text
+edk2\Build\AppPkg\RELEASE_VS2022\X64\edk2-libc-jp\AppPkg\Applications\Python\Python-3.12.13\Python312\DEBUG\Python312.efi
+```
+
+### Packaging (Phase V5)
+
+Use **`create_python_pkg.bat` from the VS2022 fork** (`edk2-libc-jp`). The copy under plain **`edk2-libc`** is still a Phase 6 **stub** that only prints `TODO: Phase 6`.
 
 ```cmd
 set WORKSPACE=c:\Users\njayapra\github\edk2
 set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp
-AppPkg\Applications\Python\Python-3.12.13\create_python_pkg.bat VS2022 RELEASE X64 myUEFIPy312
+cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
+create_python_pkg.bat VS2022 RELEASE X64 c:\Users\njayapra\github\edk2-libc-jp\myUEFIPy312
 ```
+
+On success you should see **`Python 3.12 EFI package ready at …\EFI\`** (not the TODO line). Output layout:
+
+```text
+myUEFIPy312\EFI\bin\Python312.efi
+myUEFIPy312\EFI\lib\python3.12\
+myUEFIPy312\EFI\stdlib\etc\
+```
+
+Copy the **`EFI\`** folder to the FAT volume root (e.g. `fs0:\EFI\`), then from UEFI Shell: `fs0:` → `cd EFI\bin` → `Python312.efi`.
 
 ---
 

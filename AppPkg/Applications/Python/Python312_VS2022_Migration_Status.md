@@ -2,6 +2,7 @@
 
 **Plan:** [`Python312_VS2022_Port_Plan.md`](./Python312_VS2022_Port_Plan.md)  
 **Windows build guide:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md)  
+**GCC vs VS2022 deviations:** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md)  
 **3.6.8 VS2022 walkthrough:** [`Python368_Windows_VS2022_Build_Guide.md`](./Python368_Windows_VS2022_Build_Guide.md)  
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
@@ -438,6 +439,7 @@ Same as GCC AppPkg status:
 | Item | Path |
 |------|------|
 | VS2022 port plan | `AppPkg/Applications/Python/Python312_VS2022_Port_Plan.md` |
+| **GCC vs VS2022 deviations** | `AppPkg/Applications/Python/Python312_VS2022_GCC_Toolchain_Deviations.md` |
 | V2 proof | `AppPkg/Applications/Python/Python-3.12.13/vs2022_verify/` |
 | Monolithic INF | `AppPkg/Applications/Python/Python-3.12.13/Python312.inf` |
 | 3.6.8 MSVC INF | `AppPkg/Applications/Python/Python-3.6.8/Python368.inf` |

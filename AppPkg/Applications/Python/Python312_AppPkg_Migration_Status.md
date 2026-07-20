@@ -2,6 +2,7 @@
 
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
+**VS2022 / Windows port (peer):** [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) — branch **`feature/python-3.12.13-vs2022`**  
 **Started:** 2026-07-14  
 **Updated:** 2026-07-17 (Phase **8** vendored libs **Done** — 8.4 `_ssl` UEFI smoke **Done**)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
@@ -432,3 +433,4 @@ On WSL Ubuntu, in order:
 10. ~~Phase **8.3** OpenSSL libcrypto + `_hashlib` GCC build + UEFI smoke~~ — **Done** (tag **`python312-apppkg-8.3`** @ `c86de4d4`).
 11. ~~Phase **8.4** `_ssl` GCC build + UEFI smoke~~ — **Done** (tag **`python312-apppkg-8.4`** @ `89e208b8`).
 12. Next: **7.3** CI (tianocore `~/src/edk2`), **7.6** libc patches upstream, EFI size notes, upstream PR.
+13. **VS2022 peer:** [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) — **`BUILD_PYTHON312 -t VS2022`** (after GCC FULL baseline frozen on branch).
