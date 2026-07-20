@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 
-REM Stage Python 3.12.13 UEFI runtime tree (PREFIX fs0:\EFI)
+REM Stage Python 3.12.13 UEFI runtime tree (PREFIX relative to fsN:\EFI)
 REM
 REM   <OutFolder>\EFI\bin\Python312.efi
 REM   <OutFolder>\EFI\lib\python3.12\

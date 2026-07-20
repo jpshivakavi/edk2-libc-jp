@@ -550,8 +550,54 @@ if py_setpath:
     prefix = exec_prefix = ''
 
 else:
+    uefi_layout = False
+
+    # UEFI: PREFIX/EXEC_PREFIX are relative to the executable's volume (fsN:),
+    # not a fixed fs0: — same approach as PyMod 3.6.8 getpath.c calculate_path().
+    if os_name == 'uefi' and not home and not build_prefix:
+        probe = real_executable or executable
+        if not probe and executable_dir and program_name:
+            probe = joinpath(executable_dir, program_name)
+        if probe and not isabs(probe):
+            probe = abspath(probe)
+
+        volume = ''
+        for candidate in (probe, executable, executable_dir, abspath('.')):
+            if not candidate:
+                continue
+            pos = candidate.find(':')
+            if pos <= 0:
+                continue
+            after = candidate[pos + 1:pos + 2]
+            if after == '' or after == SEP or after == '/':
+                volume = candidate[:pos + 1]
+                break
+
+        install_rel = PREFIX or ''
+        if install_rel:
+            rel_pos = install_rel.find(':')
+            if rel_pos > 0 and install_rel[:2].lower() == 'fs':
+                install_rel = install_rel[rel_pos + 1:]
+            while install_rel and install_rel[0] in '/\\':
+                install_rel = install_rel[1:]
+
+        if volume and install_rel:
+            install_root = joinpath(volume, install_rel)
+        elif install_rel:
+            install_root = install_rel
+        elif volume:
+            install_root = volume
+        else:
+            install_root = ''
+
+        if install_root:
+            prefix = exec_prefix = install_root
+            stdlib_dir = joinpath(install_root, STDLIB_SUBDIR)
+            platstdlib_dir = joinpath(install_root, PLATSTDLIB_LANDMARK)
+            uefi_layout = True
+
     # Read prefix and exec_prefix from explicitly set home
-    if home:
+    if not uefi_layout and home:
         # When multiple paths are listed with ':' or ';' delimiters,
         # split into prefix:exec_prefix
         prefix, had_delim, exec_prefix = home.partition(DELIM)
@@ -562,7 +608,7 @@ else:
 
 
     # First try to detect prefix by looking alongside our runtime library, if known
-    if library and not prefix:
+    if not uefi_layout and library and not prefix:
         library_dir = dirname(library)
         if ZIP_LANDMARK:
             if os_name == 'nt':
@@ -578,7 +624,7 @@ else:
 
 
     # Detect prefix by looking for zip file
-    if ZIP_LANDMARK and executable_dir and not prefix:
+    if not uefi_layout and ZIP_LANDMARK and executable_dir and not prefix:
         if os_name == 'nt':
             # QUIRK: Windows does not search up for ZIP file
             if isfile(joinpath(executable_dir, ZIP_LANDMARK)):
@@ -592,23 +638,23 @@ else:
 
 
     # Detect prefix by searching from our executable location for the stdlib_dir
-    if STDLIB_SUBDIR and STDLIB_LANDMARKS and executable_dir and not prefix:
+    if not uefi_layout and STDLIB_SUBDIR and STDLIB_LANDMARKS and executable_dir and not prefix:
         prefix = search_up(executable_dir, *STDLIB_LANDMARKS)
         if prefix and not stdlib_dir:
             stdlib_dir = joinpath(prefix, STDLIB_SUBDIR)
 
-    if PREFIX and not prefix:
+    if not uefi_layout and PREFIX and not prefix:
         prefix = PREFIX
         if not any(isfile(joinpath(prefix, f)) for f in STDLIB_LANDMARKS):
             warn('Could not find platform independent libraries <prefix>')
 
-    if not prefix:
+    if not uefi_layout and not prefix:
         prefix = abspath('')
         warn('Could not find platform independent libraries <prefix>')
 
 
     # Detect exec_prefix by searching from executable for the platstdlib_dir
-    if PLATSTDLIB_LANDMARK and not exec_prefix:
+    if not uefi_layout and PLATSTDLIB_LANDMARK and not exec_prefix:
         if os_name == 'nt':
             # QUIRK: Windows always assumed these were the same
             # gh-100320: Our PYDs are assumed to be relative to the Lib directory

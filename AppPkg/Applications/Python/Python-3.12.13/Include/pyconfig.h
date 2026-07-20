@@ -1800,8 +1800,9 @@
 #define thread_local
 
 #define PYTHONPATH ""
-#define PREFIX "fs0:\\EFI"
-#define EXEC_PREFIX "fs0:\\EFI"
+/* Relative to the UEFI volume (fsN:) of the running interpreter — see getpath.py */
+#define PREFIX "\\EFI"
+#define EXEC_PREFIX "\\EFI"
 #define VERSION "3.12"
 #define VPATH ""
 #define PLATLIBDIR "lib"

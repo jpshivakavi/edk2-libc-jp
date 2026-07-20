@@ -382,7 +382,7 @@ def getsitepackages(prefixes=None):
             continue
         seen.add(prefix)
 
-        if os.sep == '/':
+        if os.sep == '/' or os.name == 'uefi':
             libdirs = [sys.platlibdir]
             if sys.platlibdir != "lib":
                 libdirs.append("lib")

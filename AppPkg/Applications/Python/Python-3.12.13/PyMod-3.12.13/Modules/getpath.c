@@ -725,6 +725,29 @@ progname_to_dict(PyObject *dict, const char *key)
 {
 #ifdef MS_WINDOWS
     return winmodule_to_dict(dict, key, NULL);
+#elif defined(UEFI_C_SOURCE)
+    wchar_t cwd[MAXPATHLEN + 1];
+    const wchar_t *pn = Py_GetProgramName();
+    wchar_t path[MAXPATHLEN + 1];
+
+    path[0] = L'\0';
+    if (pn && pn[0] && _Py_wgetcwd(cwd, Py_ARRAY_LENGTH(cwd) - 1)) {
+        if (wcschr(pn, SEP) || wcschr(pn, L'/') || wcschr(pn, L'\\')) {
+            wchar_t *abs = NULL;
+            if (_Py_abspath(pn, &abs) == 0 && abs) {
+                int r = wchar_to_dict(dict, key, abs);
+                PyMem_RawFree(abs);
+                return r;
+            }
+        }
+        else {
+            wcscpy(path, cwd);
+            if (_Py_add_relfile(path, pn, Py_ARRAY_LENGTH(path)) == 0) {
+                return wchar_to_dict(dict, key, path);
+            }
+        }
+    }
+    return PyDict_SetItemString(dict, key, Py_None) == 0;
 #elif defined(__APPLE__)
     char *path;
     uint32_t pathLen = 256;

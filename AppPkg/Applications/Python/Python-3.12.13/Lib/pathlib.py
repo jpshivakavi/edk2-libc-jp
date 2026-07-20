@@ -11,6 +11,7 @@ import io
 import ntpath
 import os
 import posixpath
+import uefipath
 import re
 import sys
 import warnings
@@ -22,7 +23,7 @@ from urllib.parse import quote_from_bytes as urlquote_from_bytes
 
 __all__ = [
     "PurePath", "PurePosixPath", "PureWindowsPath",
-    "Path", "PosixPath", "WindowsPath",
+    "Path", "PosixPath", "WindowsPath", "PureUefiPath", "UefiPath"
     ]
 
 #
@@ -347,7 +348,12 @@ class PurePath(object):
         new PurePath object.
         """
         if cls is PurePath:
-            cls = PureWindowsPath if os.name == 'nt' else PurePosixPath
+            if os.name == 'nt':
+                cls = PureWindowsPath
+            elif os.name == 'uefi':
+                cls = PureUefiPath
+            else:
+                cls = PurePosixPath
         return object.__new__(cls)
 
     def __reduce__(self):
@@ -817,6 +823,15 @@ class PureWindowsPath(PurePath):
     _flavour = ntpath
     __slots__ = ()
 
+class PureUefiPath(PurePath):
+    """PurePath subclass for Uefi systems.
+
+    On a Uefi system, instantiating a PurePath should return this object.
+    However, you can also instantiate it directly on any system.
+    """
+    _flavour = uefipath
+    __slots__ = ()
+    
 
 # Filesystem-accessing classes
 
@@ -1163,7 +1178,12 @@ class Path(PurePath):
 
     def __new__(cls, *args, **kwargs):
         if cls is Path:
-            cls = WindowsPath if os.name == 'nt' else PosixPath
+            if os.name == 'nt':
+                cls = WindowsPath
+            elif os.name == 'uefi':
+                cls = UefiPath
+            else:
+                cls = PosixPath
         return object.__new__(cls)
 
     def __enter__(self):
@@ -1433,3 +1453,16 @@ class WindowsPath(Path, PureWindowsPath):
         def __new__(cls, *args, **kwargs):
             raise NotImplementedError(
                 f"cannot instantiate {cls.__name__!r} on your system")
+
+class UefiPath(Path, PureUefiPath):
+    """Path subclass for UEFI systems.
+
+    On a UEFI system, instantiating a Path should return this object.
+    """
+    __slots__ = ()
+
+    if os.name != 'uefi':
+        def __new__(cls, *args, **kwargs):
+            raise NotImplementedError(
+                f"cannot instantiate {cls.__name__!r} on your system")
+        

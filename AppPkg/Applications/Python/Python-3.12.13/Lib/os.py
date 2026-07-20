@@ -88,7 +88,35 @@ elif 'nt' in _names:
         from nt import _have_functions
     except ImportError:
         pass
+elif 'uefi' in _names:
+    name = 'uefi'
+    linesep = '\r\n'
+    from uefi import *
+    try:
+        from uefi import _exit
+        __all__.append('_exit')
+    except ImportError:
+        pass
+    import uefipath as path
 
+    import uefi
+    __all__.extend(_get_exports_list(uefi))
+    del uefi
+
+    try:
+        from uefi import _have_functions
+    except ImportError:
+        pass
+
+    # null fsync since UEFI does not have fsync API
+    def fsync(fd):
+        pass
+
+    # UEFI chmod is just stub that always fails, for pip to work
+    # lets redefine to be null stub
+    def chmod(path, perms):
+        pass
+    
 else:
     raise ImportError('no os specific module found')
 
@@ -699,11 +727,13 @@ def get_exec_path(env=None):
 from _collections_abc import MutableMapping, Mapping
 
 class _Environ(MutableMapping):
-    def __init__(self, data, encodekey, decodekey, encodevalue, decodevalue):
+    def __init__(self, data, encodekey, decodekey, encodevalue, decodevalue, putenv, unsetenv):
         self.encodekey = encodekey
         self.decodekey = decodekey
         self.encodevalue = encodevalue
         self.decodevalue = decodevalue
+        self.putenv = putenv
+        self.unsetenv = unsetenv
         self._data = data
 
     def __getitem__(self, key):
@@ -717,12 +747,12 @@ class _Environ(MutableMapping):
     def __setitem__(self, key, value):
         key = self.encodekey(key)
         value = self.encodevalue(value)
-        putenv(key, value)
+        self.putenv(key, value)
         self._data[key] = value
 
     def __delitem__(self, key):
         encodedkey = self.encodekey(key)
-        unsetenv(encodedkey)
+        self.unsetenv(encodedkey)
         try:
             del self._data[encodedkey]
         except KeyError:
@@ -771,8 +801,24 @@ class _Environ(MutableMapping):
         new.update(self)
         return new
 
+try:
+    _putenv = putenv
+except NameError:
+    _putenv = lambda key, value: None
+else:
+    if "putenv" not in __all__:
+        __all__.append("putenv")
+
+try:
+    _unsetenv = unsetenv
+except NameError:
+    _unsetenv = lambda key: _putenv(key, "")
+else:
+    if "unsetenv" not in __all__:
+        __all__.append("unsetenv")
+    
 def _createenviron():
-    if name == 'nt':
+    if name in ['nt', 'uefi']:
         # Where Env Var Names Must Be UPPERCASE
         def check_str(value):
             if not isinstance(value, str):
@@ -798,7 +844,8 @@ def _createenviron():
         data = environ
     return _Environ(data,
         encodekey, decode,
-        encode, decode)
+        encode, decode,
+        _putenv, _unsetenv)
 
 # unicode environ
 environ = _createenviron()
@@ -811,7 +858,7 @@ def getenv(key, default=None):
     key, default and the result are str."""
     return environ.get(key, default)
 
-supports_bytes_environ = (name != 'nt')
+supports_bytes_environ = (name not in ['nt', 'uefi'])
 __all__.extend(("getenv", "supports_bytes_environ"))
 
 if supports_bytes_environ:
@@ -823,7 +870,8 @@ if supports_bytes_environ:
     # bytes environ
     environb = _Environ(environ._data,
         _check_bytes, bytes,
-        _check_bytes, bytes)
+        _check_bytes, bytes,
+        _putenv, _unsetenv)
     del _check_bytes
 
     def getenvb(key, default=None):
