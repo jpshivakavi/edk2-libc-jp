@@ -16,7 +16,7 @@
 # pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(UEFI_C_SOURCE)
 # include <windows.h>
 #endif
 

@@ -38,8 +38,9 @@ enum {
     DEFAULT_PROTOCOL = 4
 };
 
-#ifdef MS_WINDOWS
-// These are already typedefs from windows.h, pulled in via pycore_runtime.h.
+#if defined(MS_WINDOWS) || defined(_MSC_VER)
+// Pickle opcodes collide with Windows/MSVC macros (UNICODE, GET, PUT, …).
+// MS_WINDOWS is unset for UEFI pyconfig, but _MSC_VER is still defined.
 #define FLOAT FLOAT_
 #define INT INT_
 #define LONG LONG_

@@ -120,7 +120,11 @@ const char *mpd_version(void);
   #endif
 #endif
 
-
+#ifdef UEFI_C_SOURCE
+  #define CONFIG_64
+  #define ANSI
+#endif
+  
 /* BEGIN CONFIG_64 */
 #if defined(CONFIG_64)
 /* types for modular and base arithmetic */

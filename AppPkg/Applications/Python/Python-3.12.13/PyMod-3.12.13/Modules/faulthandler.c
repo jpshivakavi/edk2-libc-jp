@@ -988,7 +988,7 @@ faulthandler_suppress_crash_report(void)
     }
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     /* Visual Studio: configure abort() to not display an error message nor
        open a popup asking to report the fault. */
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);

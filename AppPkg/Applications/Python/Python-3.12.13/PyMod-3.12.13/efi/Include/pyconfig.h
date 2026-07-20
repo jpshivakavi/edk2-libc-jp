@@ -18,7 +18,11 @@
 /* #undef AIX_GENUINE_CPLUSPLUS */
 
 /* The normal alignment of `long', in bytes. */
+#if defined(_MSC_VER)
+#define ALIGNOF_LONG 4
+#else
 #define ALIGNOF_LONG 8
+#endif
 
 /* The normal alignment of `size_t', in bytes. */
 #define ALIGNOF_SIZE_T 8
@@ -1538,7 +1542,11 @@
 #define SIZEOF_INT 4
 
 /* The size of `long', as computed by sizeof. */
+#if defined(_MSC_VER)
+#define SIZEOF_LONG 4
+#else
 #define SIZEOF_LONG 8
+#endif
 
 /* The size of `long double', as computed by sizeof. */
 #undef SIZEOF_LONG_DOUBLE
@@ -1547,7 +1555,13 @@
 #define SIZEOF_LONG_LONG 8
 
 /* The size of `off_t', as computed by sizeof. */
+#if defined(UEFI_MSVC_64)
 #define SIZEOF_OFF_T 8
+#elif defined(UEFI_MSVC_32)
+#define SIZEOF_OFF_T 4
+#else
+#define SIZEOF_OFF_T 8
+#endif
 
 /* The size of `pid_t', as computed by sizeof. */
 #define SIZEOF_PID_T 4
@@ -1562,16 +1576,34 @@
 #define SIZEOF_SHORT 2
 
 /* The size of `size_t', as computed by sizeof. */
+#if defined(UEFI_MSVC_64)
 #define SIZEOF_SIZE_T 8
+#elif defined(UEFI_MSVC_32)
+#define SIZEOF_SIZE_T 4
+#else
+#define SIZEOF_SIZE_T 8
+#endif
 
 /* The size of `time_t', as computed by sizeof. */
 #define SIZEOF_TIME_T 8
 
 /* The size of `uintptr_t', as computed by sizeof. */
+#if defined(UEFI_MSVC_64)
 #define SIZEOF_UINTPTR_T 8
+#elif defined(UEFI_MSVC_32)
+#define SIZEOF_UINTPTR_T 4
+#else
+#define SIZEOF_UINTPTR_T 8
+#endif
 
 /* The size of `void *', as computed by sizeof. */
+#if defined(UEFI_MSVC_64)
 #define SIZEOF_VOID_P 8
+#elif defined(UEFI_MSVC_32)
+#define SIZEOF_VOID_P 4
+#else
+#define SIZEOF_VOID_P 8
+#endif
 
 /* The size of `wchar_t', as computed by sizeof. */
 #define SIZEOF_WCHAR_T 2
@@ -1784,6 +1816,8 @@
 
 #define HAVE_FFI_PREP_CLOSURE_LOC 1
 #define HAVE_DA_SERIAL 1
+
+#define WITH_FREELISTS 1
 
 #endif /*Py_PYCONFIG_H*/
 

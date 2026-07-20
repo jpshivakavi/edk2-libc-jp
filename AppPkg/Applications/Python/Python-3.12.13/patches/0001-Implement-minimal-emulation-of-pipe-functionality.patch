@@ -285,9 +285,9 @@ index 0000000..f4cd25d
 +  while(Len > 0 && p->size > 0) {
 +    to_copy_bytes = 0;
 +    if(p->head < p->tail) {
-+      to_copy_bytes = MIN(Len, p->tail - p->head);
++      to_copy_bytes = (ssize_t)MIN(Len, (size_t)(p->tail - p->head));
 +    } else if(p->head >= p->tail) {
-+      to_copy_bytes = MIN(Len, p->buffer + p->buffer_size - p->head);
++      to_copy_bytes = (ssize_t)MIN(Len, (size_t)(p->buffer + p->buffer_size - p->head));
 +    } 
 +    memcpy((uint8_t*)Buf, p->head, to_copy_bytes);
 +    p->size -= to_copy_bytes;
@@ -319,9 +319,9 @@ index 0000000..f4cd25d
 +  while(Len > 0 && p->size < p->buffer_size) {
 +    to_copy_bytes = 0;
 +    if(p->head <= p->tail) {
-+      to_copy_bytes = MIN(Len, p->buffer + p->buffer_size - p->tail);
++      to_copy_bytes = (ssize_t)MIN(Len, (size_t)(p->buffer + p->buffer_size - p->tail));
 +    } else if(p->head > p->tail) {
-+      to_copy_bytes = MIN(Len, p->tail - p->head);
++      to_copy_bytes = (ssize_t)MIN(Len, (size_t)(p->tail - p->head));
 +    } 
 +    memcpy(p->tail, (uint8_t*)Buf, to_copy_bytes);
 +    p->size += to_copy_bytes;

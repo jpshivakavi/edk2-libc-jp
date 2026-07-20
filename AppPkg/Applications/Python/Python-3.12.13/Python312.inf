@@ -17,6 +17,9 @@
   DEFINE LIBFFI_INC           = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/libffi/include
   DEFINE OPENSSL_ROOT       = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/openssl
   DEFINE LIBFFI_INT_INC       = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/libffi/libffi/include
+  # MSVC _ctypes uses libffi_msvc (Python368 pattern), not vendored edk2-libffi headers
+  DEFINE LIBFFI_MSVC_INC      = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_ctypes/libffi_msvc
+  DEFINE LIBFFI_MSVC_PYMOD_INC = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/_ctypes/libffi_msvc
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -137,7 +140,7 @@
   Python/Python-tokenize.c
   Python/_warnings.c
   Python/asdl.c
-  Python/asm_trampoline.S
+  Python/asm_trampoline.S | GCC
   Python/assemble.c
   Python/ast.c
   Python/ast_opt.c
@@ -330,24 +333,35 @@ PyMod-$(PYTHON_VERSION)/Modules/zlib
 #  (uses built-in edk2console; not Modules/readline.c / GNU readline)
 
 # Phase 8.5 — vendored edk2-libffi + UEFI _ctypes (PyMod overlays from edk2-cpython)
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes.c
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callbacks.c
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callproc.c
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/cfield.c
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/stgdict.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes.c | GCC
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callbacks.c | GCC
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callproc.c | GCC
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/cfield.c | GCC
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/stgdict.c | GCC
 # No malloc_closure.c — edk2-cpython PythonExtLib.inf uses libffi ffi_closure_alloc (HAVE_FFI_CLOSURE_ALLOC).
-PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes_test.c
+PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes_test.c | GCC
 
 PyMod-$(PYTHON_VERSION)/Modules/libffi
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/closures.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/debug.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/prep_cif.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/raw_api.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/types.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/ffi64.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/ffiw64.c
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/unix64.S
-  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/win64.S
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/closures.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/debug.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/prep_cif.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/raw_api.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/types.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/ffi64.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/ffiw64.c | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/unix64.S | GCC
+  PyMod-$(PYTHON_VERSION)/Modules/libffi/src/x86/win64.S | GCC
+
+# Phase 8.5 — VS2022: libffi_msvc + _ctypes (Python368.inf pattern)
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/_ctypes.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/stgdict.c | MSFT
+  Modules/_ctypes/libffi_msvc/prep_cif.c | MSFT
+  Modules/_ctypes/libffi_msvc/types.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/malloc_closure.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/libffi_msvc/ffi.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/cfield.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callproc.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/_ctypes/callbacks.c | MSFT
 
 # Phase 8.3 — vendored edk2-openssl libcrypto + _hashlib (_hashopenssl.c)
   Modules/_hashopenssl.c
@@ -984,6 +998,7 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/eng_dyn.c
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/ui_openssl.c
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_efi.c
+  PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/openssl_uefi_msvc.c | MSFT
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_rdrand.nasm
 
 # Phase 8.4 — libssl + _ssl (same vendored OpenSSL tree as 8.3)
@@ -1036,7 +1051,25 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
   PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_sess.c
 
 
+[Sources.X64]
+  Modules/_ctypes/libffi_msvc/win64.asm | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/cpu.nasm | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/cpu_gcc.s | GCC
+
+[Sources.IA32]
+  Modules/_ctypes/libffi_msvc/win32.c | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/cpu_ia32.nasm | MSFT
+  PyMod-$(PYTHON_VERSION)/Modules/cpu_ia32_gcc.s | GCC
+
+
 [BuildOptions]
   # libffi: same -I as edk2-py312 edk2-libffi/EFI/LibFFI/LibFFI.inf (Include + libffi/include)
+  MSFT:*_*_*_CC_FLAGS = /GL- /Oi- /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4201 /wd4204 /wd4210 /wd4244 /wd4267 /wd4273 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 /wd4456 /wd4312 /wd4457 /wd4459 /wd4474 /wd4476 /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include\internal /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\efi\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Modules\_hacl\include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\Modules\zlib /I$(LIBFFI_MSVC_INC) /I$(LIBFFI_MSVC_PYMOD_INC) /I$(OPENSSL_ROOT)\efi\include /I$(OPENSSL_ROOT) /I$(OPENSSL_ROOT)\include /DNO_MSABI_VA_FUNCS /DPy_BUILD_CORE /DHAVE_MEMMOVE /DUSE_PYEXPAT_CAPI /DXML_STATIC /DXML_POOR_ENTROPY /DUEFI_C_SOURCE -D UEFI /WX-
   GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC) -I$(OPENSSL_ROOT)/efi/include -I$(OPENSSL_ROOT) -I$(OPENSSL_ROOT)/include -DNO_MSABI_VA_FUNCS -Wno-error=maybe-uninitialized -Wno-error=unused-but-set-variable -DPy_BUILD_CORE -DHAVE_MEMMOVE
   GCC:*_*_X64_PP_FLAGS = -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC)
+
+[BuildOptions.IA32]
+  MSFT:*_*_*_CC_FLAGS = /DUEFI_MSVC_32
+
+[BuildOptions.X64]
+  MSFT:*_*_*_CC_FLAGS = /DUEFI_MSVC_64

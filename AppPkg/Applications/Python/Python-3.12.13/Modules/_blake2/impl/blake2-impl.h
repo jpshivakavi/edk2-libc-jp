@@ -14,7 +14,7 @@
 #ifndef __BLAKE2_IMPL_H__
 #define __BLAKE2_IMPL_H__
 
-#if defined(_WIN32) || defined(WIN32)
+#if (defined(_WIN32) || defined(WIN32)) && !defined(UEFI_C_SOURCE)
 #include <windows.h>
 #endif
 
@@ -138,7 +138,12 @@ static inline uint64_t rotr64( const uint64_t w, const unsigned c )
 /* prevents compiler optimizing out memset() */
 static inline void secure_zero_memory(void *v, size_t n)
 {
-#if defined(_WIN32) || defined(WIN32)
+#if defined(UEFI_C_SOURCE)
+  (void)memset(v, 0, n);
+#elif defined(_MSC_VER)
+  (void)memset(v, 0, n);
+  /* No desktop CRT SecureZeroMemory / intrin.h in EDK UEFI builds. */
+#elif defined(_WIN32) || defined(WIN32)
   SecureZeroMemory(v, n);
 #elif defined(__hpux)
   static void *(*const volatile memset_v)(void *, int, size_t) = &memset;

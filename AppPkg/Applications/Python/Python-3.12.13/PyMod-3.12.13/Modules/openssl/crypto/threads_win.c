@@ -7,7 +7,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(UEFI_C_SOURCE)
 # include <windows.h>
 #endif
 

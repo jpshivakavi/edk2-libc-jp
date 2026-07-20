@@ -33,7 +33,7 @@
 #if defined(__WATCOMC__) && !defined(__QNX__)
 #  include <i86.h>
 #else
-#  ifdef MS_WINDOWS
+#  if defined(MS_WINDOWS) && !defined(UEFI_C_SOURCE)
 #    ifndef WIN32_LEAN_AND_MEAN
 #      define WIN32_LEAN_AND_MEAN
 #    endif
@@ -45,7 +45,7 @@
 #  include <sanitizer/msan_interface.h>
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
 #  define _Py_timezone _timezone
 #  define _Py_daylight _daylight
 #  define _Py_tzname _tzname
@@ -1805,6 +1805,16 @@ init_timezone(PyObject *m)
 } while (0)
 
     assert(!PyErr_Occurred());
+
+#ifdef UEFI_C_SOURCE
+    ADD_INT("timezone", 0);
+    ADD_INT("altzone", -3600);
+    ADD_INT("daylight", 0);
+    if (_PyModule_Add(m, "tzname", Py_BuildValue("(ss)", "UTC", "UTC")) < 0) {
+        return -1;
+    }
+    return 0;
+#endif
 
     /* This code moved from PyInit_time wholesale to allow calling it from
     time_tzset. In the future, some parts of it can be moved back

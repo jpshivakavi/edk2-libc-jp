@@ -5341,7 +5341,7 @@ _ssl_nid2obj_impl(PyObject *module, int nid)
     return result;
 }
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
 
 static PyObject*
 certEncodingType(DWORD encodingType)

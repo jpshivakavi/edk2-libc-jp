@@ -1,5 +1,6 @@
 #include <setjmp.h>
 #include <signal.h>
+#include <string.h>
 
 #include <Uefi.h>
 #include <Library/UefiLib.h>
@@ -10,10 +11,9 @@
 #include <Protocol/Shell.h>
 #include <Protocol/Rng.h>
 
-#include "Python.h"
-
 #include "efi/edk2main.h"
 #include "efi/edk2excep.h"
+#include "efi/edk2asm.h"
 
 void
 py_common_interrupt_entry();
@@ -39,7 +39,7 @@ edk2_seh_try()
 }
 
 void
-edk2_seh_catch(INTN raise, uint64_t *exc_type, uint8_t *buf, size_t bufsize)
+edk2_seh_catch(INTN should_raise, uint64_t *exc_kind_out, uint8_t *buf, size_t bufsize)
 {
   edk2_seh_context_t *entry = NULL;
 
@@ -51,8 +51,8 @@ edk2_seh_catch(INTN raise, uint64_t *exc_type, uint8_t *buf, size_t bufsize)
   if(entry && entry->magic != EDK2_SEH_MAGIC)
     return;
 
-  if (raise) {
-    *exc_type = entry->exc_type;
+  if (should_raise) {
+    *exc_kind_out = entry->exc_kind;
     if (buf != NULL && bufsize > 0) {
       size_t src_size = sizeof(EFI_SYSTEM_CONTEXT_X64);
       size_t dst_size = (src_size < bufsize) ? src_size : bufsize;
@@ -65,9 +65,12 @@ edk2_seh_catch(INTN raise, uint64_t *exc_type, uint8_t *buf, size_t bufsize)
 
 
 
-EFIAPI VOID
-py_handle_exception(IN CONST EFI_EXCEPTION_TYPE InterruptType,
-                    IN CONST EFI_SYSTEM_CONTEXT SystemContext)
+VOID
+EFIAPI
+py_handle_exception (
+  EFI_EXCEPTION_TYPE  InterruptType,
+  EFI_SYSTEM_CONTEXT  SystemContext
+  )
 {
   if(g_context_index < 0) {  
     volatile int exc_trap = 1;
@@ -89,12 +92,18 @@ py_handle_exception(IN CONST EFI_EXCEPTION_TYPE InterruptType,
     raise(signum);
     
     while (exc_trap) {
+#if defined(_MSC_VER)
+      (void)p;
+      EDK2_RW_BARRIER();
+      EDK2_PAUSE();
+#else
       asm("mov %0, %%rax; "
           :
           : "r"(p) /* input */
           : "%rax" /* clobbered register */
       );
       __asm__ __volatile__("pause");
+#endif
     }
 
     return;
@@ -102,7 +111,7 @@ py_handle_exception(IN CONST EFI_EXCEPTION_TYPE InterruptType,
 
   edk2_seh_context_t *entry = g_context + g_context_index;
 
-  entry->exc_type = InterruptType;
+  entry->exc_kind = InterruptType;
   entry->exc_context = *SystemContext.SystemContextX64;
   
   longjmp(entry->ret_context, 1);
@@ -195,9 +204,9 @@ py_install_idt()
 
     *(uint64_t *)(trampoline + 5) = (uint64_t)py_common_interrupt_entry;
 
-    new_idt[id].offset_32_63 = ((uint64_t)trampoline >> 32) & 0xffffffff;
-    new_idt[id].offset_16_31 = ((uint64_t)trampoline >> 16) & 0xffff;
-    new_idt[id].offset_0_15 = (uint64_t)trampoline & 0xffff;
+    new_idt[id].offset_32_63 = (UINT32)(((uint64_t)trampoline >> 32) & 0xffffffff);
+    new_idt[id].offset_16_31 = (UINT16)(((uint64_t)trampoline >> 16) & 0xffff);
+    new_idt[id].offset_0_15 = (UINT16)((uint64_t)trampoline & 0xffff);
   }
 
   uint64_t new_idtr[2] = {old_idtr[0], (uint64_t)new_idt};

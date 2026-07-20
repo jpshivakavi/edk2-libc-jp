@@ -11,6 +11,7 @@
 # ifndef _WIN32_WINNT
 #  define _WIN32_WINNT 0x0400
 # endif
+# ifndef UEFI_C_SOURCE
 # include <windows.h>
 # include <wincrypt.h>
 
@@ -49,6 +50,7 @@
 #   define __COMPILE_CAPIENG
 #  endif                        /* CERT_KEY_PROV_INFO_PROP_ID */
 # endif                         /* OPENSSL_NO_CAPIENG */
+# endif                         /* !UEFI_C_SOURCE */
 #endif                          /* _WIN32 */
 
 #ifdef __COMPILE_CAPIENG

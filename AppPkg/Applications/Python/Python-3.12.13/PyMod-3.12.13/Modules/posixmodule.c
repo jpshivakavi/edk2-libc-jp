@@ -468,7 +468,9 @@ extern char        *ctermid_r(char *);
 #  ifdef HAVE_PROCESS_H
 #    include <process.h>
 #  endif
-#  include <malloc.h>
+#  ifndef UEFI_C_SOURCE
+#    include <malloc.h>
+#  endif
 #endif /* _MSC_VER */
 
 #ifndef MAXPATHLEN

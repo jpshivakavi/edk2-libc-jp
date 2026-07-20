@@ -25,7 +25,7 @@ extern "C" {
 #  define _PY_HAVE_BUILTIN_BSWAP
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
    /* Get _byteswap_ushort(), _byteswap_ulong(), _byteswap_uint64() */
 #  include <intrin.h>
 #endif
@@ -35,7 +35,7 @@ _Py_bswap16(uint16_t word)
 {
 #if defined(_PY_HAVE_BUILTIN_BSWAP) || _Py__has_builtin(__builtin_bswap16)
     return __builtin_bswap16(word);
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     Py_BUILD_ASSERT(sizeof(word) == sizeof(unsigned short));
     return _byteswap_ushort(word);
 #else
@@ -50,7 +50,7 @@ _Py_bswap32(uint32_t word)
 {
 #if defined(_PY_HAVE_BUILTIN_BSWAP) || _Py__has_builtin(__builtin_bswap32)
     return __builtin_bswap32(word);
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     Py_BUILD_ASSERT(sizeof(word) == sizeof(unsigned long));
     return _byteswap_ulong(word);
 #else
@@ -67,7 +67,7 @@ _Py_bswap64(uint64_t word)
 {
 #if defined(_PY_HAVE_BUILTIN_BSWAP) || _Py__has_builtin(__builtin_bswap64)
     return __builtin_bswap64(word);
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     return _byteswap_uint64(word);
 #else
     // Portable implementation which doesn't rely on circular bit shift
@@ -94,7 +94,7 @@ _Py_bswap64(uint64_t word)
 static inline int
 _Py_popcount32(uint32_t x)
 {
-#if (defined(__clang__) || defined(__GNUC__))
+#if !defined(UEFI_C_SOURCE) && (defined(__clang__) || defined(__GNUC__))
 
 #if SIZEOF_INT >= 4
     Py_BUILD_ASSERT(sizeof(x) <= sizeof(unsigned int));
@@ -154,7 +154,7 @@ _Py_bit_length(unsigned long x)
     else {
         return 0;
     }
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     // _BitScanReverse() is documented to search 32 bits.
     Py_BUILD_ASSERT(sizeof(unsigned long) <= 4);
     unsigned long msb;

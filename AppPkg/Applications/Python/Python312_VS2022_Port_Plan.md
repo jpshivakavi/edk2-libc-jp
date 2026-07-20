@@ -6,9 +6,12 @@
 |----------|------|
 | [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md) | GCC-first AppPkg migration (Phases 0–8) |
 | [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md) | GCC migration checklist and work log |
+| [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) | VS2022 phase checklist and session results |
+| [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) | Windows / VS2022 build BKMs (Phase V1+) |
 | [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) | GCC build walkthrough |
 | [`Python-3.6.8/Python368.inf`](./Python-3.6.8/Python368.inf) | MSVC INF patterns (reference only) |
 | [`.github/workflows/build-python-uefi-vs2022.yaml`](../../.github/workflows/build-python-uefi-vs2022.yaml) | Python 3.6.8 VS2022 CI reference |
+| [`Python368_Windows_VS2022_Build_Guide.md`](./Python368_Windows_VS2022_Build_Guide.md) | **BUILD_PYTHON368** on Windows (full walkthrough) |
 
 ---
 
@@ -104,7 +107,12 @@ Use the same **MIN → link → package → smoke → FULL batches** rhythm as G
 #### Steps
 
 1. **Tools:** VS2022 Build Tools, NASM (≥ 2.15 recommended, same as GCC BKMs), Git, Python 3.10+ for `srcprep.py` / frozen.
-2. **Repos:** `edk2` + `edk2-libc` siblings; `set PACKAGES_PATH=%CD%\edk2;%CD%` with `EDK2_LIBC_PATH` pointing at libc tree.
+2. **Repos (sibling clones under one parent, e.g. `c:\Users\njayapra\github\`):**
+   - **`WORKSPACE`** = tianocore **`edk2`** (e.g. `c:\Users\njayapra\github\edk2`) — `edksetup.bat`, `Build\`.
+   - **`EDK2_LIBC_PATH`** = your **edk2-libc fork** (e.g. `c:\Users\njayapra\github\edk2-libc-jp` → `jpshivakavi/edk2-libc-jp`).
+   - IDE workspace may be the libc fork only; EDK **`build`** still runs from **`edk2`**.
+   - `set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp`
+   - `set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%`
 3. **StdLib patches:** `git apply` the four patches under `Python-3.12.13/patches/` (same as GCC; not committed).
 4. **`srcprep.py`** from `Python-3.12.13\`.
 5. **Frozen:** Run frozen/deepfreeze generation on Windows (port commands from WSL guide § frozen); confirm generated files match what `Python312.inf` already lists.
@@ -260,7 +268,7 @@ See also:
 
 | Symptom | Likely cause | Action |
 |---------|----------------|--------|
-| NASM not found | `NASM_PREFIX` | Set to `C:\Program Files\NASM\` (CI pattern) |
+| NASM not found | `NASM_PREFIX` | e.g. `C:\NASM\` on this host (CI often `C:\Program Files\NASM\`) |
 | `.S` / `unix64.S` errors under VS2022 | Missing `\| GCC` | Toolchain-tag libffi asm |
 | Unresolved `ffi_*` / closure symbols on MSFT | Missing `libffi_msvc` / `win64.asm` | Phase V8.5 INF |
 | Wrong `SIZEOF_*` / struct layout crashes | Missing `UEFI_MSVC_64` | Phase V2 pyconfig |
@@ -319,3 +327,5 @@ See also:
 | 3.6.8 MSVC reference | `AppPkg/Applications/Python/Python-3.6.8/` |
 | edk2-py312 (extension reference) | `c:\Users\njayapra\github\edk2-py312` |
 | This plan | `AppPkg/Applications/Python/Python312_VS2022_Port_Plan.md` |
+| Windows WORKSPACE (example) | `c:\Users\njayapra\github\edk2` |
+| Fork libc clone (example) | `c:\Users\njayapra\github\edk2-libc-jp` → `jpshivakavi/edk2-libc-jp` |

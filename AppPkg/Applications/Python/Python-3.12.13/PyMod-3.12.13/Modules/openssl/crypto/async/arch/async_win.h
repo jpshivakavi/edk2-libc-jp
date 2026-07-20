@@ -11,7 +11,7 @@
  * This is the same detection used in cryptlib to set up the thread local
  * storage that we depend on, so just copy that
  */
-#if defined(_WIN32) && !defined(OPENSSL_NO_ASYNC)
+#if defined(_WIN32) && !defined(OPENSSL_NO_ASYNC) && !defined(UEFI_C_SOURCE)
 #include <openssl/async.h>
 # define ASYNC_WIN
 # define ASYNC_ARCH

@@ -86,7 +86,9 @@ extern PyObject* PyInit__string(void);
   extern PyObject* PyInit_xxlimited(void);
   extern PyObject* PyInit_zlib(void);
   extern PyObject* PyInit__ctypes(void);
+#ifndef UEFI_C_SOURCE
   extern PyObject* PyInit__ctypes_test(void);
+#endif
   extern PyObject* PyInit__hashlib(void);
   extern PyObject* PyInit__ssl(void);
   extern PyObject* PyInit__posixsubprocess(void);
@@ -189,7 +191,9 @@ struct _inittab _PyImport_Inittab[] = {
     {"xxlimited", PyInit_xxlimited},
     {"zlib", PyInit_zlib},
     {"_ctypes", PyInit__ctypes},
+#ifndef UEFI_C_SOURCE
     {"_ctypes_test", PyInit__ctypes_test},
+#endif
     {"_hashlib", PyInit__hashlib},
     {"_ssl", PyInit__ssl},
     {"_posixsubprocess", PyInit__posixsubprocess},

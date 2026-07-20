@@ -209,8 +209,8 @@ index 0000000..ed7a4a2
 +          MAX(0, proto->Mode->CursorRow - delta));
 +    } break;
 +    case L'J': {
-+      INT16 row = proto->Mode->CursorRow;
-+      INT16 col = proto->Mode->CursorColumn;
++      INT32 row = proto->Mode->CursorRow;
++      INT32 col = proto->Mode->CursorColumn;
 +
 +      if(state->numargs == 0)
 +        state->numarg[0] = 0;
@@ -235,8 +235,8 @@ index 0000000..ed7a4a2
 +      proto->SetCursorPosition(proto, col, row);
 +    } break;
 +    case L'K': {
-+      INT16 row = proto->Mode->CursorRow;
-+      INT16 col = proto->Mode->CursorColumn;
++      INT32 row = proto->Mode->CursorRow;
++      INT32 col = proto->Mode->CursorColumn;
 +
 +      if(state->numargs == 0)
 +        state->numarg[0] = 0;
@@ -567,7 +567,7 @@ index 0000000..ed7a4a2
 +  CHAR16 *cur = buffer;
 +  CHAR16 *esc = NULL;
 +
-+  while(cur - buffer < buffer_size) {
++  while((size_t)(cur - buffer) < buffer_size) {
 +    CHAR16 c = 0;
 +    size_t chars_read = 0;
 +
@@ -770,7 +770,7 @@ index ba031d6..b85bbe1 100644
 +    // Send the Unicode buffer to the console
 +    size_t last_char = 0;
 +
-+    while(cur != NULL && *cur && (cur - (CHAR16*)Buffer) < BufferSize) {
++    while(cur != NULL && *cur && (size_t)(cur - (CHAR16*)Buffer) < BufferSize) {
 +      if(Stream->ctrlCharState.state != CTRLCHAR_INIT &&
 +         Stream->ctrlCharState.state != CTRLCHAR_END &&
 +         Stream->ctrlCharState.state != CTRLCHAR_ERROR) {

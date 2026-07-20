@@ -21,3 +21,15 @@ edk2_switch_stack:
         mov [rdi-0x208], rax
         lea rsp, [rdi-0x208]
         ret
+
+global edk2_read_rsp
+
+edk2_read_rsp:
+        mov rax, rsp
+        ret
+
+global edk2_pause
+
+edk2_pause:
+        pause
+        ret

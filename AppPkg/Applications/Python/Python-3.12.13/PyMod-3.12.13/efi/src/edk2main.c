@@ -16,6 +16,7 @@
 
 #include "efi/edk2main.h"
 #include "efi/edk2stack.h"
+#include "efi/edk2asm.h"
 #include "efi/environ.h"
 #include "efi/edk2excep.h"
 
@@ -119,9 +120,9 @@ UefiMain (
                 "-\000-\000s\000t\000a\000r\000t\000d\000e\000l\000a\000y\000",
                 24) == 0) {
          volatile int wait = 1;
-         while(wait)
+        while(wait)
          {
-            __asm__ __volatile__("pause");
+            EDK2_PAUSE();
          }
 
          args_protocol->Argc -= 1;
@@ -166,7 +167,7 @@ UefiMain (
    g_edk2_globals.stack = malloc(g_edk2_globals.stack_size + 1024);
    if(g_edk2_globals.stack == NULL) {
       Print(L"Failed to allocate stack memory\n");
-      return -1;
+      return EFI_OUT_OF_RESOURCES;
    }
 
    edk2_alloc_environ();
@@ -192,9 +193,7 @@ UefiMain (
 int
 PyOS_CheckStack(void)
 {
-   volatile uint64_t rsp;
-
-   __asm__ __volatile__("mov %%rsp, %0" : "=m" (rsp));
+   uint64_t rsp = edk2_read_rsp();
    if(rsp > (uint64_t)g_edk2_globals.stack)
       return 0;
    return 1;

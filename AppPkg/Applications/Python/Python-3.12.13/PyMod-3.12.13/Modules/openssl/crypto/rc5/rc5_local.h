@@ -125,7 +125,7 @@
                          *((c)++)=(unsigned char)(((l)>> 8L)&0xff), \
                          *((c)++)=(unsigned char)(((l)     )&0xff))
 
-#if (defined(OPENSSL_SYS_WIN32) && defined(_MSC_VER))
+#if (defined(OPENSSL_SYS_WIN32) && defined(_MSC_VER) && !defined(UEFI_C_SOURCE) && !defined(OPENSSL_SYS_UEFI))
 # define ROTATE_l32(a,n)     _lrotl(a,n)
 # define ROTATE_r32(a,n)     _lrotr(a,n)
 #elif defined(__ICC)

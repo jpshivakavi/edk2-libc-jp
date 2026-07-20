@@ -27,6 +27,12 @@ extern "C" {
 #ifndef OPENSSL_SYS_UEFI
 # define OPENSSL_SYS_UEFI 1
 #endif
+#ifndef OPENSSL_NO_DSO
+# define OPENSSL_NO_DSO
+#endif
+#ifndef OPENSSL_NO_UI
+# define OPENSSL_NO_UI
+#endif
 #ifndef OPENSSL_NO_MD2
 # define OPENSSL_NO_MD2
 #endif

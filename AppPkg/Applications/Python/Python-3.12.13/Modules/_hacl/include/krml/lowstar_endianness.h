@@ -12,7 +12,9 @@
 /******************************************************************************/
 
 /* ... for Linux */
-#if defined(__linux__) || defined(__CYGWIN__) || defined (__USE_SYSTEM_ENDIAN_H__) || defined(__GLIBC__)
+#if defined(UEFI_C_SOURCE)
+#  include <sys/endian.h>
+#elif defined(__linux__) || defined(__CYGWIN__) || defined (__USE_SYSTEM_ENDIAN_H__) || defined(__GLIBC__)
 #  include <endian.h>
 
 /* ... for OSX */

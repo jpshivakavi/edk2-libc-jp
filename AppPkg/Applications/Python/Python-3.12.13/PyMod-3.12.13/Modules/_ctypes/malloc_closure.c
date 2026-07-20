@@ -1,12 +1,11 @@
-#ifndef Py_BUILD_CORE_BUILTIN
-#  define Py_BUILD_CORE_MODULE 1
-#endif
 #include <Python.h>
 #include <ffi.h>
 #ifdef MS_WIN32
 #include <windows.h>
 #else
+#ifndef UEFI_C_SOURCE
 #include <sys/mman.h>
+#endif // UEFI_C_SOURCE
 #include <unistd.h>
 # if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
 #  define MAP_ANONYMOUS MAP_ANON
@@ -23,7 +22,6 @@
 
 /* #define MALLOC_CLOSURE_DEBUG */ /* enable for some debugging output */
 
-
 /******************************************************************/
 
 typedef union _tagITEM {
@@ -39,6 +37,7 @@ static void more_core(void)
     ITEM *item;
     int count, i;
 
+#ifndef UEFI_C_SOURCE
 /* determine the pagesize */
 #ifdef MS_WIN32
     if (!_pagesize) {
@@ -80,8 +79,22 @@ static void more_core(void)
 
 #ifdef MALLOC_CLOSURE_DEBUG
     printf("block at %p allocated (%d bytes), %d ITEMs\n",
-           item, count * (int)sizeof(ITEM), count);
+           item, count * sizeof(ITEM), count);
 #endif
+
+#else  //EfiPy
+
+#define	PAGE_SHIFT	14		/* 16K pages by default. */
+#define	PAGE_SIZE	(1 << PAGE_SHIFT)
+
+    count = PAGE_SIZE / sizeof(ITEM);
+
+    item = (ITEM *)malloc(count * sizeof(ITEM));
+    if (item == NULL)
+        return;
+
+#endif // EfiPy
+
     /* put them into the free list */
     for (i = 0; i < count; ++i) {
         item->next = free_list;
@@ -93,43 +106,16 @@ static void more_core(void)
 /******************************************************************/
 
 /* put the item back into the free list */
-void Py_ffi_closure_free(void *p)
+void ffi_closure_free(void *p)
 {
-#ifdef HAVE_FFI_CLOSURE_ALLOC
-#ifdef USING_APPLE_OS_LIBFFI
-# ifdef HAVE_BUILTIN_AVAILABLE
-    if (__builtin_available(macos 10.15, ios 13, watchos 6, tvos 13, *)) {
-#  else
-    if (ffi_closure_free != NULL) {
-#  endif
-#endif
-        ffi_closure_free(p);
-        return;
-#ifdef USING_APPLE_OS_LIBFFI
-    }
-#endif
-#endif
     ITEM *item = (ITEM *)p;
     item->next = free_list;
     free_list = item;
 }
 
 /* return one item from the free list, allocating more if needed */
-void *Py_ffi_closure_alloc(size_t size, void** codeloc)
+void *ffi_closure_alloc(size_t ignored, void** codeloc)
 {
-#ifdef HAVE_FFI_CLOSURE_ALLOC
-#ifdef USING_APPLE_OS_LIBFFI
-# ifdef HAVE_BUILTIN_AVAILABLE
-    if (__builtin_available(macos 10.15, ios 13, watchos 6, tvos 13, *)) {
-# else
-    if (ffi_closure_alloc != NULL) {
-#  endif
-#endif
-        return ffi_closure_alloc(size, codeloc);
-#ifdef USING_APPLE_OS_LIBFFI
-    }
-#endif
-#endif
     ITEM *item;
     if (!free_list)
         more_core();
@@ -137,11 +123,6 @@ void *Py_ffi_closure_alloc(size_t size, void** codeloc)
         return NULL;
     item = free_list;
     free_list = item->next;
-#ifdef _M_ARM
-    // set Thumb bit so that blx is called correctly
-    *codeloc = (ITEM*)((uintptr_t)item | 1);
-#else
     *codeloc = (void *)item;
-#endif
     return (void *)item;
 }

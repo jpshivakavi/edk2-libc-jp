@@ -109,8 +109,8 @@ extern void _Py_set_387controlword(unsigned short);
 #endif
 
 // Get and set x87 control word for VisualStudio/x86.
-// x87 is not supported in 64-bit or ARM.
-#if defined(_MSC_VER) && !defined(_WIN64) && !defined(_M_ARM)
+// x87 is not supported in 64-bit or ARM. Skip on UEFI (no desktop CRT float.h).
+#if defined(_MSC_VER) && !defined(_WIN64) && !defined(_M_ARM) && !defined(UEFI_C_SOURCE)
 #define HAVE_PY_SET_53BIT_PRECISION 1
 
 #include <float.h>                // __control87_2()

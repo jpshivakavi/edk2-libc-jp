@@ -35,6 +35,9 @@
 
 #pragma once
 
+#include <Uefi.h>
+#include <stdint.h>
+
 typedef struct _edk2_globals {
    EFI_HANDLE image_handle;
    EFI_SYSTEM_TABLE *system_table;
