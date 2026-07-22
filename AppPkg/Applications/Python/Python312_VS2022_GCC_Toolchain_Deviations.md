@@ -154,9 +154,10 @@ GCC benefits from the same guards (no accidental inclusion of desktop-only paths
 
 Regenerate after deepfreeze changes:
 
-```text
-python Tools/build/generate_global_objects.py
-```
+| Host | Command |
+|------|---------|
+| **Windows** | `Tools\build\regen_frozen_windows.cmd` (Python **3.12.x**; full pipeline) |
+| **Either** | `python Tools/build/generate_global_objects.py` + `Tools/build/fix_deepfreeze_latin1.py` |
 
 (from `Python-3.12.13/` tree.)
 
@@ -168,11 +169,11 @@ python Tools/build/generate_global_objects.py
 |------|-----------|------------------|
 | Build | `build -t GCC -a X64 -b NOOPT … -D BUILD_PYTHON312` | `build -t VS2022 -a X64 -b RELEASE … -D BUILD_PYTHON312` |
 | **`WORKSPACE`** | `edk2` clone | `c:\Users\njayapra\github\edk2` |
-| **`EDK2_LIBC_PATH`** | fork path | `c:\Users\njayapra\github\edk2-libc-jp` |
+| **`EDK2_LIBC_PATH`** | fork path | `c:\Users\njayapra\github\edk2-libc-jp-vsfix` |
 | Package | `create_python_pkg.sh GCC NOOPT X64 out` | `create_python_pkg.bat VS2022 RELEASE X64 out` |
 | EFI output path | `Build/AppPkg/NOOPT_GCC/X64/…/Python312.efi` | `Build/AppPkg/RELEASE_VS2022/X64/…/Python312.efi` |
 
-**Packaging:** use **`create_python_pkg.bat`** / **`.sh`** from **`edk2-libc-jp`** only; plain **`edk2-libc`** may still ship a **Phase 6 stub** batch file.
+**Packaging:** use **`create_python_pkg.bat`** / **`.sh`** from **`edk2-libc-jp-vsfix`** (or any synced fork clone); plain **`edk2-libc`** may still ship a **Phase 6 stub** batch file.
 
 **Deployed layout (identical):**
 

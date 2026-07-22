@@ -223,6 +223,8 @@ These files are **gitignored** in CPython and were **not** copied into AppPkg:
 
 `Python312.inf` lists `Python/deepfreeze/deepfreeze.c`, so the build will fail without them.
 
+**Windows:** [`Tools/build/regen_frozen_windows.cmd`](./Python-3.12.13/Tools/build/regen_frozen_windows.cmd) (Python **3.12.x** host; see [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) §6 Option C).
+
 ### Option A — Recommended: reuse edk2-py312 freeze (fastest)
 
 If you already have `~/src/edk2-py312` (or `/mnt/c/Users/njayapra/github/edk2-py312`):
