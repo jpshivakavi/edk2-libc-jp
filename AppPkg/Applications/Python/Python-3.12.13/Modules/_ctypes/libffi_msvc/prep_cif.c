@@ -215,3 +215,13 @@ ffi_status ffi_prep_cif_var(ffi_cif *cif,
 
   return FFI_OK;
 }
+
+/* CPython 3.12 callbacks.c may reference ffi_prep_closure even when using loc. */
+ffi_status
+ffi_prep_closure (ffi_closure *closure,
+                  ffi_cif *cif,
+                  void (*fun)(ffi_cif *, void *, void **, void *),
+                  void *user_data)
+{
+  return ffi_prep_closure_loc (closure, cif, fun, user_data, closure);
+}
