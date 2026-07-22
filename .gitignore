@@ -1,2 +1,4 @@
 # Local Python 3.12 UEFI package output (create_python_pkg.bat)
 /myUEFIPy312/
+/myUEFIPy312_MIN/
+/myUEFIPy312_NOOPT/

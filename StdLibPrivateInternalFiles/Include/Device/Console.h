@@ -18,6 +18,29 @@
 #include  <kfile.h>
 #include  <Device/Device.h>
 
+enum ctrlchar_t {
+  CTRLCHAR_INIT = 0,
+  CTRLCHAR_START,
+  CTRLCHAR_PARSE,
+  CTRLCHAR_NUMARG,
+  CTRLCHAR_CMD,
+  
+  CTRLCHAR_ERROR,
+  CTRLCHAR_END,
+};
+
+#define MAX_NUMARGS 15
+
+typedef struct {
+  UINT32 null_char_mode;
+  enum ctrlchar_t state;  
+  int digit_count;
+  int numargs;
+  CHAR16 cmd;
+  CHAR16 cmd_prefix;  
+  int numarg[MAX_NUMARGS];
+} CtrlCharState;
+
 /*  The members Cookie through Abstraction, inclusive, are the same type and order
     for all instance structures.
 
@@ -34,6 +57,7 @@ typedef struct {
   UINT64                      NumWritten;   ///< Number of characters Written.
   __mbstate_t                 CharState;    ///< Character state for the byte stream passing through this device
   CHAR16                      UnGetKey;     ///< One-key pushback, for poll().
+  CtrlCharState               ctrlCharState;
 } ConInstance;
 
 __BEGIN_DECLS

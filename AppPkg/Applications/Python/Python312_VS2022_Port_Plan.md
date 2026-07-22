@@ -8,6 +8,8 @@
 | [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md) | GCC migration checklist and work log |
 | [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) | VS2022 phase checklist and session results |
 | [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) | Windows / VS2022 build BKMs (Phase V1+) |
+| [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md) | MIN vs FULL INF, VS2022 MIN commands |
+| [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) | UEFI hang, 368 entry, deepfreeze, deploy |
 | [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) | GCC build walkthrough |
 | [`Python-3.6.8/Python368.inf`](./Python-3.6.8/Python368.inf) | MSVC INF patterns (reference only) |
 | [`.github/workflows/build-python-uefi-vs2022.yaml`](../../.github/workflows/build-python-uefi-vs2022.yaml) | Python 3.6.8 VS2022 CI reference |
@@ -109,9 +111,9 @@ Use the same **MIN → link → package → smoke → FULL batches** rhythm as G
 1. **Tools:** VS2022 Build Tools, NASM (≥ 2.15 recommended, same as GCC BKMs), Git, Python 3.10+ for `srcprep.py` / frozen.
 2. **Repos (sibling clones under one parent, e.g. `c:\Users\njayapra\github\`):**
    - **`WORKSPACE`** = tianocore **`edk2`** (e.g. `c:\Users\njayapra\github\edk2`) — `edksetup.bat`, `Build\`.
-   - **`EDK2_LIBC_PATH`** = your **edk2-libc fork** (e.g. `c:\Users\njayapra\github\edk2-libc-jp` → `jpshivakavi/edk2-libc-jp`).
-   - IDE workspace may be the libc fork only; EDK **`build`** still runs from **`edk2`**.
-   - `set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp`
+   - **`EDK2_LIBC_PATH`** = **edk2-libc fork** (active VS2022 workspace: e.g. `c:\Users\njayapra\github\edk2-libc-jp-vsfix` → remote **`jpshivakavi/edk2-libc-jp`**).
+   - IDE workspace = that libc clone; EDK **`build`** still runs from **`edk2`**.
+   - `set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix`
    - `set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%`
 3. **StdLib patches:** `git apply` the four patches under `Python-3.12.13/patches/` (same as GCC; not committed).
 4. **`srcprep.py`** from `Python-3.12.13\`.
@@ -328,4 +330,4 @@ See also:
 | edk2-py312 (extension reference) | `c:\Users\njayapra\github\edk2-py312` |
 | This plan | `AppPkg/Applications/Python/Python312_VS2022_Port_Plan.md` |
 | Windows WORKSPACE (example) | `c:\Users\njayapra\github\edk2` |
-| Fork libc clone (example) | `c:\Users\njayapra\github\edk2-libc-jp` → `jpshivakavi/edk2-libc-jp` |
+| Fork libc clone (example) | `c:\Users\njayapra\github\edk2-libc-jp-vsfix` → remote **`jpshivakavi/edk2-libc-jp`** |

@@ -31,6 +31,13 @@
 #include  <MainData.h>
 #include  <unistd.h>
 
+#ifdef PY_UEFI_BOOT_TRACE
+#include  <Library/UefiLib.h>
+#define STDLIB_BOOT_PRINT(Step) Print(L"Python312 boot: " Step L"\n")
+#else
+#define STDLIB_BOOT_PRINT(Step) do { } while (0)
+#endif
+
 extern int main( int, char**);
 extern int __sse2_available;
 
@@ -137,6 +144,8 @@ ShellAppMain (
   INTN   ExitVal;
   int                 i;
 
+  STDLIB_BOOT_PRINT(L"ShellAppMain enter");
+
   ExitVal = (INTN)RETURN_SUCCESS;
   gMD = AllocateZeroPool(sizeof(struct __MainData));
   if( gMD == NULL ) {
@@ -170,16 +179,20 @@ ShellAppMain (
       Print(L"ERROR Initializing Standard IO: %a.\n    %r\n",
             strerror(errno), EFIerrno);
     }
+    STDLIB_BOOT_PRINT(L"after stdio open");
 
     /* Create mbcs versions of the Argv strings. */
     nArgv = ArgvConvert(Argc, Argv);
+    STDLIB_BOOT_PRINT(L"after ArgvConvert");
     if(nArgv == NULL) {
       ExitVal = (INTN)RETURN_INVALID_PARAMETER;
     }
     else {
       if( setjmp(gMD->MainExit) == 0) {
         errno   = 0;    // Clean up any "scratch" values from startup.
+        STDLIB_BOOT_PRINT(L"before main()");
         ExitVal = (INTN)main( (int)Argc, gMD->NArgV);
+        STDLIB_BOOT_PRINT(L"after main()");
         exitCleanup(ExitVal);
       }
       /* You reach here if:

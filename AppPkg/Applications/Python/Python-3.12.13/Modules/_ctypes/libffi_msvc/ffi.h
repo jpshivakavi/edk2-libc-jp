@@ -277,13 +277,6 @@ ffi_status ffi_prep_cif(/*@out@*/ /*@partial@*/ ffi_cif *cif,
 			/*@dependent@*/ /*@out@*/ /*@partial@*/ ffi_type *rtype, 
 			/*@dependent@*/ ffi_type **atypes);
 
-ffi_status ffi_prep_cif_var(ffi_cif *cif,
-                            ffi_abi abi,
-                            unsigned int nfixedargs,
-                            unsigned int ntotalargs,
-                            ffi_type *rtype,
-                            ffi_type **atypes);
-
 int
 ffi_call(/*@dependent@*/ ffi_cif *cif, 
 	 void (*fn)(), 

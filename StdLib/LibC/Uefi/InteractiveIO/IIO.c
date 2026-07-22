@@ -41,6 +41,8 @@
   #define R_INSTRUMENT  (void)
 #endif  // IIO_C_DEBUG
 
+size_t da_ConKeyConvert(cFIFO *inbuf, CHAR16 *buffer, size_t buffer_size);
+
 /** Read from an Interactive IO device.
 
   NOTE: If _S_IWTTY is set, the internal buffer contains WIDE characters.
@@ -88,16 +90,16 @@ IIO_Read(
     if(filp->f_iflags & _S_IWTTY) {
       // Data in InBuf is wide characters.  Convert to MBCS
       // First, convert into a linear buffer
-      NumRead = This->InBuf->Copy(This->InBuf, gMD->UString2, (INT32)UNICODE_STRING_MAX-1);
+      NumRead = da_ConKeyConvert(This->InBuf,
+                                 gMD->UString2,
+                                 (INT32)UNICODE_STRING_MAX-1);
+
       gMD->UString2[NumRead] = 0;   // Ensure that the buffer is terminated
       // Determine the needed space
       XlateSz = EstimateWtoM((const wchar_t *)gMD->UString2, BufferSize, &Needed);
 
       // Now translate this into MBCS in Buffer
       NumRead = wcstombs((char *)Buffer, (const wchar_t *)gMD->UString2, XlateSz);
-
-      // Consume the translated characters
-      (void) This->InBuf->Flush(This->InBuf, Needed);
     }
     else {
       // Data in InBuf is narrow characters.  Use verbatim.
@@ -412,6 +414,10 @@ New_cIIO(void)
     IIO->Termio.c_oflag   = OPOST | ONLCR | ONOCR | ONLRET;
     IIO->Termio.c_cflag   = 0;
     IIO->Termio.c_lflag   = ECHO | ECHONL;
+
+    IIO->cpr_state = CPR_NONE;
+    IIO->cpr_row = 0;
+    IIO->cpr_column = 0;
   }
   return IIO;
 }

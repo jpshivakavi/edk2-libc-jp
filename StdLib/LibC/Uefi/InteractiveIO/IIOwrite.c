@@ -148,10 +148,8 @@ IIO_WriteOne(struct __filedes *filp, cFIFO *OBuf, wchar_t InCh)
           if((InCh >= 0) && (InCh < L' ')) {
             // InCh contains a control character
             if(OFlag & OCTRL) {
-              wc[1]     = InCh + L'@';
-              wc[0]     = L'^';
-              numW      = 2;
-              AdjColumn = 2;
+              wc[0]     = InCh;
+              AdjColumn = 1;
             }
             else {
               numW = 0;   // Discard.  Not a UEFI supported control character.

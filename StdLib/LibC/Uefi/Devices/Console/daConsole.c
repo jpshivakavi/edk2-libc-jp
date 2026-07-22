@@ -44,6 +44,12 @@
 #include  <Device/IIO.h>
 #include  <MainData.h>
 
+size_t
+da_ConCtrlChar(CtrlCharState *state,
+               CHAR16 *buffer,
+               EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *proto,
+               cIIO *iio);
+
 static const CHAR16* const
 stdioNames[NUM_SPECIAL]   = {
   L"stdin:", L"stdout:", L"stderr:"
@@ -186,12 +192,15 @@ da_ConWrite(
   IN  const void           *Buffer
   )
 {
+  cIIO                               *Self;  
   EFI_STATUS                          Status;
   EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL    *Proto;
   ConInstance                        *Stream;
   ssize_t                             NumChar;
   XY_OFFSET                          CursorPos;
+  CHAR16 *cur = (CHAR16*)Buffer;
 
+  Self    = (cIIO *)filp->devdata;  
   NumChar = -1;
   Stream = BASE_CR(filp->f_ops, ConInstance, Abstraction);
   // Quick check to see if Stream looks reasonable
@@ -217,15 +226,58 @@ da_ConWrite(
 
   }
   if(!RETURN_ERROR(Status)) {
-  // Send the Unicode buffer to the console
-    Status = Proto->OutputString( Proto, (CHAR16 *)Buffer);
+    // Send the Unicode buffer to the console
+    size_t last_char = 0;
+
+    while(cur != NULL && *cur && (size_t)(cur - (CHAR16*)Buffer) < BufferSize) {
+      if(Stream->ctrlCharState.state != CTRLCHAR_INIT &&
+         Stream->ctrlCharState.state != CTRLCHAR_END &&
+         Stream->ctrlCharState.state != CTRLCHAR_ERROR) {
+        cur += da_ConCtrlChar(&Stream->ctrlCharState, cur, Proto, Self);
+        continue;
+      }
+      last_char = wcscspn(cur , L"\001\002\033");
+      if(last_char > 0) {
+        if(!Stream->ctrlCharState.null_char_mode) {
+          CHAR16 tmp = cur[last_char];
+          
+          cur[last_char] = 0;
+          Status = Proto->OutputString( Proto, cur );
+          if(RETURN_ERROR(Status)) {
+            break;
+          }
+          cur[last_char] = tmp;
+        }
+        cur += last_char;
+      } else {
+        switch(*cur) {
+          case '\001':
+            Stream->ctrlCharState.null_char_mode = 1;
+            cur += 1;
+            break;
+          case '\002':
+            Stream->ctrlCharState.null_char_mode = 0;
+            cur += 1;
+            break;
+          case '\033':
+            Stream->ctrlCharState.state = CTRLCHAR_INIT;
+            Stream->ctrlCharState.digit_count = 0;
+            Stream->ctrlCharState.numargs = 0;
+            Stream->ctrlCharState.cmd = 0;
+            Stream->ctrlCharState.cmd_prefix = 0;          
+            
+            cur += 1;            
+            cur += da_ConCtrlChar(&Stream->ctrlCharState, cur, Proto, Self);
+            break;
+        }
+      }
+    }
   }
 
   // Depending on status, update BufferSize and return
-  if(!RETURN_ERROR(Status)) {
-    NumChar = BufferSize;
-    Stream->NumWritten += NumChar;
-  }
+  NumChar = cur - (CHAR16*)Buffer;
+  Stream->NumWritten += NumChar;
+
   EFIerrno = Status;      // Make error reason available to caller
   return NumChar;
 }
@@ -261,17 +313,23 @@ da_ConRawRead (
   Stream  = BASE_CR(filp->f_ops, ConInstance, Abstraction);
   Proto   = (EFI_SIMPLE_TEXT_INPUT_PROTOCOL *)Stream->Dev;
 
-  if(Stream->UnGetKey == CHAR_NULL) {
-    Status = Proto->ReadKeyStroke(Proto, &Key);
-  }
-  else {
+  if(Stream->UnGetKey != CHAR_NULL) {
     Status  = EFI_SUCCESS;
     // Use the data in the Un-get buffer
     // Guaranteed that ScanCode and UnicodeChar are not both NUL
     Key.ScanCode        = SCAN_NULL;
     Key.UnicodeChar     = Stream->UnGetKey;
     Stream->UnGetKey    = CHAR_NULL;
+  } else if(Self->cpr_state != CPR_NONE) {
+    Key.UnicodeChar = 0xE000 |
+        (Self->cpr_row & 0x3f) << 6 |
+        (Self->cpr_column & 0x3f);
+    Self->cpr_state = CPR_NONE;
+    Status  = EFI_SUCCESS;
+  } else {
+    Status = Proto->ReadKeyStroke(Proto, &Key);
   }
+
   if(Status == EFI_SUCCESS) {
     // Translate the Escape Scan Code to an ESC character
     if (Key.ScanCode != 0) {
@@ -348,7 +406,7 @@ da_ConRead(
 
     do {
       Status = EFI_SUCCESS;
-      if(BlockingMode) {
+      if(Stream->UnGetKey == CHAR_NULL && BlockingMode) {
         // Read a byte in Blocking mode
         Status = gBS->WaitForEvent( 1, &Proto->WaitForKey, &Edex);
       }
@@ -479,7 +537,7 @@ EFIAPI
 da_ConIoctl(
   struct __filedes   *filp,
   ULONGN              cmd,
-  va_list             argp
+  VA_LIST             argp
   )
 {
   errno   = ENODEV;
@@ -679,12 +737,7 @@ da_ConPoll(
     // STDIN: Only input is supported for this device
     Status = da_ConRawRead (filp, &Stream->UnGetKey);
     if(Status == RETURN_SUCCESS) {
-      RdyMask = POLLIN;
-      if ((Stream->UnGetKey <  TtyFunKeyMin)   ||
-          (Stream->UnGetKey >= TtyFunKeyMax))
-      {
-        RdyMask |= POLLRDNORM;
-      }
+      RdyMask = POLLIN | POLLRDNORM;
     }
     else {
       Stream->UnGetKey  = CHAR_NULL;
@@ -771,6 +824,13 @@ __Cons_construct(
         Stream->NumRead     = 0;
         Stream->NumWritten  = 0;
         Stream->UnGetKey    = CHAR_NULL;
+
+        Stream->ctrlCharState.null_char_mode = 0;
+        Stream->ctrlCharState.state = CTRLCHAR_INIT;
+        Stream->ctrlCharState.digit_count = 0;
+        Stream->ctrlCharState.numargs = 0;
+        Stream->ctrlCharState.cmd = 0;
+        Stream->ctrlCharState.cmd_prefix = 0;          
 
         if(Stream->Dev == NULL) {
           continue;                 // No device for this stream.

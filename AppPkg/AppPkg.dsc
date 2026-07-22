@@ -28,6 +28,9 @@
   DEFINE DEBUG_PRINT_ERROR_LEVEL  = 0x80000040  # Flags to control amount of debug output
   DEFINE DEBUG_PROPERTY_MASK      = 0
 
+  # Python 3.12: FALSE = Iteration 1 MIN (no Phase 8). FULL: build -D BUILD_PYTHON312_FULL=TRUE
+  DEFINE BUILD_PYTHON312_FULL     = FALSE
+
 !include MdePkg/MdeLibs.dsc.inc
 
 [PcdsFeatureFlag]
@@ -127,9 +130,14 @@
   !endif
 
 #### Conditional compilation of python312.inf by passing -D BUILD_PYTHON312
-#### Iteration 1: no edk2-libffi / openssl / zlib / pyreadline
+#### MIN (default): build with -D BUILD_PYTHON312 only (Phase 8 omitted).
+#### FULL: add -D BUILD_PYTHON312_FULL=TRUE (zlib, ctypes, OpenSSL).
   !if $(BUILD_PYTHON312)
-    AppPkg/Applications/Python/Python-3.12.13/Python312.inf
+    !if $(BUILD_PYTHON312_FULL) == TRUE
+      AppPkg/Applications/Python/Python-3.12.13/Python312.inf
+    !else
+      AppPkg/Applications/Python/Python-3.12.13/Python312_MIN.inf
+    !endif
   !endif
 
 #### Un-comment the following line to build Lua.
@@ -150,3 +158,8 @@
 ##############################################################################
 !include StdLib/StdLib.inc
 !include AppPkg/Applications/Sockets/Sockets.inc
+
+!if $(BUILD_PYTHON312)
+[BuildOptions]
+  MSFT:*_*_*_CC_FLAGS = /DPY_UEFI_BOOT_TRACE=1
+!endif

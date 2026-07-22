@@ -29,7 +29,8 @@
 
 [Sources]
   Console/daConsole.c
-
+  Console/daAnsi.c
+  
 [Packages]
   StdLib/StdLib.dec
   StdLibPrivateInternalFiles/DoNotUse.dec

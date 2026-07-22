@@ -232,6 +232,8 @@ Python312.efi
 
 **MIN:** **`import ssl`** / **`import ctypes`** should fail. **`import hashlib`**, **`import os`** should work.
 
+**User-verified (2026-07-22, VS2022 MIN + 368 entry + Windows frozen regen):** §10 command list through interactive REPL — pass.
+
 Then enable **FULL** (`BUILD_PYTHON312_FULL=TRUE`), repackage, and repeat before Phase 8–specific tests (zlib, ssl, ctypes).
 
 ---

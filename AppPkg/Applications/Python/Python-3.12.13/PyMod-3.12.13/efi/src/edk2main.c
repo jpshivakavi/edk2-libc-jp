@@ -20,6 +20,22 @@
 #include "efi/environ.h"
 #include "efi/edk2excep.h"
 
+#ifdef PY_UEFI_BOOT_TRACE
+#define PY312_BOOT_PRINT(Step) Print(L"Python312 boot: " Step L"\n")
+#else
+#define PY312_BOOT_PRINT(Step) do { } while (0)
+#endif
+
+void
+py312_boot_print_ascii(const char *msg)
+{
+#ifdef PY_UEFI_BOOT_TRACE
+    if (msg != NULL) {
+        Print(L"Python312 boot: %a\n", msg);
+    }
+#endif
+}
+
 edk2_globals_t g_edk2_globals;
 
 extern EFI_STATUS EFIAPI ShellCEntryLib (
@@ -36,6 +52,8 @@ UefiMain (
 {
    EFI_LOADED_IMAGE_PROTOCOL *loaded_image_protocol;
    EFI_STATUS status;
+
+   PY312_BOOT_PRINT(L"UefiMain enter");
 
    //
    // turn off the watchdog timer
@@ -162,7 +180,20 @@ UefiMain (
    g_edk2_globals.console_in = console_in;
    g_edk2_globals.cpu = cpu_protocol;
    g_edk2_globals.rng = rng_protocol;
-   
+
+   edk2_alloc_environ();
+
+#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_368_ENTRY)
+   /* Python 3.6.8 AppPkg: ENTRY_POINT = ShellCEntryLib on the firmware stack
+    * (no edk2_switch_stack / py_install_idt). VS2022 3.12 hang reproduces
+    * inside ShellCEntryLib only after stack switch — try 368-style path. */
+   PY312_BOOT_PRINT(L"ShellCEntryLib 368-style (no custom stack/IDT)");
+   status = ShellCEntryLib(image, systab);
+   PY312_BOOT_PRINT(L"after ShellCEntryLib");
+   edk2_free_environ();
+   return status;
+#endif
+
    g_edk2_globals.stack_size = PY_UEFI_DEFAULT_STACK_SIZE; 
    g_edk2_globals.stack = malloc(g_edk2_globals.stack_size + 1024);
    if(g_edk2_globals.stack == NULL) {
@@ -171,13 +202,18 @@ UefiMain (
    }
 
    edk2_alloc_environ();
-   
+
+   PY312_BOOT_PRINT(L"before switch_stack");
+
    uint64_t aligned_stack = (uint64_t)g_edk2_globals.stack +
                             (((uint64_t)g_edk2_globals.stack) % 512);
    edk2_switch_stack(aligned_stack, g_edk2_globals.stack_size);
 
+   PY312_BOOT_PRINT(L"before py_install_idt");
    py_install_idt();
+   PY312_BOOT_PRINT(L"before ShellCEntryLib");
    status = ShellCEntryLib(image, systab);
+   PY312_BOOT_PRINT(L"after ShellCEntryLib");
    py_restore_idt();
    
    edk2_revert_stack();

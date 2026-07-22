@@ -84,13 +84,15 @@ extern PyObject* PyInit__string(void);
   extern PyObject* PyInit__multibytecodec(void);
   extern PyObject* PyInit__decimal(void);
   extern PyObject* PyInit_xxlimited(void);
+#if defined(BUILD_PYTHON312_FULL)
   extern PyObject* PyInit_zlib(void);
   extern PyObject* PyInit__ctypes(void);
+  extern PyObject* PyInit__hashlib(void);
+  extern PyObject* PyInit__ssl(void);
+#endif
 #ifndef UEFI_C_SOURCE
   extern PyObject* PyInit__ctypes_test(void);
 #endif
-  extern PyObject* PyInit__hashlib(void);
-  extern PyObject* PyInit__ssl(void);
   extern PyObject* PyInit__posixsubprocess(void);
   extern PyObject* PyInit_edk2console(void);
   extern PyObject* PyInit_pyexpat(void);
@@ -189,6 +191,7 @@ struct _inittab _PyImport_Inittab[] = {
     {"_multibytecodec", PyInit__multibytecodec},
     {"_decimal", PyInit__decimal},
     {"xxlimited", PyInit_xxlimited},
+#if defined(BUILD_PYTHON312_FULL)
     {"zlib", PyInit_zlib},
     {"_ctypes", PyInit__ctypes},
 #ifndef UEFI_C_SOURCE
@@ -196,6 +199,7 @@ struct _inittab _PyImport_Inittab[] = {
 #endif
     {"_hashlib", PyInit__hashlib},
     {"_ssl", PyInit__ssl},
+#endif
     {"_posixsubprocess", PyInit__posixsubprocess},
     {"edk2console", PyInit_edk2console},
     {"pyexpat", PyInit_pyexpat},

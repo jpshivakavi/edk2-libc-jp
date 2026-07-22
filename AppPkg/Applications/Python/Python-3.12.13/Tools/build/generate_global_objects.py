@@ -16,6 +16,7 @@ IGNORED = {
     'RDUNDER',  # Objects/typeobject.c
     'SPECIAL',  # Objects/weakrefobject.c
     'NAME',  # Objects/typeobject.c
+    '_',  # 1-char: use _Py_LATIN1_CHR (see len(name)==1 skip below)
 }
 IDENTIFIERS = [
     # from ADD() Python/_warnings.c
@@ -418,7 +419,7 @@ def get_identifiers_and_strings() -> 'tuple[set[str], dict[str, str]]':
     # Probably not worth adding a C string parser.
     for name, string, *_ in iter_global_strings():
         if string is None:
-            if name not in IGNORED:
+            if name not in IGNORED and len(name) != 1:
                 identifiers.add(name)
         else:
             if len(string) == 1 and ord(string) < 256:

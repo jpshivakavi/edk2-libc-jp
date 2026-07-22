@@ -1,5 +1,7 @@
 # Python312 UEFI startup console output
 
+**VS2022 debug boot lines (`Python312 boot: …`):** see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §7. Remove **`PY_UEFI_BOOT_TRACE`** when runtime smoke is complete.
+
 ## Expected at launch (normal)
 
 After **`UefiMain`** completes protocol setup and calls **`ShellCEntryLib`**, the REPL shows CPython’s usual banner and **`>>>`** prompt (from **`PyMod-3.12.13/Programs/python.c`** / interpreter startup). No extra firmware debug lines are intended before that banner.

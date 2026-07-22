@@ -30,19 +30,20 @@ on a Windows host. Use this to validate VS2022 + NASM + AppPkg before porting
 
 ## 2. Directory layout (this developer setup)
 
-Two **sibling** clones under one parent (do not nest libc inside edk2):
+Two **sibling** clones under one parent (do not nest libc inside edk2). Use the same
+**`EDK2_LIBC_PATH`** as the Python 3.12 VS2022 port (**`edk2-libc-jp-vsfix`**).
 
 ```text
 C:\Users\njayapra\github\
-  edk2\              ← EDK II WORKSPACE (edksetup.bat, Build\)
-  edk2-libc-jp\      ← EDK2_LIBC_PATH (fork of tianocore/edk2-libc)
+  edk2\                    ← EDK II WORKSPACE (edksetup.bat, Build\)
+  edk2-libc-jp-vsfix\      ← EDK2_LIBC_PATH (fork jpshivakavi/edk2-libc-jp)
 ```
 
 | Variable | Example value |
 |----------|----------------|
 | `WORKSPACE` | `C:\Users\njayapra\github\edk2` |
-| `EDK2_LIBC_PATH` | `C:\Users\njayapra\github\edk2-libc-jp` |
-| `PACKAGES_PATH` | `C:\Users\njayapra\github\edk2;C:\Users\njayapra\github\edk2-libc-jp` |
+| `EDK2_LIBC_PATH` | `C:\Users\njayapra\github\edk2-libc-jp-vsfix` |
+| `PACKAGES_PATH` | `C:\Users\njayapra\github\edk2;C:\Users\njayapra\github\edk2-libc-jp-vsfix` |
 | `NASM_PREFIX` | `C:\NASM\` (trailing `\` required; NASM need not be on `PATH`) |
 
 ---
@@ -76,7 +77,7 @@ Use **cmd.exe** (matches GitHub Actions). Set environment **before** `edksetup` 
 ### Step 1 — Environment
 
 ```cmd
-set EDK2_LIBC_PATH=C:\Users\njayapra\github\edk2-libc-jp
+set EDK2_LIBC_PATH=C:\Users\njayapra\github\edk2-libc-jp-vsfix
 set PACKAGES_PATH=C:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%
 set NASM_PREFIX=C:\NASM\
 set WORKSPACE=C:\Users\njayapra\github\edk2
@@ -120,7 +121,7 @@ build -t VS2022 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc -D BUILD_PYTHON368
 
 **Important:** Use **`-p AppPkg/AppPkg.dsc`** (resolved via `PACKAGES_PATH`), **not**
 `-p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc`. An absolute path to the DSC under
-**edk2-libc-jp** makes current EDK **`build`** exit in **0 seconds** with only
+**edk2-libc-jp-vsfix** (your **`EDK2_LIBC_PATH`** clone) makes current EDK **`build`** exit in **0 seconds** with only
 `- Failed -` and no compiler output. `EDK2_LIBC_PATH` is still required for
 packaging and for `Python312.inf` `$(EDK2_LIBC_PATH)` — only the **`-p` argument**
 should stay workspace-relative.
@@ -169,7 +170,7 @@ Note: 3.6.8 uses **`EFI\Tools\Python.efi`**, not the 3.12 **`EFI\bin\Python312.e
 ## 6. One-shot copy-paste
 
 ```cmd
-set EDK2_LIBC_PATH=C:\Users\njayapra\github\edk2-libc-jp
+set EDK2_LIBC_PATH=C:\Users\njayapra\github\edk2-libc-jp-vsfix
 set PACKAGES_PATH=C:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%
 set NASM_PREFIX=C:\NASM\
 set WORKSPACE=C:\Users\njayapra\github\edk2

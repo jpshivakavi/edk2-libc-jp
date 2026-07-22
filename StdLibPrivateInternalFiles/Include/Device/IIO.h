@@ -33,6 +33,11 @@ typedef ssize_t (EFIAPI *cIIO_Write)     (struct __filedes *filp, const char *bu
 
 typedef ssize_t (EFIAPI *cIIO_Echo)      (struct __filedes *filp, wchar_t EChar, BOOLEAN EchoIsOK);
 
+enum cprstate_t {
+  CPR_NONE = 0,
+  CPR_START
+};
+
 /** Structure defining an instance of the Interactive I/O "class".  **/
 struct _IIO_Instance {
   /* ######## Public Functions ######## */
@@ -69,6 +74,10 @@ struct _IIO_Instance {
 
   // termios structure
   struct termios  Termio;
+
+  enum cprstate_t cpr_state;
+  INT32 cpr_row;
+  INT32 cpr_column;  
 };
 
 // Helper Functions

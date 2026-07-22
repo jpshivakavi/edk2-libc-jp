@@ -709,7 +709,7 @@ open(
           if((oflags & O_TTY_INIT) && (filp->f_iflags & _S_ITTY) && (filp->devdata != NULL)) {
             // Initialize the device's termios flags to a "sane" value
             Termio = &((cIIO *)filp->devdata)->Termio;
-            Termio->c_iflag = ICRNL | IGNSPEC;
+            Termio->c_iflag = ICRNL /* | IGNSPEC */;
             Termio->c_oflag = OPOST | ONLCR | OXTABS | ONOEOT | ONOCR | ONLRET | OCTRL;
             Termio->c_lflag = ECHO | ECHOE | ECHONL | ICANON;
             Termio->c_cc[VERASE]  = 0x08;   // ^H Backspace
@@ -1083,9 +1083,9 @@ ioctl(
 {
   int                 retval = -1;
   struct __filedes   *filp;
-  va_list             argp;
+  VA_LIST             argp;
 
-  va_start(argp, request);
+  VA_START(argp, request);
 
   if(ValidateFD( fd, VALID_OPEN)) {
     filp = &gMD->fdarray[fd];
@@ -1108,7 +1108,7 @@ ioctl(
   else {
     errno   =  EBADF;
   }
-  va_end(argp);
+  VA_END(argp);
 
   return retval;
 }
@@ -1420,18 +1420,18 @@ va_Utimes(
   )
 {
   struct __filedes   *filp;
-  va_list             ap;
+  VA_LIST             ap;
   int                 fd;
   int                 retval  = -1;
 
-  va_start(ap, path);
+  VA_START(ap, path);
   fd = open(path, O_RDWR, 0);
   if(fd >= 0) {
     filp = &gMD->fdarray[fd];
     retval = filp->f_ops->fo_ioctl( filp, FIOSETIME, ap);
     close(fd);
   }
-  va_end(ap);
+  VA_END(ap);
   return retval;
 }
 

@@ -20,6 +20,7 @@
   # MSVC _ctypes uses libffi_msvc (Python368 pattern), not vendored edk2-libffi headers
   DEFINE LIBFFI_MSVC_INC      = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_ctypes/libffi_msvc
   DEFINE LIBFFI_MSVC_PYMOD_INC = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/_ctypes/libffi_msvc
+  # Monolithic FULL module (Phase 8). MIN build uses Python312_MIN.inf
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -309,6 +310,7 @@
   Modules/xxlimited.c
   Modules/xxlimited_35.c
   Modules/xxsubtype.c
+
   Modules/zlibmodule.c
 
 # Vendored zlib (PyMod — same layout as 3.6.8 Modules/zlib; sources from edk2-zlib @ 8ae7f507)
@@ -1064,8 +1066,9 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
 
 [BuildOptions]
   # libffi: same -I as edk2-py312 edk2-libffi/EFI/LibFFI/LibFFI.inf (Include + libffi/include)
-  MSFT:*_*_*_CC_FLAGS = /GL- /Oi- /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4201 /wd4204 /wd4210 /wd4244 /wd4267 /wd4273 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 /wd4456 /wd4312 /wd4457 /wd4459 /wd4474 /wd4476 /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include\internal /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\efi\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Modules\_hacl\include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\Modules\zlib /I$(LIBFFI_MSVC_INC) /I$(LIBFFI_MSVC_PYMOD_INC) /I$(OPENSSL_ROOT)\efi\include /I$(OPENSSL_ROOT) /I$(OPENSSL_ROOT)\include /DNO_MSABI_VA_FUNCS /DPy_BUILD_CORE /DHAVE_MEMMOVE /DUSE_PYEXPAT_CAPI /DXML_STATIC /DXML_POOR_ENTROPY /DUEFI_C_SOURCE -D UEFI /WX-
-  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC) -I$(OPENSSL_ROOT)/efi/include -I$(OPENSSL_ROOT) -I$(OPENSSL_ROOT)/include -DNO_MSABI_VA_FUNCS -Wno-error=maybe-uninitialized -Wno-error=unused-but-set-variable -DPy_BUILD_CORE -DHAVE_MEMMOVE
+  # Phase 8 FULL (zlib, ctypes, OpenSSL)
+  MSFT:*_*_*_CC_FLAGS = /GL- /Oi- /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4201 /wd4204 /wd4210 /wd4244 /wd4267 /wd4273 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 /wd4456 /wd4312 /wd4457 /wd4459 /wd4474 /wd4476 /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include\internal /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\efi\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Modules\_hacl\include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\Modules\zlib /I$(LIBFFI_MSVC_INC) /I$(LIBFFI_MSVC_PYMOD_INC) /I$(OPENSSL_ROOT)\efi\include /I$(OPENSSL_ROOT) /I$(OPENSSL_ROOT)\include /DNO_MSABI_VA_FUNCS /DPy_BUILD_CORE /DHAVE_MEMMOVE /DUSE_PYEXPAT_CAPI /DXML_STATIC /DXML_POOR_ENTROPY /DUEFI_C_SOURCE /DBUILD_PYTHON312_FULL=1 -D UEFI /WX-
+  GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC) -I$(OPENSSL_ROOT)/efi/include -I$(OPENSSL_ROOT) -I$(OPENSSL_ROOT)/include -DNO_MSABI_VA_FUNCS -Wno-error=maybe-uninitialized -Wno-error=unused-but-set-variable -DPy_BUILD_CORE -DHAVE_MEMMOVE -DBUILD_PYTHON312_FULL=1
   GCC:*_*_X64_PP_FLAGS = -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC)
 
 [BuildOptions.IA32]

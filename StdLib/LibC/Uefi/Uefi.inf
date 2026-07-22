@@ -31,7 +31,9 @@
   Xform.c
   compat.c
   StubFunctions.c
-
+  upipe.c
+  fdstat.c
+  
 [Packages]
   StdLib/StdLib.dec
   StdLibPrivateInternalFiles/DoNotUse.dec

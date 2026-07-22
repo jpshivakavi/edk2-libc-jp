@@ -80,7 +80,7 @@ IIO_GetInChar (
   wint_t            RetVal;
   wchar_t           InChar;
 
-  static size_t     BufCnt;
+  static size_t     BufCnt = 0;
 
   This      = filp->devdata;
   InBuf     = This->InBuf;

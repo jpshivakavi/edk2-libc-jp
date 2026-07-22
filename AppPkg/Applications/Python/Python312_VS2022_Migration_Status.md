@@ -2,22 +2,42 @@
 
 **Plan:** [`Python312_VS2022_Port_Plan.md`](./Python312_VS2022_Port_Plan.md)  
 **Windows build guide:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md)  
+**MIN build (two INF):** [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md)  
+**UEFI runtime / VS2022 fixes:** [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md)  
 **GCC vs VS2022 deviations:** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md)  
 **3.6.8 VS2022 walkthrough:** [`Python368_Windows_VS2022_Build_Guide.md`](./Python368_Windows_VS2022_Build_Guide.md)  
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-07-21 (**Session 7** — UEFI path, MSVC deepfreeze/binascii, docs, repo clean; **V5** user Done; **V6** blocked on hardware smoke)  
+**Updated:** 2026-07-22 (**Session 9** — user-verified VS2022 **MIN** runtime: **`-h`**, **`-S -c`**, **`print('ok')`**, REPL after **`regen_frozen_windows.cmd`** + fresh **`deepfreeze.c`**; **V6 MIN** signed off)  
 **Strategy:** MSVC peer to GCC FULL; same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs stay in **`PyMod-3.12.13/Modules/`**  
 **Branch:** `feature/python-3.12.13-vs2022` (from `feature/python-3.12.13-apppkg`)  
-**Target repo:** `jpshivakavi/edk2-libc-jp`  
+**Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
 **Windows WORKSPACE:** `c:\Users\njayapra\github\edk2` (tianocore/edk2 — `edksetup.bat`, `Build\`)  
-**Libc fork:** `c:\Users\njayapra\github\edk2-libc-jp` (`EDK2_LIBC_PATH`; Python tree + INF)  
+**Libc clone / `EDK2_LIBC_PATH`:** `c:\Users\njayapra\github\edk2-libc-jp-vsfix` (active VS2022 workspace; branch **`feature/python-3.12.13-vs2022`**)  
 **WSL GCC regression:** user-verified **`BUILD_PYTHON312`** + **`create_python_pkg.sh`** green after V2/V3 prep (2026-07-20)  
 **MSVC reference INF:** [`Python-3.6.8/Python368.inf`](./Python-3.6.8/Python368.inf)  
 **3.6.8 VS2022 CI:** [`.github/workflows/build-python-uefi-vs2022.yaml`](../.github/workflows/build-python-uefi-vs2022.yaml) (`BUILD_PYTHON368` only today)
 
 Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc fork — **not** `-p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc` alone.
+
+---
+
+## Current status (2026-07-22)
+
+**Branch:** `feature/python-3.12.13-vs2022` · **Workspace clone:** `edk2-libc-jp-vsfix` · **Remote:** `jpshivakavi/edk2-libc-jp`
+
+| Area | State |
+|------|--------|
+| **VS2022 MIN** (`Python312_MIN.inf`, default DSC) | **Build + UEFI runtime Done** — user smoke: **`-h`**, **`-S -c "import sys; print(sys.version)"`**, **`-S -c "print('ok')"`**, interactive REPL |
+| **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT around libc); required for VS2022 today |
+| **Frozen / deepfreeze** | Regenerated on Windows via **`Tools/build/regen_frozen_windows.cmd`** (host **3.12.x**); **`statically_allocated`** + **`fix_deepfreeze_latin1.py`** + **`generate_global_objects.py`** |
+| **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done** (Session 6); **UEFI Phase 8 smoke** (zlib, ssl, ctypes) **not signed off** |
+| **GCC regression** | Last green **2026-07-20**; **re-run recommended** after deepfreeze / global-header changes in this push |
+| **V7 CI** | No **`build-python312-uefi-vs2022.yaml`** yet |
+| **Debug scaffolding** | **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** probes, **`Py_DEBUG 1`** in UEFI **`pyconfig.h`** — trim when FULL is stable |
+
+**Artifacts:** `Build\…\edk2-libc-jp-vsfix\…\Python312_MIN\DEBUG\Python312.efi` · package with **`create_python_pkg.bat`** (finds MIN or FULL output).
 
 ---
 
@@ -31,7 +51,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | V3 | MSFT `[BuildOptions]` in `Python312.inf` | **Done** |
 | V4 | Toolchain-split sources; FULL VS2022 link | **Done** (`Python312.efi` / module link green) |
 | V5 | Packaging on Windows (`create_python_pkg.bat`) | **Done** (user **`myUEFIPy312`**; PREFIX volume-relative — see Session 7) |
-| V6 | Runtime smoke (MIN → FULL) | **Blocked** (deployed VS2022 EFI — no REPL / blank KVM; lab retest pending) |
+| V6 | Runtime smoke (MIN → FULL) | **Partial** — **MIN Done** (2026-07-22, **`PY_UEFI_MSVC_368_ENTRY`**, Windows regen); **FULL** UEFI smoke pending |
 | V7 | Docs and CI (`build-python312-uefi-vs2022.yaml`) | **Partial** (build guide, deviations doc, this status; no 3.12 CI) |
 | V8 | Vendored FULL on VS2022 (8.1→8.2→8.5→8.3→8.4) | **Done** (same monolithic INF as GCC; MSFT-specific glue only) |
 
@@ -58,7 +78,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 |------|--------|
 | Baseline | GCC **Phase 8 FULL** on `feature/python-3.12.13-apppkg` — do not regress |
 | `PACKAGES_PATH` | `<edk2>;<edk2-libc>` only — no sandbox LibFFI/OpenSSL/zlib packages |
-| INF | Same monolithic **`Python312.inf`**; dual **`GCC` + `MSFT`** `[BuildOptions]` |
+| INF | **`Python312_MIN.inf`** + **`Python312.inf`** via **`BUILD_PYTHON312_FULL`** in DSC (no `!if` inside INF); MSFT **`PY_UEFI_MSVC_368_ENTRY`** for runtime — see runtime notes |
 | `pyconfig` source of truth | **`PyMod-3.12.13/Include/pyconfig.h`** + **`efi/Include/pyconfig.h`** → **`srcprep.py`** |
 | MSVC sizing | **`/DUEFI_MSVC_64`** on X64; **`_MSC_VER`** LLP64 (`SIZEOF_LONG` 4); GCC **`#else`** LP64 (8) |
 | StdLib patches | Apply **`patches/*.patch`** locally; **do not commit** `StdLib/` on branch |
@@ -73,9 +93,9 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 
 | Variable | Value |
 |----------|--------|
-| `EDK2_LIBC_PATH` | `c:\Users\njayapra\github\edk2-libc-jp` |
+| `EDK2_LIBC_PATH` | `c:\Users\njayapra\github\edk2-libc-jp-vsfix` |
 | `WORKSPACE` | `c:\Users\njayapra\github\edk2` |
-| `PACKAGES_PATH` | `c:\Users\njayapra\github\edk2;c:\Users\njayapra\github\edk2-libc-jp` |
+| `PACKAGES_PATH` | `c:\Users\njayapra\github\edk2;c:\Users\njayapra\github\edk2-libc-jp-vsfix` |
 | `NASM_PREFIX` | `C:\NASM\` (NASM **3.02**) |
 
 ---
@@ -190,6 +210,20 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 
 **Repo hygiene:** Reverted local **`StdLib/`** patch dirt and **`Python-3.6.8/`** overlay; removed broken **`LibOpenSSL/openssl`** junction ( **`git status`** warning on Windows). Working tree **clean**; re-**`git apply`** patches before next build.
 
+### 2026-07-22 — Session 8 (MIN/FULL INF, VS2022 runtime bisect)
+
+1. **`Python312_MIN.inf`** + **`Python312.inf`** — DSC selects module via **`BUILD_PYTHON312_FULL`** (no `!if` in INF).
+2. **`msvc_chkstk.c | MSFT`** for MIN **`__chkstk`**; FULL uses **`libffi_msvc/ffi.c`**.
+3. **`PY_UEFI_MSVC_368_ENTRY`** in **`edk2main.c`** — fixes hang inside **`ShellCEntryLib`** after stack switch on VS2022.
+4. **`PY_UEFI_BOOT_TRACE`** — optional firmware **`Print`** ladder (**`edk2main.c`**, **`Main.c`**, **`python.c`**).
+5. **deepfreeze / globals:** **`generate_global_objects.py`** (skip 1-char **`_Py_ID`**); **`fix_deepfreeze_latin1.py`**; **`AttributeError`** / **`statically_allocated`** stale **`deepfreeze.c`** diagnosed.
+
+### 2026-07-22 — Session 9 (Windows frozen regen + MIN smoke sign-off)
+
+1. **`Tools/build/regen_frozen_windows.cmd`** + docs (commits **`a0fb27fc`**, **`109f4a0a`**).
+2. User ran regen with host **3.12.x**, rebuilt **MIN**, deployed — **all MIN smokes pass** (see **Current status** above).
+3. **V6 MIN** closed; **V6 FULL** remains open.
+
 ---
 
 ## Phase V0 — Prerequisites and baseline capture
@@ -217,7 +251,7 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 | Step | Action | Result |
 |------|--------|--------|
 | V1.1 | Git, Python 3.10+, VS2022, NASM | **Done** |
-| V1.2 | `edk2` + `edk2-libc-jp` on **`feature/python-3.12.13-vs2022`** | **Done** |
+| V1.2 | `edk2` + **`edk2-libc-jp-vsfix`** on **`feature/python-3.12.13-vs2022`** | **Done** |
 | V1.3 | Apply **`patches/*.patch`** locally | **Done** (0001–0004) |
 | V1.4 | **`srcprep.py`**; `PLATFORM "uefi"` | **Done** |
 | V1.5 | Frozen + **`deepfreeze.c`** | **Done** (24× `.h` + deepfreeze present) |
@@ -228,7 +262,7 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 ### V1.7 smoke command
 
 ```cmd
-set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp
+set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix
 set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%
 set NASM_PREFIX=C:\NASM\
 cd /d c:\Users\njayapra\github\edk2
@@ -422,7 +456,7 @@ Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run r
 
 ## Known issues / follow-ups
 
-1. **V6 runtime smoke** — VS2022 **`Python312.efi`** blank screen / no **`>>>`** on first deploy (2026-07-20); lab retest with **`-S`**, **`map -r`**, GCC A/B.
+1. ~~**V6 MIN runtime smoke**~~ — **Done** on VS2022 (2026-07-22): **`-h`**, **`-S -c "import sys; print(sys.version)"`**, **`-S -c "print('ok')"`**, interactive REPL. **FULL** runtime + Phase 8 import smokes still open.
 2. **WSL GCC regression** not re-run after Session 6–7 — mandatory before merge to **`apppkg`**.
 3. Re-**`git apply`** **`patches/*.patch`** after **`StdLib/`** cleanup (patches are not committed).
 4. **`_ctypes_test`**: compiled **`| GCC`** only; excluded from UEFI **`config.c`** on both toolchains.
@@ -434,15 +468,15 @@ Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run r
 
 ## Next actions (recommended)
 
-**Follow:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md)
+**Follow:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) · [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10
 
 On Windows, in order:
 
-1. Re-**`git apply`** StdLib **`patches/*.patch`** if **`StdLib/`** was reverted (Session 7 cleanup).
-2. Rebuild **`BUILD_PYTHON312 -t VS2022`**; **`create_python_pkg.bat`** + redeploy **`EFI/`**.
-3. UEFI Shell smoke (**V6**): **`map -r`**, **`Python312.efi -S`**, then FULL imports.
-4. WSL: **`BUILD_PYTHON312 -t GCC`** + **`create_python_pkg.sh`** + **`verify_pyconfig_gcc.sh`** (regression gate).
-5. **V7**: **`build-python312-uefi-vs2022.yaml`**, **`Py312ReadMe.txt`** VS2022 section.
+1. **Commit/push** remaining **`edk2-libc-jp-vsfix`** changes (MIN INF, 368 entry, regen outputs, StdLib probes if kept) — local tree still has uncommitted runtime work beyond **`regen_frozen_windows.cmd`** commits.
+2. **FULL** build: **`BUILD_PYTHON312_FULL=TRUE`**, same **`PY_UEFI_MSVC_368_ENTRY`** on **`Python312.inf`**, package, deploy; smoke **`import zlib`**, **`import ssl`**, **`import ctypes`**, **`hashlib`** (runtime notes §10).
+3. **Cleanup (optional):** remove **`PY_UEFI_BOOT_TRACE`** / **`Main.c`** probes when FULL is stable; consider **`#undef Py_DEBUG`** in UEFI **`pyconfig.h`**.
+4. WSL: **`BUILD_PYTHON312 -t GCC`** + **`create_python_pkg.sh`** after deepfreeze/header churn (regression gate).
+5. **V7:** **`build-python312-uefi-vs2022.yaml`**, **`Py312ReadMe.txt`** VS2022 section.
 
 ---
 

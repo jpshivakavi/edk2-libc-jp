@@ -386,7 +386,7 @@ EFIAPI
 da_ShellIoctl(
   struct __filedes   *filp,
   ULONGN              cmd,
-  va_list             argp
+  VA_LIST             argp
   )
 {
   EFI_FILE_INFO    *FileInfo      = NULL;
@@ -404,8 +404,8 @@ da_ShellIoctl(
       EFI_TIME        *ET;
       int              mod = 0;
 
-      TV = va_arg(argp, struct timeval*);
-      if(TV[0].tv_sec != 0) {
+      TV = VA_ARG(argp, struct timeval*);
+      if(TV != NULL && TV[0].tv_sec != 0) {
         ET = Time2Efi(TV[0].tv_sec);
         if(ET != NULL) {
           (void) memcpy(&FileInfo->LastAccessTime, ET, sizeof(EFI_TIME));
@@ -414,7 +414,7 @@ da_ShellIoctl(
           ++mod;
         }
       }
-      if(TV[1].tv_sec != 0) {
+      if(TV != NULL && TV[1].tv_sec != 0) {
         ET = Time2Efi(TV[1].tv_sec);
         if(ET != NULL) {
           (void) memcpy(&FileInfo->ModificationTime, ET, sizeof(EFI_TIME));

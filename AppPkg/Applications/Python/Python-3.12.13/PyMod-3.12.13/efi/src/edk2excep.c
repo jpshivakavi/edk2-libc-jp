@@ -89,6 +89,10 @@ py_handle_exception (
         break;          
     }
 
+#ifdef PY_UEFI_BOOT_TRACE
+    Print(L"Python312 boot: unhandled CPU exception %d\n", (int)InterruptType);
+#endif
+
     raise(signum);
     
     while (exc_trap) {

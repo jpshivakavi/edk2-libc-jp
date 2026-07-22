@@ -49,7 +49,7 @@ int     EFIAPI fbadop_stat   (struct __filedes *filp, struct stat *StatBuf, void
   return -1;
 }
 
-int     EFIAPI fbadop_ioctl  (struct __filedes *filp, ULONGN Cmd, va_list argp)
+int     EFIAPI fbadop_ioctl  (struct __filedes *filp, ULONGN Cmd, VA_LIST argp)
 {
   errno = EPERM;
   return -1;
@@ -74,6 +74,12 @@ int     EFIAPI fbadop_rename   (const char *from, const char *to)
 }
 
 int     EFIAPI fbadop_rmdir    (struct __filedes *filp)
+{
+  errno = EPERM;
+  return -1;
+}
+
+off_t EFIAPI fbadop_lseek(struct __filedes *filp, off_t Position, int whence)
 {
   errno = EPERM;
   return -1;
