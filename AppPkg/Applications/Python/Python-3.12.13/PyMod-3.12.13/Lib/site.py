@@ -456,6 +456,10 @@ def enablerlcompleter():
     This can be overridden in the sitecustomize or usercustomize module,
     or in a PYTHONSTARTUP file.
     """
+    # UEFI AppPkg: use StdLib TTY REPL like Python 3.6.8 (no pyreadline/edk2console).
+    if os.name == 'uefi':
+        return
+
     def register_readline():
         import atexit
         try:

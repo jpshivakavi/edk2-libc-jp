@@ -19,6 +19,10 @@
 #ifdef MS_WINDOWS
 #  include <windows.h>            // STATUS_CONTROL_C_EXIT
 #endif
+#ifdef UEFI_C_SOURCE
+#  include "efi/py312boot.h"
+#  include "efi/edk2console_api.h"
+#endif
 /* End of includes for exit_sigint() */
 
 #define COPYRIGHT \
@@ -205,6 +209,14 @@ pymain_import_readline(const PyConfig *config)
     if (config->isolated) {
         return;
     }
+#ifdef UEFI_C_SOURCE
+#ifndef PY_UEFI_PYREADLINE
+    /* Python 3.6.8 AppPkg: no pyreadline/edk2console on the stick; REPL uses
+     * StdLib TTY (fgets). pyreadline leaves ConIn in a state that hangs Shell
+     * exit and the next app launch on VS2022. Opt in with PY_UEFI_PYREADLINE. */
+    return;
+#endif
+#endif
     if (!config->inspect && config_run_code(config)) {
         return;
     }
@@ -713,11 +725,20 @@ Py_RunMain(void)
 
     pymain_run_python(&exitcode);
 
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_RunMain after pymain_run_python");
+    edk2_console_detach_readline();
+#endif
+
     if (Py_FinalizeEx() < 0) {
         /* Value unlikely to be confused with a non-error exit status or
            other special meaning */
         exitcode = 120;
     }
+
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_RunMain after Py_FinalizeEx");
+#endif
 
     pymain_free();
 

@@ -13,7 +13,17 @@
 
 #include "efi/edk2main.h"
 
-static EFI_EVENT g_console_timer;
+#ifdef PY_UEFI_BOOT_TRACE
+#define PY312_CONSOLE_TRACE(Step) Print(L"Python312 boot: " Step L"\n")
+#else
+#define PY312_CONSOLE_TRACE(Step) ((void)0)
+#endif
+
+extern char *(*PyOS_ReadlineFunctionPointer)(FILE *, FILE *, const char *);
+extern int (*PyOS_InputHook)(void);
+static PyObject *py_console_readline_hook = NULL;
+
+static EFI_EVENT g_console_timer = NULL;
 static uint64_t g_console_timer_counter = 0;
 
 
@@ -24,9 +34,13 @@ incr_console_timer(IN EFI_EVENT Event, IN  VOID *Context)
    g_console_timer_counter++;
 }
 
-static EFI_STATUS start_console_timer()
+static EFI_STATUS start_console_timer(void)
 {
    EFI_STATUS status;
+
+   if (g_console_timer != NULL) {
+      return EFI_SUCCESS;
+   }
 
    status = g_edk2_globals.system_table->BootServices->CreateEvent(
       EVT_TIMER | EVT_NOTIFY_SIGNAL,
@@ -52,18 +66,92 @@ py_console_get_timer(PyObject *self)
 }
 
 static void
+edk2_console_stop_timer(void)
+{
+   EFI_BOOT_SERVICES *bs;
+
+   if (g_console_timer == NULL) {
+      PY312_CONSOLE_TRACE(L"stop_timer: already off");
+      return;
+   }
+
+   if (g_edk2_globals.system_table == NULL) {
+      g_console_timer = NULL;
+      PY312_CONSOLE_TRACE(L"stop_timer: dropped (no systab)");
+      return;
+   }
+
+   bs = g_edk2_globals.system_table->BootServices;
+   PY312_CONSOLE_TRACE(L"stop_timer: TimerCancel");
+   bs->SetTimer(
+      g_console_timer,
+      TimerCancel,
+      0
+   );
+
+   PY312_CONSOLE_TRACE(L"stop_timer: CloseEvent");
+   bs->CloseEvent(g_console_timer);
+   g_console_timer = NULL;
+   PY312_CONSOLE_TRACE(L"stop_timer: done");
+}
+
+static void
+edk2_console_drain_input(void)
+{
+   EFI_KEY_DATA key;
+
+   if (g_edk2_globals.console_in == NULL) {
+      return;
+   }
+
+   while (g_edk2_globals.console_in->ReadKeyStrokeEx(
+             g_edk2_globals.console_in,
+             &key
+          ) == EFI_SUCCESS) {
+   }
+}
+
+void
+edk2_console_detach_readline(void)
+{
+   edk2_console_stop_timer();
+   py_console_readline_hook = NULL;
+   PyOS_ReadlineFunctionPointer = NULL;
+   PyOS_InputHook = NULL;
+}
+
+void
+edk2_console_prepare_for_launch(void)
+{
+   edk2_console_detach_readline();
+   edk2_console_drain_input();
+   /* Do not Reset ConIn here; Reset(TRUE) hangs after REPL exit and
+    * Reset(FALSE) has hung the next Shell launch on VS2022. Drain only. */
+}
+
+static void
+edk2_console_restore_firmware_console(void)
+{
+   edk2_console_drain_input();
+}
+
+void
+edk2_console_restore_for_shell(void)
+{
+   edk2_console_restore_firmware_console();
+}
+
+void
+edk2_console_handoff_to_shell(void)
+{
+   edk2_console_detach_readline();
+   edk2_console_drain_input();
+}
+
+static void
 py_console_free(void *user_data)
 {
-   if( g_console_timer )
-   {
-      g_edk2_globals.system_table->BootServices->SetTimer(
-         g_console_timer,
-         TimerCancel,
-         0
-      );
-      
-      g_edk2_globals.system_table->BootServices->CloseEvent(g_console_timer);
-   }
+   edk2_console_detach_readline();
 }
 
 static PyObject *
@@ -391,10 +479,6 @@ py_console_set_cursor_visibility(PyObject *self, PyObject *args)
    return PyLong_FromUnsignedLong(status);
 }
 
-extern char *(*PyOS_ReadlineFunctionPointer)(FILE *, FILE *, const char *);
-
-static PyObject *py_console_readline_hook = NULL;
-
 static
 char *py_console_readline_callback(FILE *stdin_f, FILE *stdout_f,
                                    const char *prompt)   
@@ -462,8 +546,18 @@ py_console_install_readline_hook(PyObject *self, PyObject *args)
 
    py_console_readline_hook = hook;
    PyOS_ReadlineFunctionPointer = py_console_readline_callback;
+
+   /* Do not start the 1 ms BootServices periodic timer: if it outlives the
+    * app (unload race), it can hang the next Shell command or Shell exit. */
    
    return PyLong_FromLong(1);
+}
+
+static PyObject *
+py_console_shutdown_interactive(PyObject *self)
+{
+   edk2_console_handoff_to_shell();
+   Py_RETURN_NONE;
 }
 
 static PyMethodDef py_edk2console_methods[] = {
@@ -514,6 +608,10 @@ static PyMethodDef py_edk2console_methods[] = {
    {"install_readline_hook", (PyCFunction)py_console_install_readline_hook,
     METH_VARARGS,
     "Install python readline hook"},
+
+   {"shutdown_interactive", (PyCFunction)py_console_shutdown_interactive,
+    METH_NOARGS,
+    "Detach readline and restore firmware console for Shell"},
    
    {NULL, NULL}
 };
@@ -540,6 +638,5 @@ PyInit_edk2console(void)
    if (m == NULL)
       return NULL;
 
-   start_console_timer();
    return m;
 }

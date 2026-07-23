@@ -232,7 +232,16 @@ Python312.efi
 
 **MIN:** **`import ssl`** / **`import ctypes`** should fail. **`import hashlib`**, **`import os`** should work.
 
-**User-verified (2026-07-22, VS2022 MIN + 368 entry + Windows frozen regen):** §10 command list through interactive REPL — pass.
+**User-verified (2026-07-22, VS2022 MIN + 368 entry + Windows frozen regen):** **`-h`**, **`-S -c`** (including **`import sys; print(sys.version)`**), and interactive REPL **`>>>`** / **`exit()`** returning to the Shell prompt — pass.
+
+**Open (VS2022 only):** After an interactive REPL session, Shell **`exit`** (firmware handoff to setup) may **hang**. Same flow on **VS2022 3.6.8** and **GCC-built 3.12.13** does **not** reproduce — treat as **MSVC 3.12 + pyreadline/edk2console** (or MSVC **`Py_Finalize`** after stdin), not a generic 3.12 port defect.
+
+| Bisect | Command / action |
+|--------|------------------|
+| Skip pyreadline | **`Python312.efi -S -I`** → REPL → Shell **`exit`** |
+| Confirm readline path | **`Python312.efi -S`** (default) vs **`-I`** |
+
+**Mitigation (branch):** **`edk2_console_detach_readline()`** before **`Py_FinalizeEx`** in **`Modules/main.c`** (and module teardown) — stops the **`edk2console`** periodic timer and clears **`PyOS_ReadlineFunctionPointer`**. **Do not** **`ConOut->Reset`** after REPL; that blanked the screen and prevented Shell from redrawing.
 
 Then enable **FULL** (`BUILD_PYTHON312_FULL=TRUE`), repackage, and repeat before Phase 8–specific tests (zlib, ssl, ctypes).
 
@@ -245,6 +254,8 @@ Then enable **FULL** (`BUILD_PYTHON312_FULL=TRUE`), repackage, and repeat before
 | [`AppPkg/AppPkg.dsc`](../../AppPkg.dsc) | MIN/FULL INF selection; **`PY_UEFI_BOOT_TRACE`** for LibC |
 | [`Python-3.12.13/Python312_MIN.inf`](./Python-3.12.13/Python312_MIN.inf) | MIN sources, **`msvc_chkstk.c`**, MSFT flags |
 | [`Python-3.12.13/Python312.inf`](./Python-3.12.13/Python312.inf) | FULL Phase 8 |
+| [`PyMod-3.12.13/efi/src/edk2console.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2console.c) | **`edk2_console_detach_readline`** |
+| [`Modules/main.c`](./Python-3.12.13/Modules/main.c) | UEFI: detach readline before **`Py_FinalizeEx`** |
 | [`PyMod-3.12.13/efi/src/edk2main.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) | **`UefiMain`**, 368-style MSVC path |
 | [`PyMod-3.12.13/efi/src/msvc_chkstk.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/msvc_chkstk.c) | MIN **`__chkstk`** |
 | [`StdLib/LibC/Main/Main.c`](../../StdLib/LibC/Main/Main.c) | **`ShellAppMain`** boot **`Print`** |

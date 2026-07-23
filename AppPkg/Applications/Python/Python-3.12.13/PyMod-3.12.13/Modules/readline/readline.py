@@ -3,6 +3,7 @@
 #necessary for rlcompleter since it relies on the existance
 #of a readline module
 from __future__ import print_function, unicode_literals, absolute_import
+import os
 from pyreadline.rlmain import Readline
 
 __all__ = [ 'parse_and_bind',
@@ -32,6 +33,11 @@ __all__ = [ 'parse_and_bind',
 
 # create a Readline object to contain the state
 rl = Readline()
+# AppPkg UEFI: default to StdLib TTY REPL (Python 3.6.8). Set PY_UEFI_READLINE=1 to enable pyreadline.
+if os.name == 'uefi':
+    _want = os.environ.get('PY_UEFI_READLINE', '')
+    if _want not in ('1', 'yes', 'true', 'YES', 'TRUE'):
+        rl.disable_readline = True
 
 if rl.disable_readline:
     def dummy(completer=""):

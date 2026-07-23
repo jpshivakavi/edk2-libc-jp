@@ -38,6 +38,12 @@
 #include <Uefi.h>
 #include <stdint.h>
 
+#include <Protocol/LoadedImage.h>
+#include <Protocol/SimpleTextInEx.h>
+#include <Protocol/Cpu.h>
+#include <Protocol/Shell.h>
+#include <Protocol/Rng.h>
+
 typedef struct _edk2_globals {
    EFI_HANDLE image_handle;
    EFI_SYSTEM_TABLE *system_table;

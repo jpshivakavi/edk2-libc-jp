@@ -456,6 +456,10 @@ def enablerlcompleter():
     This can be overridden in the sitecustomize or usercustomize module,
     or in a PYTHONSTARTUP file.
     """
+    # UEFI AppPkg: use StdLib TTY REPL like Python 3.6.8 (no pyreadline/edk2console).
+    if os.name == 'uefi':
+        return
+
     def register_readline():
         import atexit
         try:
@@ -482,6 +486,9 @@ def enablerlcompleter():
             pass
 
         if readline.get_current_history_length() == 0:
+            # UEFI: no persistent history or atexit write (hangs / wrong paths).
+            if os.name == 'uefi':
+                return
             # If no history was loaded, default to .python_history.
             # The guard is necessary to avoid doubling history size at
             # each interpreter exit when readline was already configured

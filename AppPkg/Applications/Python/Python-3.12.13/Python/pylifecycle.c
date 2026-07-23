@@ -33,6 +33,10 @@
 #include <locale.h>               // setlocale()
 #include <stdlib.h>               // getenv()
 
+#ifdef UEFI_C_SOURCE
+#include "efi/py312boot.h"
+#endif
+
 #if defined(__APPLE__)
 #include <mach-o/loader.h>
 #endif
@@ -1672,6 +1676,10 @@ file_is_closed(PyObject *fobj)
 static int
 flush_std_files(void)
 {
+#ifdef UEFI_C_SOURCE
+    /* stdout.flush() can block on UEFI StdLib console after pyreadline REPL. */
+    return 0;
+#endif
     PyObject *file;
     PyObject *tmp;
     int status = 0;
@@ -1826,8 +1834,16 @@ Py_FinalizeEx(void)
     // Block some operations.
     tstate->interp->finalizing = 1;
 
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_FinalizeEx enter");
+#endif
+
     // Wrap up existing "threading"-module-created, non-daemon threads.
     wait_for_thread_shutdown(tstate);
+
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_FinalizeEx after wait_for_thread_shutdown");
+#endif
 
     // Make any remaining pending calls.
     _Py_FinishPendingCalls(tstate);
@@ -1843,6 +1859,10 @@ Py_FinalizeEx(void)
      */
 
     _PyAtExit_Call(tstate->interp);
+
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_FinalizeEx after _PyAtExit_Call");
+#endif
 
     /* Copy the core config, PyInterpreterState_Delete() free
        the core config memory */
@@ -1896,6 +1916,10 @@ Py_FinalizeEx(void)
     if (flush_std_files() < 0) {
         status = -1;
     }
+
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_FinalizeEx after flush_std_files");
+#endif
 
     /* Disable signal handling */
     _PySignal_Fini();
@@ -2037,6 +2061,9 @@ Py_FinalizeEx(void)
     call_ll_exitfuncs(runtime);
 
     _PyRuntime_Finalize();
+#ifdef UEFI_C_SOURCE
+    py312_boot_print_ascii("Py_FinalizeEx leave");
+#endif
     return status;
 }
 
@@ -3038,6 +3065,10 @@ Py_ExitStatusException(PyStatus status)
 static void
 wait_for_thread_shutdown(PyThreadState *tstate)
 {
+#ifdef UEFI_C_SOURCE
+    /* UEFI: threading._shutdown can hang on Shell (join / locks). */
+    return;
+#endif
     PyObject *result;
     PyObject *threading = PyImport_GetModule(&_Py_ID(threading));
     if (threading == NULL) {

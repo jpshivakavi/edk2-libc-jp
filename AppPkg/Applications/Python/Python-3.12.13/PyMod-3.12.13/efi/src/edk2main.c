@@ -15,10 +15,12 @@
 #include <Protocol/Rng.h>
 
 #include "efi/edk2main.h"
+#include "efi/edk2console_api.h"
 #include "efi/edk2stack.h"
 #include "efi/edk2asm.h"
 #include "efi/environ.h"
 #include "efi/edk2excep.h"
+#include "efi/py312boot.h"
 
 #ifdef PY_UEFI_BOOT_TRACE
 #define PY312_BOOT_PRINT(Step) Print(L"Python312 boot: " Step L"\n")
@@ -53,6 +55,9 @@ UefiMain (
    EFI_LOADED_IMAGE_PROTOCOL *loaded_image_protocol;
    EFI_STATUS status;
 
+   memset(&g_edk2_globals, 0, sizeof(g_edk2_globals));
+
+   Print(L"Python312: UefiMain\r\n");
    PY312_BOOT_PRINT(L"UefiMain enter");
 
    //
@@ -108,6 +113,9 @@ UefiMain (
    
    EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL *console_in = NULL;     
 
+#ifndef PY_UEFI_PYREADLINE
+   /* Default UEFI build: no pyreadline; do not open ConInEx from the app. */
+#else
    status = systab->BootServices->OpenProtocol(
       systab->ConsoleInHandle,
       &gEfiSimpleTextInputExProtocolGuid,
@@ -120,6 +128,7 @@ UefiMain (
    if (EFI_ERROR(status)) {
       Print(L"Failed to open input console: %r\n", status);      
    }
+#endif
    
    EFI_SHELL_PARAMETERS_PROTOCOL *args_protocol = NULL;
 
@@ -163,9 +172,9 @@ UefiMain (
          NULL,
          (VOID **)&shell_protocol
       );
-      if (!EFI_ERROR(status)) {
-         g_edk2_globals.shell = shell_protocol;         
-      }      
+   }
+   if (!EFI_ERROR(status)) {
+      g_edk2_globals.shell = shell_protocol;
    }
 
    EFI_RNG_PROTOCOL *rng_protocol = NULL;
@@ -181,6 +190,13 @@ UefiMain (
    g_edk2_globals.cpu = cpu_protocol;
    g_edk2_globals.rng = rng_protocol;
 
+#ifdef PY_UEFI_PYREADLINE
+   PY312_BOOT_PRINT(L"console prepare for launch");
+   edk2_console_prepare_for_launch();
+#endif
+
+   py312_uefi_reentry_cleanup();
+
    edk2_alloc_environ();
 
 #if defined(_MSC_VER) && defined(PY_UEFI_MSVC_368_ENTRY)
@@ -191,6 +207,8 @@ UefiMain (
    status = ShellCEntryLib(image, systab);
    PY312_BOOT_PRINT(L"after ShellCEntryLib");
    edk2_free_environ();
+   PY312_BOOT_PRINT(L"after edk2_free_environ");
+   PY312_BOOT_PRINT(L"before return from UefiMain");
    return status;
 #endif
 
@@ -219,10 +237,12 @@ UefiMain (
    edk2_revert_stack();
 
    edk2_free_environ();
+   PY312_BOOT_PRINT(L"after edk2_free_environ");
    
    free(g_edk2_globals.stack);
    g_edk2_globals.stack = NULL;
-      
+
+   PY312_BOOT_PRINT(L"before return from UefiMain");
    return status;
 }
 
