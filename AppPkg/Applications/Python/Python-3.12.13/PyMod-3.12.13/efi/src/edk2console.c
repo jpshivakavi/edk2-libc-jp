@@ -6,6 +6,7 @@
 #include  <Library/UefiLib.h>
 
 #include <Protocol/LoadedImage.h>
+#include <Protocol/SimpleTextInEx.h>
 #include <Protocol/SimpleTextOut.h>
 #include <Protocol/Cpu.h>
 #include <Protocol/Shell.h>
@@ -111,6 +112,30 @@ edk2_console_drain_input(void)
    }
 }
 
+static EFI_STATUS
+edk2_console_ensure_input(void)
+{
+   EFI_STATUS status;
+
+   if (g_edk2_globals.console_in != NULL) {
+      return EFI_SUCCESS;
+   }
+   if (g_edk2_globals.system_table == NULL ||
+       g_edk2_globals.image_handle == NULL) {
+      return EFI_NOT_READY;
+   }
+
+   status = g_edk2_globals.system_table->BootServices->OpenProtocol(
+      g_edk2_globals.system_table->ConsoleInHandle,
+      &gEfiSimpleTextInputExProtocolGuid,
+      (VOID **)&g_edk2_globals.console_in,
+      g_edk2_globals.image_handle,
+      NULL,
+      EFI_OPEN_PROTOCOL_GET_PROTOCOL
+   );
+   return status;
+}
+
 void
 edk2_console_detach_readline(void)
 {
@@ -118,6 +143,18 @@ edk2_console_detach_readline(void)
    py_console_readline_hook = NULL;
    PyOS_ReadlineFunctionPointer = NULL;
    PyOS_InputHook = NULL;
+   edk2_console_drain_input();
+   if (g_edk2_globals.console_in != NULL &&
+       g_edk2_globals.system_table != NULL &&
+       g_edk2_globals.image_handle != NULL) {
+      g_edk2_globals.system_table->BootServices->CloseProtocol(
+         g_edk2_globals.system_table->ConsoleInHandle,
+         &gEfiSimpleTextInputExProtocolGuid,
+         g_edk2_globals.image_handle,
+         NULL
+      );
+      g_edk2_globals.console_in = NULL;
+   }
 }
 
 void
@@ -178,14 +215,18 @@ py_console_getkeys(PyObject *self, PyObject *args, PyObject *kwargs)
 
    UINTN events_num = 1;
    UINTN event_index;
-   EFI_EVENT events[2] = {
-      g_edk2_globals.console_in->WaitForKeyEx,
-      0
-   };
+   EFI_EVENT events[2] = { NULL, NULL };
    
    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iK", kwlist, &wait, &timeout))
       return NULL;
-   
+
+   status = edk2_console_ensure_input();
+   if (EFI_ERROR(status)) {
+      PyErr_Format(PyExc_SystemError,
+                   "EDK2 input console unavailable (EFI status %x)", status);
+      return NULL;
+   }
+
    if( g_edk2_globals.console_in == NULL ) {
       PyErr_Format(PyExc_SystemError, "EDK2 input console is closed. "
                                       "You are running on EFIv1 that is "
@@ -193,6 +234,8 @@ py_console_getkeys(PyObject *self, PyObject *args, PyObject *kwargs)
       return NULL;
    }
 
+   events[0] = g_edk2_globals.console_in->WaitForKeyEx;
+   
    if(wait) {      
       if( timeout > 0 ) {
          status = g_edk2_globals.system_table->BootServices->CreateEvent(

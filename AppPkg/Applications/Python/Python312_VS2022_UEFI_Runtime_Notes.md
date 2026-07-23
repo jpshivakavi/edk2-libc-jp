@@ -209,7 +209,70 @@ Copy **`<OutFolder>\EFI`** to the FAT volume root (e.g. **`fsN:\EFI`**). From Sh
 
 ### Binary-only swap
 
-Replacing only **`EFI\bin\Python312.efi`** is OK for **interpreter/link** retests if **`EFI\lib\python3.12`** is already correct. Re-run **`create_python_pkg.bat`** after **`Lib\`**, frozen headers, **`deepfreeze.c`**, or global-string changes.
+Replacing only **`EFI\bin\Python312.efi`** is OK for **C-only** interpreter changes if **`EFI\lib\python3.12`** is already correct. You **must** recopy **`EFI\lib\python3.12\`** (or run **`create_python_pkg.bat`**) after changes to **`Lib/site.py`**, **`readline.py`**, or other on-disk stdlib files — those are **not** embedded in the **`.efi`**.
+
+---
+
+## 10. Interactive REPL, pyreadline, and Shell **`exit`** (VS2022)
+
+### Why this differs from **3.6.8**
+
+| | **3.6.8 manufacturing** | **3.12 AppPkg (default)** |
+|--|---------------------------|---------------------------|
+| **`readline` on stick** | Not shipped; **`import readline`** fails silently | **`readline.py`** + **pyreadline** staged by **`create_python_pkg.bat`** |
+| REPL input | StdLib **TTY** → **`fgets`** / **`PyOS_StdioReadline`** | Same **unless** pyreadline is enabled |
+| **`edk2console`** | Not used | Used only when pyreadline installs **`PyOS_ReadlineFunctionPointer`** |
+
+**3.6.8** never drives **`SimpleTextInputEx`** from Python for the REPL. **3.12** added Intel **pyreadline + `edk2console`** for line editing; on **VS2022** that path left **ConIn** / hooks in a state where **Shell `exit`** (return to firmware setup) **hung**, and a **second** **`Python312.efi`** launch could fail silently.
+
+### Default policy (production — **2026-07-23**, user-verified)
+
+**Pyreadline is off by default on UEFI.** The REPL behaves like **3.6.8**: basic **`>>>`** via StdLib console, **no** tab completion / pyreadline history.
+
+| Layer | Behavior |
+|--------|----------|
+| **`Modules/main.c`** | **`pymain_import_readline`**: no-op under **`UEFI_C_SOURCE`** unless **`PY_UEFI_PYREADLINE`** at **compile** time |
+| **`Lib/site.py`** | **`enablerlcompleter()`**: returns immediately when **`os.name == 'uefi'`** (no **`sys.__interactivehook__`** readline setup) |
+| **`readline.py`** | On **`os.name == 'uefi'`**, **stub module** unless shell env **`PY_UEFI_READLINE=1`** (etc.) — **does not import pyreadline/edk2console** |
+| **`Programs/python.c`** | Clears **`PyOS_ReadlineFunctionPointer`** and **`edk2_console_detach_readline()`** at **`main`** entry |
+| **`Modules/main.c`** | **`edk2_console_detach_readline()`** before **`Py_FinalizeEx`** |
+| **`edk2console.c`** | No periodic **1 ms** timer on module init; on detach: drain **ConIn**, **`CloseProtocol`** on **ConInEx**, clear readline hooks |
+| **`edk2main.c`** | No post-**`ShellCEntryLib`** ConOut handoff (3.6.8 has none) |
+
+**Verified flows (VS2022 MIN + 368 entry):**
+
+```text
+Python312.efi          → REPL → exit(0) → Shell → exit → firmware
+Python312.efi -S       → REPL → exit(0) → Shell → exit → firmware
+Python312.efi -S -I    → same (isolated; no site readline hook)
+```
+
+### Manual **`import readline`**
+
+Before the **readline.py** stub fix, **`import readline`** still loaded **pyreadline → edk2console** even when hooks were “disabled,” which could **re-break Shell `exit`**.
+
+**Now:** without **`PY_UEFI_READLINE=1`** in the environment, **`import readline`** is a **no-op stub** (no **`edk2console`**, no **`PyOS_ReadlineFunctionPointer`**). Safe for scripts that merely probe for the module.
+
+### Optional: enable pyreadline (development only)
+
+| Step | Action |
+|------|--------|
+| Compile | Add **`/DPY_UEFI_PYREADLINE=1`** to **`Python312_MIN.inf`** MSFT **`CC_FLAGS`** (opens **ConInEx** from **`UefiMain`**) |
+| Runtime | Set **`PY_UEFI_READLINE=1`** (or **`yes`/`true`**) in the UEFI Shell environment before **`Python312.efi`** |
+| Expect | Line editing may work; **Shell `exit`** after REPL is **not** signed off for manufacturing — teardown is improved (**detach**, **CloseProtocol**) but still under test |
+
+### Do **not** (known bad on VS2022)
+
+- **`ConIn->Reset(TRUE)`** or aggressive **ConOut->Reset** after REPL (blank screen / hang)
+- Rely on **`.efi`-only** deploy after **`site.py`** / **`readline.py`** edits
+
+### Bisect commands
+
+| Test | Purpose |
+|------|---------|
+| **`Python312.efi -S -I`** | No site hook; stdio REPL only |
+| **`Python312.efi -S`** | Site on, default UEFI readline off |
+| **`import readline`** in REPL | Should stay stub unless **`PY_UEFI_READLINE=1`** |
 
 ---
 
@@ -221,40 +284,34 @@ Disabling **`/LTCG`** on link (**`/LTCG:OFF`** via module **`MSFT:*_*_*_DLINK_FL
 
 ---
 
-## 10. Recommended smoke order (VS2022 MIN + 368 entry)
+## 11. Recommended smoke order (VS2022 MIN + 368 entry)
 
 ```text
 Python312.efi -h
 Python312.efi -S -c "import sys; print(sys.version)"
 Python312.efi -S -c "print(1+1)"
 Python312.efi
+Python312.efi -S
 ```
 
 **MIN:** **`import ssl`** / **`import ctypes`** should fail. **`import hashlib`**, **`import os`** should work.
 
-**User-verified (2026-07-22, VS2022 MIN + 368 entry + Windows frozen regen):** **`-h`**, **`-S -c`** (including **`import sys; print(sys.version)`**), and interactive REPL **`>>>`** / **`exit()`** returning to the Shell prompt — pass.
-
-**Open (VS2022 only):** After an interactive REPL session, Shell **`exit`** (firmware handoff to setup) may **hang**. Same flow on **VS2022 3.6.8** and **GCC-built 3.12.13** does **not** reproduce — treat as **MSVC 3.12 + pyreadline/edk2console** (or MSVC **`Py_Finalize`** after stdin), not a generic 3.12 port defect.
-
-| Bisect | Command / action |
-|--------|------------------|
-| Skip pyreadline | **`Python312.efi -S -I`** → REPL → Shell **`exit`** |
-| Confirm readline path | **`Python312.efi -S`** (default) vs **`-I`** |
-
-**Mitigation (branch):** **`edk2_console_detach_readline()`** before **`Py_FinalizeEx`** in **`Modules/main.c`** (and module teardown) — stops the **`edk2console`** periodic timer and clears **`PyOS_ReadlineFunctionPointer`**. **Do not** **`ConOut->Reset`** after REPL; that blanked the screen and prevented Shell from redrawing.
+**User-verified (2026-07-23, VS2022 MIN + 368 entry):** **`-h`**, **`-S -c`**, default and **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware (§10). **`import readline`** without **`PY_UEFI_READLINE=1`** must not break Shell **`exit`**.
 
 Then enable **FULL** (`BUILD_PYTHON312_FULL=TRUE`), repackage, and repeat before Phase 8–specific tests (zlib, ssl, ctypes).
 
 ---
 
-## 11. File index (VS2022 runtime touchpoints)
+## 12. File index (VS2022 runtime touchpoints)
 
 | Path | Role |
 |------|------|
 | [`AppPkg/AppPkg.dsc`](../../AppPkg.dsc) | MIN/FULL INF selection; **`PY_UEFI_BOOT_TRACE`** for LibC |
 | [`Python-3.12.13/Python312_MIN.inf`](./Python-3.12.13/Python312_MIN.inf) | MIN sources, **`msvc_chkstk.c`**, MSFT flags |
 | [`Python-3.12.13/Python312.inf`](./Python-3.12.13/Python312.inf) | FULL Phase 8 |
-| [`PyMod-3.12.13/efi/src/edk2console.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2console.c) | **`edk2_console_detach_readline`** |
+| [`PyMod-3.12.13/Modules/readline/readline.py`](./Python-3.12.13/PyMod-3.12.13/Modules/readline/readline.py) | UEFI stub unless **`PY_UEFI_READLINE`** |
+| [`Lib/site.py`](./Python-3.12.13/Lib/site.py) | UEFI: skip **`enablerlcompleter`** |
+| [`PyMod-3.12.13/efi/src/edk2console.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2console.c) | Detach readline; ConIn **`CloseProtocol`** |
 | [`Modules/main.c`](./Python-3.12.13/Modules/main.c) | UEFI: detach readline before **`Py_FinalizeEx`** |
 | [`PyMod-3.12.13/efi/src/edk2main.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) | **`UefiMain`**, 368-style MSVC path |
 | [`PyMod-3.12.13/efi/src/msvc_chkstk.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/msvc_chkstk.c) | MIN **`__chkstk`** |
@@ -266,7 +323,7 @@ Then enable **FULL** (`BUILD_PYTHON312_FULL=TRUE`), repackage, and repeat before
 
 ---
 
-## 12. Related docs
+## 13. Related docs
 
 - [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md) — build commands for MIN/FULL  
 - [`Python312_UEFI_Startup_Messages.md`](./Python312_UEFI_Startup_Messages.md) — intentional console output (no debug **`Print`**)  

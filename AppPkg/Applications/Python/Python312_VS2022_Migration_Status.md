@@ -9,7 +9,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-07-22 (**Session 9** — user-verified VS2022 **MIN** runtime: **`-h`**, **`-S -c`**, **`print('ok')`**, REPL after **`regen_frozen_windows.cmd`** + fresh **`deepfreeze.c`**; **V6 MIN** signed off)  
+**Updated:** 2026-07-23 (**Session 10** — VS2022 MIN REPL + Shell **`exit`**: default **stdio REPL** (no pyreadline); **`import readline`** stub; see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10)  
 **Strategy:** MSVC peer to GCC FULL; same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs stay in **`PyMod-3.12.13/Modules/`**  
 **Branch:** `feature/python-3.12.13-vs2022` (from `feature/python-3.12.13-apppkg`)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
@@ -401,7 +401,7 @@ See port plan **§ Phase V6** for full matrix.
 
 ### Phase V6 result
 
-**Blocked** on UEFI hardware smoke (Session 7 deploy). Suspects: slow **`site`**, wrong volume, VS2022 early exception trap — see build guide troubleshooting.
+**MIN (VS2022):** **Done** (2026-07-23) — **`-h`**, **`-S -c`**, default / **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware. Production REPL uses **stdio TTY** (pyreadline off by default); see **Runtime Notes §10**. **FULL** UEFI smoke still open.
 
 ---
 

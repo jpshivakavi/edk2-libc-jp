@@ -4,7 +4,6 @@
 #of a readline module
 from __future__ import print_function, unicode_literals, absolute_import
 import os
-from pyreadline.rlmain import Readline
 
 __all__ = [ 'parse_and_bind',
             'get_line_buffer',
@@ -31,70 +30,86 @@ __all__ = [ 'parse_and_bind',
             'callback_read_char',] #Some other objects are added below
 
 
-# create a Readline object to contain the state
-rl = Readline()
-# AppPkg UEFI: default to StdLib TTY REPL (Python 3.6.8). Set PY_UEFI_READLINE=1 to enable pyreadline.
-if os.name == 'uefi':
+def _uefi_pyreadline_enabled():
+    if os.name != 'uefi':
+        return True
     _want = os.environ.get('PY_UEFI_READLINE', '')
-    if _want not in ('1', 'yes', 'true', 'YES', 'TRUE'):
-        rl.disable_readline = True
+    return _want in ('1', 'yes', 'true', 'YES', 'TRUE')
 
-if rl.disable_readline:
+
+if os.name == 'uefi' and not _uefi_pyreadline_enabled():
+    # Do not import pyreadline/edk2console (breaks Shell exit on VS2022).
     def dummy(completer=""):
         pass
     for funk in __all__:
         globals()[funk] = dummy
+
+    class _ReadlineStub(object):
+        disable_readline = True
+
+    rl = _ReadlineStub()
 else:
-    def GetOutputFile():
-        '''Return the console object used by readline so that it can be used for printing in color.'''
-        return rl.console
-    __all__.append("GetOutputFile")
+    from pyreadline.rlmain import Readline
 
-    import pyreadline.console.edk2 as console
+    # create a Readline object to contain the state
+    rl = Readline()
 
-    # make these available so this looks like the python readline module
-    read_init_file = rl.read_init_file
-    parse_and_bind = rl.parse_and_bind
-    clear_history = rl.clear_history
-    add_history = rl.add_history
-    insert_text = rl.insert_text
+    if rl.disable_readline:
+        def dummy(completer=""):
+            pass
+        for funk in __all__:
+            globals()[funk] = dummy
+    else:
+        def GetOutputFile():
+            '''Return the console object used by readline so that it can be used for printing in color.'''
+            return rl.console
+        __all__.append("GetOutputFile")
 
-    write_history_file = rl.write_history_file
-    read_history_file = rl.read_history_file
+        import pyreadline.console.edk2 as console
 
-    get_completer_delims = rl.get_completer_delims
-    get_current_history_length = rl.get_current_history_length
-    get_history_length = rl.get_history_length
-    get_history_item = rl.get_history_item
-    get_line_buffer = rl.get_line_buffer
-    set_completer = rl.set_completer
-    get_completer = rl.get_completer
-    get_begidx = rl.get_begidx
-    get_endidx = rl.get_endidx
+        # make these available so this looks like the python readline module
+        read_init_file = rl.read_init_file
+        parse_and_bind = rl.parse_and_bind
+        clear_history = rl.clear_history
+        add_history = rl.add_history
+        insert_text = rl.insert_text
 
-    set_completer_delims = rl.set_completer_delims
-    set_history_length = rl.set_history_length
-    set_pre_input_hook = rl.set_pre_input_hook
-    set_startup_hook = rl.set_startup_hook
+        write_history_file = rl.write_history_file
+        read_history_file = rl.read_history_file
 
-    callback_handler_install=rl.callback_handler_install
-    callback_handler_remove=rl.callback_handler_remove
-    callback_read_char=rl.callback_read_char
+        get_completer_delims = rl.get_completer_delims
+        get_current_history_length = rl.get_current_history_length
+        get_history_length = rl.get_history_length
+        get_history_item = rl.get_history_item
+        get_line_buffer = rl.get_line_buffer
+        set_completer = rl.set_completer
+        get_completer = rl.get_completer
+        get_begidx = rl.get_begidx
+        get_endidx = rl.get_endidx
 
-    console.install_readline(rl.readline)
+        set_completer_delims = rl.set_completer_delims
+        set_history_length = rl.set_history_length
+        set_pre_input_hook = rl.set_pre_input_hook
+        set_startup_hook = rl.set_startup_hook
 
-    import rlcompleter
+        callback_handler_install=rl.callback_handler_install
+        callback_handler_remove=rl.callback_handler_remove
+        callback_read_char=rl.callback_read_char
 
-    #Override completer from rlcompleter to disable automatic ( on callable
-    completer_obj = rlcompleter.Completer()
-    def nop(val, word):
-        return word
-    completer_obj._callable_postfix = nop
-    rl.set_completer(completer_obj.complete)
+        console.install_readline(rl.readline)
 
-    #activate tab completion
-    rl.parse_and_bind("tab: complete")
-    rl.read_history_file()
+        import rlcompleter
+
+        #Override completer from rlcompleter to disable automatic ( on callable
+        completer_obj = rlcompleter.Completer()
+        def nop(val, word):
+            return word
+        completer_obj._callable_postfix = nop
+        rl.set_completer(completer_obj.complete)
+
+        #activate tab completion
+        rl.parse_and_bind("tab: complete")
+        rl.read_history_file()
 #    rl.console.idle_hook = rl.write_history_file
-    
+
 __all__.append("rl")
