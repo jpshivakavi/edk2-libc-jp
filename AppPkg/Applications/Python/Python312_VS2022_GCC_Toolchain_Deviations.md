@@ -26,6 +26,8 @@
 | **Compiler flags / warnings** | `-Wno-error`, libffi `-I` on preprocessor | `/WX-`, `/Oi-`, many `/wd…`, **`LIBFFI_MSVC_*` `-I`** | N/A |
 | **Packaging script** | `create_python_pkg.sh GCC …` | `create_python_pkg.bat VS2022 …` | Same **`EFI/`** layout |
 | **Typical build flavor** | Often `NOOPT` on WSL | `RELEASE` on Windows | Size/optimize differ |
+| **UEFI firmware entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on default Shell stack only | **No** — see **§11** |
+| **Interactive REPL (manufacturing)** | Pre–Session 10: **pyreadline** + Tab in GCC smoke; post–**`59000200`**: same **stub policy** in tree | **Stdio REPL** signed off; pyreadline **opt-in** only | **Observed** divergence — **§11** |
 
 ---
 
@@ -72,7 +74,7 @@ Includes entire Python core, **`PyMod` EFI glue** (NASM **`edk2stack.nasm`**, **
 ### 3.1 GCC (`GCC:*_*_*_CC_FLAGS`)
 
 - **Includes:** `Include/`, `Include/internal/`, `PyMod-…/efi/Include`, HACL, **PyMod zlib**, **`LIBFFI_INC`** + **`LIBFFI_INT_INC`** (vendored libffi), OpenSSL **`efi/include`** + tree roots.
-- **Defines:** `Py_BUILD_CORE`, `HAVE_MEMMOVE`, `NO_MSABI_VA_FUNCS`, `-Wno-error=…` (non-fatal warnings).
+- **Defines:** `Py_BUILD_CORE`, `HAVE_MEMMOVE`, `NO_MSABI_VA_FUNCS`, `-Wno-error=…` (non-fatal warnings). **`UEFI_C_SOURCE`** is **not** duplicated on the **`GCC:*_*_*_CC_FLAGS`** line in **`Python312.inf`** / **`Python312_MIN.inf`** (MSFT sets **`/DUEFI_C_SOURCE`** explicitly); AppPkg / StdLib still typically define **`UEFI_C_SOURCE`** for libc and Python when built under **`AppPkg.dsc`** — verify with **`build -v`** if behavior differs from MSFT.
 - **Extra:** `GCC:*_*_X64_PP_FLAGS` — libffi `-I` for **`unix64.S` / `win64.S`** preprocessing.
 
 ### 3.2 MSFT (`MSFT:*_*_*_CC_FLAGS`)
@@ -205,4 +207,58 @@ EFI/stdlib/etc/
 
 ---
 
-*Last updated: 2026-07-20 (VS2022 FULL compile/link + packaging on `feature/python-3.12.13-vs2022`).*
+## 11. UEFI runtime — where VS2022 **clearly deviates** from GCC
+
+**Compile/link parity** (§1–§8) does **not** imply **identical firmware behavior**. As of **2026-07-23** (branch tip **`3814cf9a`**, user-verified on **VS2022 MIN** only):
+
+### 11.1 Firmware entry (C / INF — MSVC-only today)
+
+| Topic | GCC **`Python312.efi`** | VS2022 **`Python312.efi`** |
+|--------|-------------------------|----------------------------|
+| **`UefiMain` path** | **`edk2_alloc_environ`**, **`edk2_switch_stack`** (dedicated stack), **`py_install_idt`**, then **`ShellCEntryLib`** | With **`PY_UEFI_MSVC_368_ENTRY=1`** on **`Python312_MIN.inf`** / FULL MSFT flags: **`ShellCEntryLib`** on **Shell default stack**, **no** switch, **no** custom IDT |
+| **Why** | Reference 3.12 AppPkg design; works on GCC in lab | Without 368 path, VS2022 **hung inside `ShellCEntryLib`** after stack switch (runtime notes §4) |
+| **3.6.8 analogy** | N/A (368 always **`ShellCEntryLib`**) | Matches **3.6.8 VS2022** entry style |
+
+**Implication:** deep recursion, fault handling, and stack limits may **differ** between GCC and VS2022 images even from the same git commit.
+
+### 11.2 MSFT-only compile-time defines (MIN today)
+
+Set on **`Python312_MIN.inf`** **`MSFT:*_*_*_CC_FLAGS`**, not on GCC:
+
+- **`PY_UEFI_MSVC_368_ENTRY=1`**
+- **`PY_UEFI_BOOT_TRACE=1`** (diagnostic **`Print()`** ladder)
+
+GCC builds do **not** use the 368 entry workaround.
+
+### 11.3 Interactive REPL, pyreadline, and Shell **`exit`**
+
+| Topic | GCC (historical reference) | VS2022 (manufacturing sign-off) |
+|--------|----------------------------|----------------------------------|
+| **Phase 8 smoke** ([`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)) | **`import readline`** → **pyreadline**; REPL **Tab** / line editing via **edk2console** | Same **package layout** on stick, but **VS2022** with pyreadline caused **REPL `exit()` hang**, **Shell `exit` hang**, **second launch** failures |
+| **Session 10 policy (both toolchains in source)** | **`main.c`**: skip auto **`readline`** unless **`PY_UEFI_PYREADLINE`** at compile; **`site.py`**: no **`enablerlcompleter`** on **`uefi`**; **`readline.py`**: stub unless env **`PY_UEFI_READLINE=1`** | **User-verified** stdio REPL + Shell teardown; stub **`import readline`** safe |
+| **Default UX after deploy** | **Not re-smoked** on WSL after **`59000200`** / **`3814cf9a`** — packaged GCC stick may now match **stdio REPL** even though earlier GCC sign-off used **pyreadline** | **Stdio `>>>`** (like **3.6.8**), no Tab completion unless experimental opt-in |
+
+**Takeaway:** Do **not** claim “GCC and VS2022 behave the same in the Shell” for the **interactive REPL** path. **VS2022 manufacturing** intentionally **deviates** from the **historical GCC pyreadline** experience until a future change re-enables line editing without Shell hang.
+
+**Optional pyreadline on VS2022 (development only):** shell env **`PY_UEFI_READLINE=1`** + optional **`/DPY_UEFI_PYREADLINE=1`** on MSFT **`CC_FLAGS`** — **not** manufacturing-signed-off. See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10.
+
+### 11.4 Shared UEFI teardown sources (both toolchains when `UEFI_C_SOURCE` active)
+
+These apply to **both** images built from the same branch (not MSVC-specific), but were driven by **VS2022** failures:
+
+| Component | Change |
+|-----------|--------|
+| **`edk2console.c`** | No 1 ms timer on init; detach drains **ConIn**, **`CloseProtocol`** on **ConInEx** |
+| **`python.c` / `main.c`** | Clear readline hook + **`edk2_console_detach_readline()`** before finalize |
+| **`pylifecycle.c`** | UEFI skips in **`Py_FinalizeEx`** (e.g. **`flush_std_files`** no-op) |
+| **`readline.py` / `site.py`** | On-disk stdlib — must redeploy **`EFI\lib\python3.12\`**, not **`.efi`**-only |
+
+### 11.5 Regression checklist (GCC after VS2022 runtime work)
+
+1. WSL: **`BUILD_PYTHON312 -t GCC`**, **`create_python_pkg.sh`**, deploy.
+2. Confirm: REPL → **`exit(0)`** → Shell → **`exit`**; note whether **`import readline`** loads stub or pyreadline per env.
+3. Record result in **`Python312_VS2022_Migration_Status.md`** Session log (GCC parity line).
+
+---
+
+*Last updated: 2026-07-23 (Session 10 — VS2022 MIN manufacturing smoke; §11 runtime divergence).*

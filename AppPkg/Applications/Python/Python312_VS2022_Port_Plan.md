@@ -9,7 +9,7 @@
 | [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) | VS2022 phase checklist and session results |
 | [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) | Windows / VS2022 build BKMs (Phase V1+) |
 | [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md) | MIN vs FULL INF, VS2022 MIN commands |
-| [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) | UEFI hang, 368 entry, deepfreeze, deploy |
+| [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) | UEFI hang, 368 entry, deepfreeze, deploy, **GCC vs VS2022 REPL (§10.1)** |
 | [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) | GCC build walkthrough |
 | [`Python-3.6.8/Python368.inf`](./Python-3.6.8/Python368.inf) | MSVC INF patterns (reference only) |
 | [`.github/workflows/build-python-uefi-vs2022.yaml`](../../.github/workflows/build-python-uefi-vs2022.yaml) | Python 3.6.8 VS2022 CI reference |
@@ -316,6 +316,36 @@ See also:
 2. **Phase V2 + V3**: pyconfig `UEFI_MSVC_64` + MSFT flags with **MIN** INF (Phase 8 commented out).
 3. First **`build -t VS2022 -D BUILD_PYTHON312`** on X64 NOOPT or RELEASE; iterate `/wd` and PyMod until link.
 4. Re-enable Phase 8 batches one at a time, finishing **V8.5 libffi_msvc** before assuming ctypes parity.
+
+---
+
+## 9. Progress snapshot (through 2026-07-23)
+
+**Branch:** `feature/python-3.12.13-vs2022` on **`jpshivakavi/edk2-libc-jp`** · **Active clone:** `edk2-libc-jp-vsfix`  
+**Authoritative checklist:** [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) (Sessions 1–10)
+
+| Milestone | Status |
+|-----------|--------|
+| V1–V5 workspace, pyconfig, INF MSFT flags, FULL link, Windows packaging | **Done** |
+| V6 **MIN** UEFI smoke (VS2022) | **Done** — REPL, **`exit(0)`**, Shell **`exit`**, stub **`import readline`** |
+| V6 **FULL** UEFI smoke | **Open** |
+| V8 vendored sources on VS2022 link | **Done** (Session 6) |
+| V7 CI + Py312ReadMe VS2022 | **Partial** |
+
+**Recent commits (runtime):**
+
+- **`59000200`** — VS2022 REPL exit / Shell teardown (stdio default, edk2console detach, finalize skips, 368 entry)
+- **`3814cf9a`** — UEFI **`readline.py`** stub unless **`PY_UEFI_READLINE=1`**; ConIn **`CloseProtocol`**
+
+### VS2022 vs GCC — intentional runtime divergence
+
+Same monolithic **`Python312.inf`** and same staged **`EFI/lib/python3.12/`** layout do **not** mean identical Shell behavior:
+
+1. **Entry:** GCC uses **custom stack + IDT**; VS2022 MIN uses **`PY_UEFI_MSVC_368_ENTRY`** (3.6.8-style **`ShellCEntryLib`** only). See runtime notes **§4** and deviations **§11**.
+2. **REPL:** GCC Phase 8 reference smoke used **pyreadline** + line editing; **VS2022 manufacturing** is signed off on **stdio REPL** with pyreadline **opt-in** only (Session 10). Shared source policy (`readline.py`, `site.py`, `main.c`) may change packaged **GCC** UX until WSL regression is recorded.
+3. **Deploy:** After Session 10, refresh **`Python312.efi`** **and** on-disk **`readline.py`** / **`site.py`** (or full **`create_python_pkg.*`**) — not binary-only for Lib changes.
+
+**Not on branch:** local experiment to turn **default pyreadline on** for VS2022 was reverted before push.
 
 ---
 

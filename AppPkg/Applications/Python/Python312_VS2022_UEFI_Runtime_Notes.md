@@ -98,7 +98,7 @@ When **`PY_UEFI_MSVC_368_ENTRY`** is defined (**`Python312_MIN.inf`** MSFT **`CC
 
 **Verified with workaround:** **`Python312.efi -h`** shows full help and returns to the Shell (**`after ShellCEntryLib`**).
 
-Apply the same define to **`Python312.inf`** MSFT flags when testing **FULL** on VS2022 until a proper stack fix lands.
+Apply the same defines to **`Python312.inf`** MSFT flags when testing **FULL** on VS2022 (mirrors **`Python312_MIN.inf`**).
 
 ---
 
@@ -224,6 +224,17 @@ Replacing only **`EFI\bin\Python312.efi`** is OK for **C-only** interpreter chan
 | **`edk2console`** | Not used | Used only when pyreadline installs **`PyOS_ReadlineFunctionPointer`** |
 
 **3.6.8** never drives **`SimpleTextInputEx`** from Python for the REPL. **3.12** added Intel **pyreadline + `edk2console`** for line editing; on **VS2022** that path left **ConIn** / hooks in a state where **Shell `exit`** (return to firmware setup) **hung**, and a **second** **`Python312.efi`** launch could fail silently.
+
+### 10.1 GCC vs VS2022 (this port — not the same in practice)
+
+| | **GCC FULL (reference smoke)** | **VS2022 MIN (manufacturing, 2026-07-23)** |
+|--|--------------------------------|---------------------------------------------|
+| **Firmware entry** | Custom stack + IDT, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on Shell stack only |
+| **REPL input (signed off)** | Historically **pyreadline** + **Tab** ([`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md) Phase 8.2) | **Stdio TTY** (`fgets` / **`PyOS_StdioReadline`**) — pyreadline **off** by default |
+| **Same git policy (Session 10)** | **`readline.py` stub**, **`site.py`** skip, **`main.c`** skip apply when **`UEFI_C_SOURCE`** / **`os.name == 'uefi'`** — **GCC stick not re-smoked** after **`3814cf9a`** | **User-verified** REPL + Shell **`exit`** + safe stub **`import readline`** |
+| **Docs** | [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) **§11** | This section |
+
+**Build parity ≠ runtime parity.** VS2022 **requires** the 368 entry path and (for manufacturing) the stdio REPL / readline stub policy. Do not assume a green **GCC** pyreadline test implies **VS2022** can ship the same default without Shell teardown work.
 
 ### Default policy (production — **2026-07-23**, user-verified)
 

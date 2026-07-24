@@ -6,9 +6,9 @@ support lands in `Python312.inf`.
 
 **GCC reference (same tree):** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)
 
-**GCC vs VS2022 (INF splits, flags, libffi, OpenSSL glue):** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md)
+**GCC vs VS2022 (INF splits, flags, libffi, OpenSSL glue, runtime divergence):** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) — **§11** documents where VS2022 **deviates** from GCC for firmware entry and REPL.
 
-**UEFI runtime (VS2022 hang, MIN, deepfreeze, deploy):** [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md)
+**UEFI runtime (VS2022 hang, MIN, deepfreeze, deploy, GCC vs VS2022 REPL):** [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md)
 
 **Plan / status:**
 
@@ -284,6 +284,17 @@ myUEFIPy312\EFI\stdlib\etc\
 ```
 
 Copy the **`EFI\`** folder to the FAT volume root (e.g. `fs0:\EFI\`), then from UEFI Shell: `fs0:` → `cd EFI\bin` → `Python312.efi`.
+
+### Deploy after Session 10 (REPL / readline)
+
+| Change type | Redeploy |
+|-------------|----------|
+| C only (`edk2main`, `edk2console`, `main.c`, `pylifecycle.c`, …) | **`EFI\bin\Python312.efi`** |
+| **`Lib/site.py`**, **`readline.py`**, other staged stdlib | Full **`EFI\lib\python3.12\`** or re-run **`create_python_pkg.bat`** |
+
+**Manufacturing default (VS2022):** stdio REPL; **`import readline`** is a stub unless **`PY_UEFI_READLINE=1`**. **GCC** reference smoke historically used **pyreadline** — see [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) **§11**.
+
+Recommended smoke (MIN): runtime notes **§11** (`-h`, `-S -c`, REPL → **`exit(0)`** → Shell **`exit`**).
 
 ---
 

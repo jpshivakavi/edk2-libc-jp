@@ -80,7 +80,7 @@ Build\AppPkg\NOOPT_VS2022\X64\edk2-libc-jp-vsfix\...\Python312_MIN\DEBUG\Python3
 build -t VS2022 -a X64 -b NOOPT -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
 
-Add **`/DPY_UEFI_MSVC_368_ENTRY=1`** to **`Python312.inf`** MSFT flags until the MSVC stack-switch path is fixed (same workaround as MIN).
+Add **`/DPY_UEFI_MSVC_368_ENTRY=1`** (and optional **`/DPY_UEFI_BOOT_TRACE=1`**) to **`Python312.inf`** MSFT flags — **same as MIN** (done in tree).
 
 ---
 

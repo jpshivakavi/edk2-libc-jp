@@ -9,7 +9,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-07-23 (**Session 10** — VS2022 MIN REPL + Shell **`exit`**: default **stdio REPL** (no pyreadline); **`import readline`** stub; see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10)  
+**Updated:** 2026-07-23 (**Session 10** — VS2022 MIN manufacturing smoke signed off; GCC vs VS2022 **runtime** divergence documented in [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) §11 and runtime notes §10.1)  
 **Strategy:** MSVC peer to GCC FULL; same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs stay in **`PyMod-3.12.13/Modules/`**  
 **Branch:** `feature/python-3.12.13-vs2022` (from `feature/python-3.12.13-apppkg`)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
@@ -23,17 +23,19 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 
 ---
 
-## Current status (2026-07-22)
+## Current status (2026-07-23)
 
-**Branch:** `feature/python-3.12.13-vs2022` · **Workspace clone:** `edk2-libc-jp-vsfix` · **Remote:** `jpshivakavi/edk2-libc-jp`
+**Branch:** `feature/python-3.12.13-vs2022` · **Workspace clone:** `edk2-libc-jp-vsfix` · **Remote:** `jpshivakavi/edk2-libc-jp`  
+**Branch tip (pushed):** **`3814cf9a`** — see Session 10 below.
 
 | Area | State |
 |------|--------|
-| **VS2022 MIN** (`Python312_MIN.inf`, default DSC) | **Build + UEFI runtime Done** — user smoke: **`-h`**, **`-S -c "import sys; print(sys.version)"`**, **`-S -c "print('ok')"`**, interactive REPL |
-| **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT around libc); required for VS2022 today |
+| **VS2022 MIN** (`Python312_MIN.inf`, default DSC) | **Build + manufacturing UEFI runtime Done** — **`-h`**, **`-S -c`**, default / **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware; **`import readline`** without env stays stub-safe |
+| **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT); **GCC still uses** **`edk2_switch_stack` + `py_install_idt`** (see deviations §11) |
+| **REPL / readline vs GCC** | **Same Python sources** on branch disable pyreadline by default on **`os.name == 'uefi'`**; **GCC Phase 8** historically ran **pyreadline + Tab** without Shell hang; **VS2022 required** this policy for sign-off — treat **VS2022** as **stdio REPL + optional `PY_UEFI_READLINE=1`** only |
 | **Frozen / deepfreeze** | Regenerated on Windows via **`Tools/build/regen_frozen_windows.cmd`** (host **3.12.x**); **`statically_allocated`** + **`fix_deepfreeze_latin1.py`** + **`generate_global_objects.py`** |
 | **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done** (Session 6); **UEFI Phase 8 smoke** (zlib, ssl, ctypes) **not signed off** |
-| **GCC regression** | Last green **2026-07-20**; **re-run recommended** after deepfreeze / global-header changes in this push |
+| **GCC regression** | Last green **2026-07-20**; **mandatory re-run** after commits **`59000200`** / **`3814cf9a`** (REPL teardown, `readline.py`, `pylifecycle.c`) |
 | **V7 CI** | No **`build-python312-uefi-vs2022.yaml`** yet |
 | **Debug scaffolding** | **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** probes, **`Py_DEBUG 1`** in UEFI **`pyconfig.h`** — trim when FULL is stable |
 
@@ -224,6 +226,26 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 2. User ran regen with host **3.12.x**, rebuilt **MIN**, deployed — **all MIN smokes pass** (see **Current status** above).
 3. **V6 MIN** closed; **V6 FULL** remains open.
 
+### 2026-07-23 — Session 10 (VS2022 REPL exit, Shell teardown, readline stub — **user-verified**, pushed)
+
+**Commits on `origin/feature/python-3.12.13-vs2022`:**
+
+| Commit | Summary |
+|--------|---------|
+| **`bdb1033c`** | VS2022 MIN runtime: **368 entry**, frozen regen tooling, smoke green baseline |
+| **`59000200`** | Fix VS2022 UEFI REPL **`exit()`** and Shell teardown hangs — stdio REPL default; **`site.py`** skip **`enablerlcompleter`** on UEFI; **`edk2console`** detach/drain/**`CloseProtocol`**; **`Py_FinalizeEx`** UEFI skips; **`PY_UEFI_MSVC_368_ENTRY`**, boot traces |
+| **`3814cf9a`** | **`readline.py`** UEFI **stub** unless shell env **`PY_UEFI_READLINE=1`**; lazy **ConIn** **`OpenProtocol`** + **`CloseProtocol`** on detach; docs §10 |
+
+**User-verified (VS2022 MIN + 368 entry, stick with updated `.efi` + `EFI\lib\python3.12\`):**
+
+- **`Python312.efi`** / **`-S`**: interactive REPL → **`exit(0)`** → Shell → **`exit`** → firmware OK
+- **`import readline`** without **`PY_UEFI_READLINE=1`**: stub only; Shell **`exit`** still OK
+- **`-S -I`**: stdio REPL (no site hook); same teardown success
+
+**Not signed off:** default **pyreadline** line editing on VS2022 (experimental path needs **`PY_UEFI_READLINE=1`** + optional compile **`PY_UEFI_PYREADLINE`**). A local “re-enable pyreadline by default” experiment was **reverted** before push — not on the branch.
+
+**GCC note:** Session 10 changes are mostly **`UEFI_C_SOURCE`** / **`os.name == 'uefi'`** (both toolchains when AppPkg defines UEFI). **Observed behavior still diverges:** GCC reference smoke used **pyreadline** successfully; VS2022 manufacturing uses **stdio REPL**. Re-run WSL **`BUILD_PYTHON312`** + package smoke after pull — see [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) **§11**.
+
 ---
 
 ## Phase V0 — Prerequisites and baseline capture
@@ -393,9 +415,9 @@ PyMod-3.12.13/Modules/cpu.nasm, cpu_gcc.s, cpu_ia32.nasm, cpu_ia32_gcc.s
 
 | Step | Action | Result |
 |------|--------|--------|
-| V6.1 | Banner **3.12.13**, `import os, sys, json` | **Blocked** (no REPL on first VS2022 deploy — KVM) |
+| V6.1 | Banner **3.12.13**, `import os, sys, json` | **Done** (MIN, Session 9–10) |
 | V6.2 | FULL: `zlib`, `readline`, `ctypes`, `hashlib`, `ssl` | **Not started** |
-| V6.3 | **`Python312.efi -S`** / **`-v`** from Shell on correct **`fsN:`** | **Pending** (lab) |
+| V6.3 | **`Python312.efi -S`** / **`-v`** from Shell on correct **`fsN:`** | **Done** (MIN; Session 10) |
 
 See port plan **§ Phase V6** for full matrix.
 
@@ -456,13 +478,14 @@ Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run r
 
 ## Known issues / follow-ups
 
-1. ~~**V6 MIN runtime smoke**~~ — **Done** on VS2022 (2026-07-22): **`-h`**, **`-S -c "import sys; print(sys.version)"`**, **`-S -c "print('ok')"`**, interactive REPL. **FULL** runtime + Phase 8 import smokes still open.
-2. **WSL GCC regression** not re-run after Session 6–7 — mandatory before merge to **`apppkg`**.
-3. Re-**`git apply`** **`patches/*.patch`** after **`StdLib/`** cleanup (patches are not committed).
-4. **`_ctypes_test`**: compiled **`| GCC`** only; excluded from UEFI **`config.c`** on both toolchains.
-5. Do not put port tools under CPython **`Tools/`** — use **`vs2022_verify/`**.
-6. **`build-python312-uefi-vs2022.yaml`** (**V7.5**) not added.
-7. **`deepfreeze.c`** / **`getpath.h`**: tracked via **`git add -f`** (CPython **`.gitignore`**); regenerate when changing **`getpath.py`** / deepfreeze inputs.
+1. ~~**V6 MIN runtime smoke**~~ — **Done** on VS2022 (2026-07-23, Session 10): REPL + Shell **`exit`** + stub **`import readline`**. **FULL** runtime + Phase 8 import smokes still open.
+2. **WSL GCC regression** not re-run after Session 6–10 — mandatory before merge to **`apppkg`** (REPL/readline policy may change GCC UX vs pre-**`59000200`** stick).
+3. **VS2022 vs GCC runtime** is **not** identical for firmware entry and interactive REPL — documented in **GCC deviations §11**; do not assume GCC pyreadline behavior applies to VS2022 manufacturing.
+4. Re-**`git apply`** **`patches/*.patch`** after **`StdLib/`** cleanup (patches are not committed).
+5. **`_ctypes_test`**: compiled **`| GCC`** only; excluded from UEFI **`config.c`** on both toolchains.
+6. Do not put port tools under CPython **`Tools/`** — use **`vs2022_verify/`**.
+7. **`build-python312-uefi-vs2022.yaml`** (**V7.5**) not added.
+8. **`deepfreeze.c`** / **`getpath.h`**: tracked via **`git add -f`** (CPython **`.gitignore`**); regenerate when changing **`getpath.py`** / deepfreeze inputs.
 
 ---
 
@@ -472,11 +495,11 @@ Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run r
 
 On Windows, in order:
 
-1. **Commit/push** remaining **`edk2-libc-jp-vsfix`** changes (MIN INF, 368 entry, regen outputs, StdLib probes if kept) — local tree still has uncommitted runtime work beyond **`regen_frozen_windows.cmd`** commits.
-2. **FULL** build: **`BUILD_PYTHON312_FULL=TRUE`**, same **`PY_UEFI_MSVC_368_ENTRY`** on **`Python312.inf`**, package, deploy; smoke **`import zlib`**, **`import ssl`**, **`import ctypes`**, **`hashlib`** (runtime notes §10).
-3. **Cleanup (optional):** remove **`PY_UEFI_BOOT_TRACE`** / **`Main.c`** probes when FULL is stable; consider **`#undef Py_DEBUG`** in UEFI **`pyconfig.h`**.
-4. WSL: **`BUILD_PYTHON312 -t GCC`** + **`create_python_pkg.sh`** after deepfreeze/header churn (regression gate).
-5. **V7:** **`build-python312-uefi-vs2022.yaml`**, **`Py312ReadMe.txt`** VS2022 section.
+1. **FULL** build: **`BUILD_PYTHON312_FULL=TRUE`**, package, deploy; smoke **`import zlib`**, **`import ssl`**, **`import ctypes`**, **`hashlib`** (runtime notes §11). **`Python312.inf`** MSFT flags include **`PY_UEFI_MSVC_368_ENTRY`** (same as MIN).
+2. **Cleanup (optional):** remove **`PY_UEFI_BOOT_TRACE`** / **`Main.c`** probes when FULL is stable; consider **`#undef Py_DEBUG`** in UEFI **`pyconfig.h`**.
+3. WSL: **`BUILD_PYTHON312 -t GCC`** + **`create_python_pkg.sh`** — confirm REPL/Shell **`exit`** with post–Session 10 **`readline.py`** / **`site.py`** (deviations §11).
+4. **V7:** **`build-python312-uefi-vs2022.yaml`**, **`Py312ReadMe.txt`** VS2022 section.
+5. **Future (not manufacturing):** VS2022 default **pyreadline** parity with historical GCC smoke — needs dedicated branch + full teardown matrix.
 
 ---
 
