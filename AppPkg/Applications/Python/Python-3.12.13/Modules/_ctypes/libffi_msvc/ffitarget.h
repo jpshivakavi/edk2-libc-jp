@@ -36,10 +36,10 @@
 /* ---- Generic type definitions ----------------------------------------- */
 
 #ifndef LIBFFI_ASM
-#ifndef _WIN64
-typedef unsigned long          ffi_arg;
-#else
+#if defined(_WIN64) || defined(UEFI_MSVC_64)
 typedef unsigned __int64       ffi_arg;
+#else
+typedef unsigned long          ffi_arg;
 #endif
 typedef signed long            ffi_sarg;
 
@@ -48,7 +48,7 @@ typedef enum ffi_abi {
 
   /* ---- Intel x86 Win32 ---------- */
   FFI_SYSV,
-#ifndef _WIN64
+#if !defined(_WIN64) && !defined(UEFI_MSVC_64)
   FFI_STDCALL,
 #endif
   /* TODO: Add fastcall support for the sake of completeness */
@@ -74,6 +74,9 @@ typedef enum ffi_abi {
 #define FFI_CLOSURES 1
 
 #ifdef _WIN64
+#define FFI_TRAMPOLINE_SIZE 29
+#define FFI_NATIVE_RAW_API 0
+#elif defined(UEFI_MSVC_64)
 #define FFI_TRAMPOLINE_SIZE 29
 #define FFI_NATIVE_RAW_API 0
 #else

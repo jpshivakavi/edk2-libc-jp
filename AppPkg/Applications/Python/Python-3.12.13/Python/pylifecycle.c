@@ -1609,8 +1609,10 @@ finalize_modules(PyThreadState *tstate)
     // user data gets cleared.
     finalize_restore_builtins(tstate);
 
+#if !(defined(UEFI_C_SOURCE) && defined(BUILD_PYTHON312_FULL))
     // Collect garbage
     _PyGC_CollectNoFail(tstate);
+#endif
 
     // Dump GC stats before it's too late, since it uses the warnings
     // machinery.
@@ -1649,8 +1651,10 @@ finalize_modules(PyThreadState *tstate)
     // destructor.
     _PyImport_ClearModules(interp);
 
+#if !(defined(UEFI_C_SOURCE) && defined(BUILD_PYTHON312_FULL))
     // Collect garbage once more
     _PyGC_CollectNoFail(tstate);
+#endif
 }
 
 
@@ -1936,7 +1940,12 @@ Py_FinalizeEx(void)
      * XXX but I'm unclear on exactly how that one happens.  In any case,
      * XXX I haven't seen a real-life report of either of these.
      */
+#if defined(UEFI_C_SOURCE) && defined(BUILD_PYTHON312_FULL)
+    /* MIN UEFI teardown is verified; Phase 8 (OpenSSL/ctypes/zlib) can hang in GC. */
+    py312_boot_print_ascii("Py_FinalizeEx skip PyGC_Collect (FULL)");
+#else
     PyGC_Collect();
+#endif
 
     /* Destroy all modules */
     _PyImport_FiniExternal(tstate->interp);

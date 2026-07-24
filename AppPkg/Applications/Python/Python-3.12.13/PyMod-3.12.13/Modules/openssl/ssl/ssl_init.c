@@ -110,7 +110,9 @@ DEFINE_RUN_ONCE_STATIC(ossl_init_ssl_base)
      * We ignore an error return here. Not much we can do - but not that bad
      * either. We can still safely continue.
      */
+#ifndef OPENSSL_SYS_UEFI
     OPENSSL_atexit(ssl_library_stop);
+#endif
     ssl_base_inited = 1;
     return 1;
 }

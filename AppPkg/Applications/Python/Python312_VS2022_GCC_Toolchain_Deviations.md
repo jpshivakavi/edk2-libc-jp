@@ -61,6 +61,8 @@ EDK II builds each translation unit **once** for the active toolchain. Entries w
 
 **MSFT `_ctypes`:** `PyMod-…/Modules/_ctypes/{_ctypes,cfield,callproc,callbacks,stgdict}.c` — same as GCC, different libffi backend.
 
+**VS2022 UEFI X64 + `import ctypes`:** Firmware builds set **`UEFI_MSVC_64`** (from **`Python312.inf`** **`[BuildOptions.X64]`**) but often **not** **`_WIN64`**. Legacy **`libffi_msvc/types.c`** otherwise builds **`ffi_type_pointer`** as **4** bytes while Python **`struct.calcsize("P")`** is **8** → **`SystemError: sizeof(py_object) wrong: 4 instead of 8`** in **`Lib/ctypes/__init__.py`**. Fix: **`types.c`** / **`ffitarget.h`** / **`ffi.h`** treat **`UEFI_MSVC_64`** like Win64 (8-byte pointers, **`ffi_arg`**, trampolines).
+
 ### 2.3 Shared (both toolchains)
 
 Includes entire Python core, **`PyMod` EFI glue** (NASM **`edk2stack.nasm`**, **`edk2handler.nasm`** — not toolchain-tagged), **all vendored zlib `.c`**, **OpenSSL libcrypto + libssl** file list, **`Modules/_hashopenssl.c`**, **`Modules/_ssl.c`**, **`Parser/myreadline.c`**, etc.

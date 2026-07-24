@@ -58,6 +58,11 @@ extern "C" {
 /* Specify which architecture libffi is configured for. */
 //XXX #define X86
 
+/* EDK UEFI X64 (LLP64): Python sets UEFI_MSVC_64; libffi_msvc expects _WIN64. */
+#if defined(UEFI_MSVC_64) && !defined(_WIN64)
+#define _WIN64 1
+#endif
+
 /* ---- System configuration information --------------------------------- */
 
 #include <ffitarget.h>

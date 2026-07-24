@@ -278,7 +278,8 @@ Replacing only **`EFI\bin\Python312.efi`** is OK for **C-only** interpreter chan
 | **`Programs/python.c`** | Clears **`PyOS_ReadlineFunctionPointer`** and **`edk2_console_detach_readline()`** at **`main`** entry |
 | **`Modules/main.c`** | **`edk2_console_detach_readline()`** before **`Py_FinalizeEx`** |
 | **`edk2console.c`** | No periodic **1 ms** timer on module init; on detach: drain **ConIn**, **`CloseProtocol`** on **ConInEx**, clear readline hooks |
-| **`edk2main.c`** | No post-**`ShellCEntryLib`** ConOut handoff (3.6.8 has none) |
+| **`edk2main.c`** | No post-**`ShellCEntryLib`** ConOut handoff (3.6.8 has none; MIN verified) |
+| **`pylifecycle.c`** | **FULL only:** skip shutdown **`PyGC_Collect`** / **`_PyGC_CollectNoFail`** on UEFI (**`BUILD_PYTHON312_FULL`**) — MIN keeps stock GC |
 
 **Verified flows (VS2022 MIN + 368 entry):**
 
