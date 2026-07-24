@@ -9,7 +9,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-07-23 (**Session 10** — VS2022 MIN manufacturing smoke signed off; GCC vs VS2022 **runtime** divergence documented in [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) §11 and runtime notes §10.1)  
+**Updated:** 2026-07-24 (V6 smoke command matrix in **Phase V6**; FULL pending firmware sign-off)
 **Strategy:** MSVC peer to GCC FULL; same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs stay in **`PyMod-3.12.13/Modules/`**  
 **Branch:** `feature/python-3.12.13-vs2022` (from `feature/python-3.12.13-apppkg`)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
@@ -34,7 +34,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT); **GCC still uses** **`edk2_switch_stack` + `py_install_idt`** (see deviations §11) |
 | **REPL / readline vs GCC** | **Same Python sources** on branch disable pyreadline by default on **`os.name == 'uefi'`**; **GCC Phase 8** historically ran **pyreadline + Tab** without Shell hang; **VS2022 required** this policy for sign-off — treat **VS2022** as **stdio REPL + optional `PY_UEFI_READLINE=1`** only |
 | **Frozen / deepfreeze** | Regenerated via **`Tools/build/regen_frozen_windows.cmd`**: freeze → **`deepfreeze.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** (see runtime notes §5) |
-| **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done** (Session 6); **UEFI Phase 8 smoke** (zlib, ssl, ctypes) **not signed off** |
+| **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done** (Session 6); **368 entry on FULL INF** (**`2190f54c`**); **UEFI Phase 8 smoke** — run **Phase V6 FULL** matrix (not signed off in lab) |
 | **GCC regression** | Last green **2026-07-20**; **mandatory re-run** after commits **`59000200`** / **`3814cf9a`** (REPL teardown, `readline.py`, `pylifecycle.c`) |
 | **V7 CI** | No **`build-python312-uefi-vs2022.yaml`** yet |
 | **Debug scaffolding** | **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** probes, **`Py_DEBUG 1`** in UEFI **`pyconfig.h`** — trim when FULL is stable |
@@ -420,6 +420,61 @@ PyMod-3.12.13/Modules/cpu.nasm, cpu_gcc.s, cpu_ia32.nasm, cpu_ia32_gcc.s
 | V6.3 | **`Python312.efi -S`** / **`-v`** from Shell on correct **`fsN:`** | **Done** (MIN; Session 10) |
 
 See port plan **§ Phase V6** for full matrix.
+
+### V6 smoke commands (UEFI Shell)
+
+**Deploy first:** [`create_python_pkg.bat`](./Python-3.12.13/create_python_pkg.bat) from **`Python-3.12.13/`** ( **`WORKSPACE`**, **`EDK2_LIBC_PATH=edk2-libc-jp-vsfix`** ); copy **`<OutFolder>\EFI`** to **`fsN:\EFI`**; **`map -r`**, **`fsN:`**, **`cd EFI\bin`**. Packaging: [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) §7 (deploy table) · runtime notes §8.
+
+**Requires** **`PY_UEFI_MSVC_368_ENTRY=1`** on MSFT flags (**`Python312_MIN.inf`** / **`Python312.inf`**). Default manufacturing REPL: stdio (no pyreadline); runtime notes §10.
+
+#### MIN — signed off (2026-07-23, Session 10)
+
+Run on **`Python312.efi`** built from default DSC (no **`BUILD_PYTHON312_FULL`**):
+
+```text
+Python312.efi -h
+Python312.efi -S -c "import sys; print(sys.version)"
+Python312.efi -S -c "print(1+1)"
+Python312.efi -S -c "import os, sys, json; print('ok')"
+Python312.efi
+Python312.efi -S
+Python312.efi -S -I
+```
+
+| Check | Expected |
+|--------|----------|
+| **`-h`** | Help text; return to Shell prompt |
+| **`-S -c`** | **3.12.13** banner / output; return to prompt |
+| **REPL** (default, **`-S`**, **`-S -I`**) | **`>>>`** via stdio; **`exit(0)`** returns to Shell |
+| **Teardown** | After REPL: Shell **`exit`** → firmware/setup (no hang) |
+| **Relaunch** | **`Python312.efi`** again shows banner |
+| **`import readline`** (in REPL, no env) | Stub only; Shell **`exit`** still OK |
+| **`import ssl`** / **`import ctypes`** | **Fail** (MIN has no Phase 8) |
+| **`import hashlib`**, **`import os`** | **OK** |
+
+#### FULL — pending sign-off (after **`2190f54c`**: 368 entry on **`Python312.inf`**, latin1 **`deepfreeze.c`**)
+
+Build: **`build … -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE`**. Repackage so **`EFI\bin\Python312.efi`** is from **`…\Python312\DEBUG\`** (FULL), not MIN.
+
+Repeat **all MIN rows** above, then:
+
+```text
+Python312.efi -S -c "import zlib; print(zlib.__name__)"
+Python312.efi -S -c "import ctypes; print(ctypes.__name__)"
+Python312.efi -S -c "import hashlib; print(hashlib.__name__)"
+Python312.efi -S -c "import ssl; print(ssl.__name__)"
+Python312.efi -S -c "import zlib, ssl, ctypes, hashlib; print('phase8 ok')"
+```
+
+| Check | Expected |
+|--------|----------|
+| Phase 8 **`-S -c`** imports | **OK** (no hang, no silent exit) |
+| **REPL → `exit(0)` → Shell `exit` → relaunch** | Same as MIN (no regression) |
+| **`import readline`** without **`PY_UEFI_READLINE=1`** | Stub; teardown still OK |
+
+Record FULL results here and in **Phase V6 result** when lab sign-off is done. Detailed order: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §11.
+
+**Not in manufacturing matrix:** **`PY_UEFI_READLINE=1`** / pyreadline line editing (experimental; runtime notes §10).
 
 ### Phase V6 result
 

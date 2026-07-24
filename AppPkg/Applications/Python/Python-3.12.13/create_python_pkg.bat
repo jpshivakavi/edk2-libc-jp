@@ -48,6 +48,10 @@ set "PYTHON_BIN=%BUILD_DIR%\Python312.efi"
 if not exist "%PYTHON_BIN%" (
   if exist "%BUILD_DIR%\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312_MIN\DEBUG\Python312.efi" (
     set "PYTHON_BIN=%BUILD_DIR%\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312_MIN\DEBUG\Python312.efi"
+  ) else if exist "%BUILD_DIR%\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312\DEBUG\Python312.efi" (
+    set "PYTHON_BIN=%BUILD_DIR%\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312\DEBUG\Python312.efi"
+  ) else if exist "%BUILD_DIR%\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312\OUTPUT\Python312.efi" (
+    set "PYTHON_BIN=%BUILD_DIR%\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312\OUTPUT\Python312.efi"
   ) else if exist "%BUILD_DIR%\AppPkg\Applications\Python\Python-3.12.13\Python312_MIN\DEBUG\Python312.efi" (
     set "PYTHON_BIN=%BUILD_DIR%\AppPkg\Applications\Python\Python-3.12.13\Python312_MIN\DEBUG\Python312.efi"
   ) else if exist "%BUILD_DIR%\AppPkg\Applications\Python\Python-3.12.13\Python312\DEBUG\Python312.efi" (

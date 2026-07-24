@@ -308,21 +308,39 @@ Disabling **`/LTCG`** on link (**`/LTCG:OFF`** via module **`MSFT:*_*_*_DLINK_FL
 
 ---
 
-## 11. Recommended smoke order (VS2022 MIN + 368 entry)
+## 11. Recommended smoke order (VS2022 + 368 entry)
+
+### MIN (default DSC)
 
 ```text
 Python312.efi -h
 Python312.efi -S -c "import sys; print(sys.version)"
 Python312.efi -S -c "print(1+1)"
+Python312.efi -S -c "import os, sys, json; print('ok')"
 Python312.efi
 Python312.efi -S
+Python312.efi -S -I
 ```
 
-**MIN:** **`import ssl`** / **`import ctypes`** should fail. **`import hashlib`**, **`import os`** should work.
+**MIN expectations:** **`import ssl`** / **`import ctypes`** should **fail**. **`import hashlib`**, **`import os`** should work. REPL → **`exit(0)`** → Shell **`exit`** → firmware; second **`Python312.efi`** shows banner. **`import readline`** without **`PY_UEFI_READLINE=1`**: stub only (§10).
 
-**User-verified (2026-07-23, VS2022 MIN + 368 entry):** **`-h`**, **`-S -c`**, default and **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware (§10). **`import readline`** without **`PY_UEFI_READLINE=1`** must not break Shell **`exit`**.
+**User-verified (2026-07-23, MIN):** manufacturing stdio REPL + teardown (§10).
 
-Then enable **FULL** (`BUILD_PYTHON312_FULL=TRUE`), repackage, and repeat before Phase 8–specific tests (zlib, ssl, ctypes).
+### FULL (add after **`BUILD_PYTHON312_FULL=TRUE`**, repackage)
+
+Repeat the MIN block, then:
+
+```text
+Python312.efi -S -c "import zlib; print(zlib.__name__)"
+Python312.efi -S -c "import ctypes; print(ctypes.__name__)"
+Python312.efi -S -c "import hashlib; print(hashlib.__name__)"
+Python312.efi -S -c "import ssl; print(ssl.__name__)"
+Python312.efi -S -c "import zlib, ssl, ctypes, hashlib; print('phase8 ok')"
+```
+
+Confirm REPL teardown and relaunch again (no regression vs MIN).
+
+**Authoritative checklist / sign-off table:** [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **Phase V6**.
 
 ---
 
