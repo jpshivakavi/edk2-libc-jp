@@ -77,6 +77,10 @@ echo === deepfreeze.c ===
   -o Python/deepfreeze/deepfreeze.c
 if errorlevel 1 exit /b 1
 
+echo === fix_deepfreeze_statically_allocated.py ===
+%HOSTPY% Tools\build\fix_deepfreeze_statically_allocated.py
+if errorlevel 1 exit /b 1
+
 echo === generate_global_objects.py ===
 %HOSTPY% Tools\build\generate_global_objects.py
 if errorlevel 1 exit /b 1

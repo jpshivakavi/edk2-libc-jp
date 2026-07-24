@@ -158,7 +158,7 @@ Regenerate after deepfreeze or global-header changes:
 
 | Host | Command |
 |------|---------|
-| **Windows** | **`Tools\build\regen_frozen_windows.cmd`** (full pipeline: freeze → deepfreeze → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**) |
+| **Windows** | **`Tools\build\regen_frozen_windows.cmd`** (freeze → deepfreeze → **`fix_deepfreeze_statically_allocated.py`** → globals → **`fix_deepfreeze_latin1.py`**) |
 | **Manual** | Same order as the batch file — **never** **`generate_global_objects.py`** alone if **`deepfreeze.c`** was not latin1-fixed |
 
 Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.

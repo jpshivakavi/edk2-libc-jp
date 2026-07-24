@@ -233,7 +233,7 @@ Tools\build\regen_frozen_windows.cmd
 
 **Host:** **Python 3.12.x** (e.g. **3.12.10** installer) — same **3.12** minor as this **3.12.13** source; marshal magic must be **168627659** (script checks `sys.version_info[:2] == (3, 12)`). Override interpreter: `set HOSTPY=C:\Path\To\python.exe` then run the batch file.
 
-The script runs, **in order:** **`Programs\_freeze_module.py`** → **`deepfreeze.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**, then verifies **`.statically_allocated = 1`** in **`deepfreeze.c`**.
+The script runs, **in order:** **`Programs\_freeze_module.py`** → **`deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**, then verifies **`.statically_allocated = 1`** in **`deepfreeze.c`**.
 
 **Important:** **`fix_deepfreeze_latin1.py`** is **required** after **`deepfreeze.py`** / **`generate_global_objects.py`**. Running **`generate_global_objects.py`** alone leaves single-char **`&_Py_ID`** in **`deepfreeze.c`** and breaks VS2022 with **C2039** (`_py_d`, `_py__`, …). See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
 
@@ -255,6 +255,8 @@ dir /b Python\frozen_modules\*.h | find /c /v ""
 ```
 
 Expect **24** `.h` files (typical 3.12 set).
+
+**Fresh clone:** you do **not** need to run regen before the first **`build`** — **`Python/deepfreeze/deepfreeze.c`** is tracked in this fork with **`statically_allocated`** and latin1 fixes. Regenerate only when changing frozen module sources; always use **`regen_frozen_windows.cmd`** (both post-deepfreeze fix scripts). See runtime notes §5 *Fresh clone*.
 
 ---
 

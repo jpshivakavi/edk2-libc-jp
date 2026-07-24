@@ -108,12 +108,13 @@ Apply the same defines to **`Python312.inf`** MSFT flags when testing **FULL** o
 
 **`Tools/build/deepfreeze.py`** emits **`deepfreeze.c`** with **`&_Py_ID(x)`** for **single-character** identifiers (e.g. **`d`**, **`_`**, **`s`**). This AppPkg fork’s **`generate_global_objects.py`** deliberately **does not** register 1-character names as **`_Py_ID`** in **`pycore_global_strings.h`** (matches upstream 3.12 + avoids **`Py_DEBUG`** assert failures). Until upstream deepfreeze changes, you **must** run **`fix_deepfreeze_latin1.py`** after any step that refreshes **`deepfreeze.c`** or **`generate_global_objects.py`** output.
 
-**Symptoms if you skip the latin1 fix:**
+**Symptoms if post-deepfreeze fixes are skipped:**
 
 | Stage | Failure |
 |--------|---------|
-| **Runtime** (`Py_DEBUG`) | **`assert(PyUnicode_GET_LENGTH(string) != 1)`** in unicode static init (e.g. **`_Py_ID(_)`**) on **`-S -c`** |
-| **VS2022 compile** | **C2039**: **`_py_d`**, **`_py__`**, … **is not a member** of **`<unnamed-tag>`** in **`pycore_global_strings.h`** |
+| **Runtime** (`Py_DEBUG`) | **`assert(PyUnicode_GET_LENGTH(string) != 1)`** in unicode static init (e.g. **`_Py_ID(_)`**) on **`-S -c`** — missing **latin1** fix |
+| **Runtime** (`Py_DEBUG`) | **`unicodeobject.c`**: **`_PyUnicodeCheckConsistency`**: **`!_Py_IsImmortal(op)`** — immortal **`deepfreeze`** string without **`.statically_allocated = 1`** |
+| **VS2022 compile** | **C2039**: **`_py_d`**, **`_py__`**, … **is not a member** of **`<unnamed-tag>`** in **`pycore_global_strings.h`** — missing **latin1** fix |
 
 ### Canonical regen order (Windows — use this)
 
@@ -132,11 +133,26 @@ Tools\build\regen_frozen_windows.cmd
 |------|------|--------|
 | 1 | **`Programs\_freeze_module.py`** (×24 modules) | **`Python/frozen_modules/*.h`** |
 | 2 | **`Tools/build/deepfreeze.py`** | **`Python/deepfreeze/deepfreeze.c`** (may contain **`&_Py_ID(d)`**, etc.) |
+| 2b | **`Tools/build/fix_deepfreeze_statically_allocated.py`** | Ensures **`.statically_allocated = 1`** on immortal unicode **`.state`** (Py_DEBUG consistency) |
 | 3 | **`Tools/build/generate_global_objects.py`** | **`Include/internal/pycore_global_strings.h`**, **`pycore_runtime_init_generated.h`**, **`pycore_unicodeobject_generated.h`**, fini header |
 | 4 | **`Tools/build/fix_deepfreeze_latin1.py`** | Rewrites single-char **`&_Py_ID(c)`** → **`_Py_LATIN1_CHR('c')`** (no **`&`**) |
 | 5 | **`findstr`** check | **`deepfreeze.c`** must contain **`.statically_allocated = 1,`** |
 
-Then rebuild **`Python312.efi`** (MIN or FULL). Commit **`deepfreeze.c`** and generated headers when they change (**`git add -f`** if needed — CPython **`.gitignore`**).
+Then rebuild **`Python312.efi`** (MIN or FULL — same **`deepfreeze.c`**). Commit **`deepfreeze.c`** and generated headers when they change (**`git add -f`** if needed — CPython **`.gitignore`**).
+
+### Fresh clone — build without regen
+
+**Normal path:** pull **`feature/python-3.12.13-vs2022`**, apply StdLib patches, **`srcprep.py`**, **`build`**, **`create_python_pkg.bat`**. The repo ships a checked-in **`Python/deepfreeze/deepfreeze.c`** with **`.statically_allocated = 1`** and **`_Py_LATIN1_CHR`** for 1-char refs — you should **not** see **C2039** or **`_PyUnicodeCheckConsistency` / `!_Py_IsImmortal`** on **`Py_DEBUG`** UEFI builds **unless** you regenerate frozen artifacts incorrectly.
+
+**You can still break runtime if you:**
+
+| Mistake | Result |
+|---------|--------|
+| Run **`generate_global_objects.py`** alone | **C2039** on compile (latin1) |
+| Run **`deepfreeze.py`** (or full regen) **without** **`fix_deepfreeze_statically_allocated.py`** and **`fix_deepfreeze_latin1.py`** | **C2039** and/or immortal unicode assert |
+| Use an old commit’s **`deepfreeze.c`** before **`statically_allocated`** / latin1 fixes | Same asserts at runtime |
+
+Always use **`Tools\build\regen_frozen_windows.cmd`** for a full refresh (includes both fix scripts after **`deepfreeze.py`**).
 
 ### Manual / partial regen (only if you know which artifact changed)
 
@@ -168,6 +184,7 @@ With **`Py_DEBUG`** enabled in UEFI **`pyconfig.h`**, **`_PyUnicode_InitStaticSt
 |--------|--------|-----|
 | **C2102** **`&` requires l-value** | **`&_Py_LATIN1_CHR('…')`** | Use **`_Py_LATIN1_CHR('…')`** only |
 | **C2039** **`_py_x` is not a member** | **`&_Py_ID(x)`** for 1-char **`x`** after globals regen | **`py -3.12 Tools\build\fix_deepfreeze_latin1.py`** (or full **`regen_frozen_windows.cmd`**) |
+| **`_PyUnicodeCheckConsistency`** / **`!_Py_IsImmortal`** | Immortal **`deepfreeze`** unicode without **`.statically_allocated = 1`** | **`py -3.12 Tools\build\fix_deepfreeze_statically_allocated.py`**, rebuild **`.efi`** |
 | Stale `&_Py_STR(dot)` etc. | Old deepfreeze vs current **`deepfreeze.py`** | Full regen; some literals use **`_Py_SINGLETON(strings).ascii[N]`** (Session 6) |
 
 ---
@@ -360,6 +377,7 @@ Confirm REPL teardown and relaunch again (no regression vs MIN).
 | [`StdLib/LibC/Main/Main.c`](../../StdLib/LibC/Main/Main.c) | **`ShellAppMain`** boot **`Print`** |
 | [`Tools/build/generate_global_objects.py`](./Python-3.12.13/Tools/build/generate_global_objects.py) | Global **`_Py_ID`** / unicode init headers |
 | [`Tools/build/fix_deepfreeze_latin1.py`](./Python-3.12.13/Tools/build/fix_deepfreeze_latin1.py) | Normalize 1-char refs in **`deepfreeze.c`** |
+| [`Tools/build/fix_deepfreeze_statically_allocated.py`](./Python-3.12.13/Tools/build/fix_deepfreeze_statically_allocated.py) | **`statically_allocated`** on deepfreeze unicode (Py_DEBUG) |
 | [`Tools/build/regen_frozen_windows.cmd`](./Python-3.12.13/Tools/build/regen_frozen_windows.cmd) | Windows frozen + deepfreeze + globals regen |
 | [`Python-3.12.13/create_python_pkg.bat`](./Python-3.12.13/create_python_pkg.bat) | Windows packaging |
 
