@@ -233,7 +233,18 @@ Tools\build\regen_frozen_windows.cmd
 
 **Host:** **Python 3.12.x** (e.g. **3.12.10** installer) — same **3.12** minor as this **3.12.13** source; marshal magic must be **168627659** (script checks `sys.version_info[:2] == (3, 12)`). Override interpreter: `set HOSTPY=C:\Path\To\python.exe` then run the batch file.
 
-The script runs **`Programs\_freeze_module.py`** for all **`Python/frozen_modules/*.h`**, **`Tools/build/deepfreeze.py`**, **`generate_global_objects.py`**, and **`fix_deepfreeze_latin1.py`**, then verifies **`.statically_allocated = 1`** in **`deepfreeze.c`**. See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
+The script runs, **in order:** **`Programs\_freeze_module.py`** → **`deepfreeze.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**, then verifies **`.statically_allocated = 1`** in **`deepfreeze.c`**.
+
+**Important:** **`fix_deepfreeze_latin1.py`** is **required** after **`deepfreeze.py`** / **`generate_global_objects.py`**. Running **`generate_global_objects.py`** alone leaves single-char **`&_Py_ID`** in **`deepfreeze.c`** and breaks VS2022 with **C2039** (`_py_d`, `_py__`, …). See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
+
+**Quick fix if the build already fails with C2039 on `deepfreeze.c`:**
+
+```cmd
+cd /d c:\Users\njayapra\github\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13
+py -3.12 Tools\build\fix_deepfreeze_latin1.py
+```
+
+Expect **`remaining single-char &_Py_ID: 0`**, then rebuild.
 
 ### Verify
 

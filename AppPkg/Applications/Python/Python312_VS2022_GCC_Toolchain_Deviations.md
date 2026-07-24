@@ -152,16 +152,18 @@ GCC benefits from the same guards (no accidental inclusion of desktop-only paths
 **Shared** across toolchains (not tagged in INF):
 
 - **`Python/deepfreeze/deepfreeze.c`** — must match **`Tools/build/generate_global_objects.py`** output (`pycore_global_strings.h`, runtime init, unicodeobject generated headers).
-- One-character string refs in deepfreeze use **`_Py_SINGLETON(strings).ascii[N]`**, not stale **`&_Py_STR(dot)`**.
+- After **`deepfreeze.py`**, run **`fix_deepfreeze_latin1.py`** so single-char **`&_Py_ID`** become **`_Py_LATIN1_CHR`** (fork policy; avoids **C2039** / **`Py_DEBUG`** asserts).
 
-Regenerate after deepfreeze changes:
+Regenerate after deepfreeze or global-header changes:
 
 | Host | Command |
 |------|---------|
-| **Windows** | `Tools\build\regen_frozen_windows.cmd` (Python **3.12.x**; full pipeline) |
-| **Either** | `python Tools/build/generate_global_objects.py` + `Tools/build/fix_deepfreeze_latin1.py` |
+| **Windows** | **`Tools\build\regen_frozen_windows.cmd`** (full pipeline: freeze → deepfreeze → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**) |
+| **Manual** | Same order as the batch file — **never** **`generate_global_objects.py`** alone if **`deepfreeze.c`** was not latin1-fixed |
 
-(from `Python-3.12.13/` tree.)
+Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
+
+One-character string refs may also use **`_Py_SINGLETON(strings).ascii[N]`**, not stale **`&_Py_STR(dot)`**.
 
 ---
 

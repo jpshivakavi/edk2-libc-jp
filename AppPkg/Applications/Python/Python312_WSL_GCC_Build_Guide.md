@@ -249,6 +249,16 @@ ls "$APP_PY/Python/deepfreeze/deepfreeze.c"
 ls "$APP_PY/Python/frozen_modules" | wc -l
 ```
 
+**AppPkg fork (`edk2-libc-jp-vsfix`):** after copying artifacts, run this fork’s global + latin1 fix (stock edk2-py312 **`deepfreeze.c`** still has single-char **`&_Py_ID`**):
+
+```bash
+cd ~/src/edk2-libc-jp-vsfix/AppPkg/Applications/Python/Python-3.12.13   # adjust path
+python3 Tools/build/generate_global_objects.py
+python3 Tools/build/fix_deepfreeze_latin1.py
+```
+
+See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
+
 ### Option B — Freeze using AppPkg tree + edk2-py312 host tools
 
 ```bash

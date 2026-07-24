@@ -104,58 +104,71 @@ Apply the same defines to **`Python312.inf`** MSFT flags when testing **FULL** o
 
 ## 5. Frozen / global strings / **`deepfreeze.c`**
 
-### Runtime assert: **`PyUnicode_GET_LENGTH(string) != 1`**
+### Why two steps (deepfreeze + globals)
 
-With **`Py_DEBUG`** enabled in UEFI **`pyconfig.h`**, **`_PyUnicode_InitStaticStrings`** uses C **`assert()`** to ensure **one-character** strings are **not** registered as **`_Py_ID`** (they must use **`_Py_LATIN1_CHR`**).
+**`Tools/build/deepfreeze.py`** emits **`deepfreeze.c`** with **`&_Py_ID(x)`** for **single-character** identifiers (e.g. **`d`**, **`_`**, **`s`**). This AppPkg fork’s **`generate_global_objects.py`** deliberately **does not** register 1-character names as **`_Py_ID`** in **`pycore_global_strings.h`** (matches upstream 3.12 + avoids **`Py_DEBUG`** assert failures). Until upstream deepfreeze changes, you **must** run **`fix_deepfreeze_latin1.py`** after any step that refreshes **`deepfreeze.c`** or **`generate_global_objects.py`** output.
 
-**Upstream 3.12.13** has **no** **`STRUCT_FOR_ID(_)`** and **no** single-letter **`STRUCT_FOR_ID(a)`** etc. in **`pycore_global_strings.h`**.
+**Symptoms if you skip the latin1 fix:**
 
-This tree had **`deepfreeze.c`** using **`&_Py_ID(_)`** and **`&_Py_ID(b)`** … after regenerating globals from a scan, which triggered asserts (e.g. on **`_`**, line 54 of **`pycore_unicodeobject_generated.h`**) when running:
+| Stage | Failure |
+|--------|---------|
+| **Runtime** (`Py_DEBUG`) | **`assert(PyUnicode_GET_LENGTH(string) != 1)`** in unicode static init (e.g. **`_Py_ID(_)`**) on **`-S -c`** |
+| **VS2022 compile** | **C2039**: **`_py_d`**, **`_py__`**, … **is not a member** of **`<unnamed-tag>`** in **`pycore_global_strings.h`** |
 
-```text
-Python312.efi -S -c "import sys; print(sys.version)"
+### Canonical regen order (Windows — use this)
+
+**Preferred:** one script runs the full pipeline in order:
+
+```cmd
+cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
+Tools\build\regen_frozen_windows.cmd
 ```
 
-**`-h`** can succeed without hitting full unicode static init; **`-S -c`** does not.
+**Host:** Python **3.12.x** (same major.minor as source; script asserts **`sys.version_info[:2] == (3, 12)`**). Optional: **`set HOSTPY=C:\Path\To\python.exe`**.
 
-### Fixes (maintain on branch)
+**Steps inside `regen_frozen_windows.cmd` (do not reorder):**
 
-1. **`Tools/build/generate_global_objects.py`**
-   - **`IGNORED`**: includes **`'_'`** (documented).
-   - **`get_identifiers_and_strings`**: skip **`len(name) == 1`** when adding **`_Py_ID`** identifiers (matches upstream: no 1-char global IDs).
+| Step | Tool | Output |
+|------|------|--------|
+| 1 | **`Programs\_freeze_module.py`** (×24 modules) | **`Python/frozen_modules/*.h`** |
+| 2 | **`Tools/build/deepfreeze.py`** | **`Python/deepfreeze/deepfreeze.c`** (may contain **`&_Py_ID(d)`**, etc.) |
+| 3 | **`Tools/build/generate_global_objects.py`** | **`Include/internal/pycore_global_strings.h`**, **`pycore_runtime_init_generated.h`**, **`pycore_unicodeobject_generated.h`**, fini header |
+| 4 | **`Tools/build/fix_deepfreeze_latin1.py`** | Rewrites single-char **`&_Py_ID(c)`** → **`_Py_LATIN1_CHR('c')`** (no **`&`**) |
+| 5 | **`findstr`** check | **`deepfreeze.c`** must contain **`.statically_allocated = 1,`** |
 
-2. **`Python/deepfreeze/deepfreeze.c`**
-   - Replace **`&_Py_ID(x)`** where **`x`** is a **single character** with **`_Py_LATIN1_CHR('x')`** — **no** **`&`** (macro is not an l-value).
-   - Example: **`_Py_LATIN1_CHR('_')`**, **`_Py_LATIN1_CHR('b')`**.
+Then rebuild **`Python312.efi`** (MIN or FULL). Commit **`deepfreeze.c`** and generated headers when they change (**`git add -f`** if needed — CPython **`.gitignore`**).
 
-3. **Regenerate headers** after changing globals or deepfreeze ID usage:
+### Manual / partial regen (only if you know which artifact changed)
 
-   **Windows (Python 3.12.x host):**
+**Do not** run **`generate_global_objects.py`** alone on a tree whose **`deepfreeze.c`** still has single-char **`&_Py_ID`** — you will get **C2039** on the next MSVC build.
 
-   ```cmd
-   cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
-   Tools\build\regen_frozen_windows.cmd
-   ```
+| Situation | Commands (from **`Python-3.12.13/`**) |
+|-----------|----------------------------------------|
+| **Full refresh** | **`Tools\build\regen_frozen_windows.cmd`** |
+| **Only global headers** ( **`deepfreeze.c` already latin1-fixed** ) | **`py -3.12 Tools\build\generate_global_objects.py`** — re-run **`fix_deepfreeze_latin1.py`** if **`deepfreeze.c`** was regenerated since last fix |
+| **Only `deepfreeze.c`** (frozen `.h` already current) | **`py -3.12 Tools\build\deepfreeze.py`** … **`-o Python/deepfreeze/deepfreeze.c`** (same args as batch) → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
+| **WSL copy** from edk2-py312 | After copy into this fork, still run **`python3 Tools/build/generate_global_objects.py`** then **`python3 Tools/build/fix_deepfreeze_latin1.py`** (fork **`generate_global_objects.py`** differs from stock CPython) |
 
-   **Globals only** (after `deepfreeze.c` is already fresh):
+**What `fix_deepfreeze_latin1.py` does:** regex replace **`&_Py_ID(.)`** → **`_Py_LATIN1_CHR('…')`**; strips erroneous **`&_Py_LATIN1_CHR`**. Prints **`remaining single-char &_Py_ID: 0`** when done.
 
-   ```cmd
-   py -3.12 %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13\Tools\build\generate_global_objects.py
-   ```
+### `generate_global_objects.py` fork rules (reference)
 
-4. **After regenerating `deepfreeze.c` from WSL/GCC**, run on Windows if needed:
+1. **`IGNORED`**: includes **`'_'`** (documented in script).
+2. **`get_identifiers_and_strings`**: skip **`len(name) == 1`** when adding **`_Py_ID`** identifiers.
 
-   ```cmd
-   py -3 %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13\Tools\build\fix_deepfreeze_latin1.py
-   py -3 %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13\Tools\build\generate_global_objects.py
-   ```
+### Runtime assert (with **`Py_DEBUG`**)
 
-### MSVC compile errors from wrong fix
+With **`Py_DEBUG`** enabled in UEFI **`pyconfig.h`**, **`_PyUnicode_InitStaticStrings`** asserts that one-character strings are **not** registered as **`_Py_ID`**.
+
+**`-h`** can succeed without full unicode static init; **`-S -c "import sys; print(sys.version)"`** does not if **`deepfreeze.c`** still references **`&_Py_ID(_)`** etc.
+
+### MSVC / manual edit pitfalls
 
 | Error | Cause | Fix |
 |--------|--------|-----|
 | **C2102** **`&` requires l-value** | **`&_Py_LATIN1_CHR('…')`** | Use **`_Py_LATIN1_CHR('…')`** only |
-| **C2039** **`_py_b` is not a member** | **`&_Py_ID(b)`** but **`b`** not in generated struct | Latin1 + regenerate globals (§5) |
+| **C2039** **`_py_x` is not a member** | **`&_Py_ID(x)`** for 1-char **`x`** after globals regen | **`py -3.12 Tools\build\fix_deepfreeze_latin1.py`** (or full **`regen_frozen_windows.cmd`**) |
+| Stale `&_Py_STR(dot)` etc. | Old deepfreeze vs current **`deepfreeze.py`** | Full regen; some literals use **`_Py_SINGLETON(strings).ascii[N]`** (Session 6) |
 
 ---
 
