@@ -27,7 +27,23 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 ## Current status (2026-07-23)
 
 **Branch:** `feature/python-3.12.13-vs2022` · **Workspace clone:** `edk2-libc-jp-vsfix` · **Remote:** `jpshivakavi/edk2-libc-jp`  
-**Branch tip (pushed):** **`3814cf9a`** — see Session 10 below.
+**Branch tip (pushed):** **`3568d02d`** — VS2022 FULL **`import ssl`** Shell **`exit`** fix; see tag **`python312-vs2022-full-lab-2026-08-26`** below.
+
+---
+
+## Git tags (VS2022 track)
+
+| Tag | Commit | Meaning |
+|-----|--------|---------|
+| **`python312-vs2022-full-lab-2026-08-26`** | **`3568d02d`** | **VS2022 FULL UEFI lab sign-off (2026-08-26):** `import sys` / **`import ssl`** / **`ssl.create_default_context()`** / **hashlib** / **ctypes** one-liners; **`Shell>`** → **`exit`** → BIOS/setup. PyMod **`Lib/ssl/`** (`_uefi_min`), MSVC teardown parity, post-finalize OpenSSL/console handoff. Details: [`Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md`](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md). |
+
+**Checkout code at tag:** `git fetch origin tag python312-vs2022-full-lab-2026-08-26 && git checkout python312-vs2022-full-lab-2026-08-26`
+
+**After this tag (local WIP, not in tag):** realign stock **`Python-3.12.13/`** with upstream CPython + consolidate UEFI deltas under **`PyMod-3.12.13/`** only — build/deploy/verify before committing that follow-up.
+
+**GCC AppPkg milestone tags (reference):** `python312-apppkg-8.2` … `8.5` on `feature/python-3.12.13-apppkg` — see [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md).
+
+---
 
 | Area | State |
 |------|--------|
@@ -83,6 +99,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | `PACKAGES_PATH` | `<edk2>;<edk2-libc>` only — no sandbox LibFFI/OpenSSL/zlib packages |
 | INF | **`Python312_MIN.inf`** + **`Python312.inf`** via **`BUILD_PYTHON312_FULL`** in DSC (no `!if` inside INF); MSFT **`PY_UEFI_MSVC_368_ENTRY`** for runtime — see runtime notes |
 | `pyconfig` source of truth | **`PyMod-3.12.13/Include/pyconfig.h`** + **`efi/Include/pyconfig.h`** → **`srcprep.py`** |
+| **`Python-3.12.13/` tree** | Must match **upstream CPython 3.12.13** for forked paths; **do not commit** `Lib/ssl/` or other srcprep overlays under stock tree — only **`PyMod-3.12.13/`** (see **`Tools/restore_upstream_from_cpython.py`**) |
 | MSVC sizing | **`/DUEFI_MSVC_64`** on X64; **`_MSC_VER`** LLP64 (`SIZEOF_LONG` 4); GCC **`#else`** LP64 (8) |
 | StdLib patches | Apply **`patches/*.patch`** locally; **do not commit** `StdLib/` on branch |
 | **`PREFIX` / getpath** | **`\\EFI`** relative to interpreter volume **`fsN:`** (3.6.8-style); not hard-coded **`fs0:`** — see Session 7 |
