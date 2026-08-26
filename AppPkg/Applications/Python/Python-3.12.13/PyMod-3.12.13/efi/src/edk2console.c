@@ -139,6 +139,7 @@ edk2_console_ensure_input(void)
 void
 edk2_console_detach_readline(void)
 {
+   PY312_CONSOLE_TRACE(L"edk2_console_detach_readline enter");
    edk2_console_stop_timer();
    py_console_readline_hook = NULL;
    PyOS_ReadlineFunctionPointer = NULL;
@@ -155,6 +156,7 @@ edk2_console_detach_readline(void)
       );
       g_edk2_globals.console_in = NULL;
    }
+   PY312_CONSOLE_TRACE(L"edk2_console_detach_readline leave");
 }
 
 void
@@ -181,8 +183,10 @@ edk2_console_restore_for_shell(void)
 void
 edk2_console_handoff_to_shell(void)
 {
+   PY312_CONSOLE_TRACE(L"edk2_console_handoff_to_shell enter");
    edk2_console_detach_readline();
    edk2_console_drain_input();
+   PY312_CONSOLE_TRACE(L"edk2_console_handoff_to_shell leave");
 }
 
 static void

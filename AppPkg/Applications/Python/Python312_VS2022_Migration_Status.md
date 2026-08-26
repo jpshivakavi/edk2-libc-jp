@@ -5,11 +5,12 @@
 **MIN build (two INF):** [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md)  
 **UEFI runtime / VS2022 fixes:** [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md)  
 **GCC vs VS2022 deviations:** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md)  
+**Lab sign-offs / debug:** [`Python312_VS2022_Lab/`](./Python312_VS2022_Lab/)  
 **3.6.8 VS2022 walkthrough:** [`Python368_Windows_VS2022_Build_Guide.md`](./Python368_Windows_VS2022_Build_Guide.md)  
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-07-24 (V6 smoke command matrix in **Phase V6**; FULL pending firmware sign-off)
+**Updated:** 2026-08-26 (FULL **`import ssl`** Shell **`exit`** — lab sign-off in [`Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md`](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md))
 **Strategy:** MSVC peer to GCC FULL; same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs stay in **`PyMod-3.12.13/Modules/`**  
 **Branch:** `feature/python-3.12.13-vs2022` (from `feature/python-3.12.13-apppkg`)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
@@ -34,7 +35,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT); **GCC still uses** **`edk2_switch_stack` + `py_install_idt`** (see deviations §11) |
 | **REPL / readline vs GCC** | **Same Python sources** on branch disable pyreadline by default on **`os.name == 'uefi'`**; **GCC Phase 8** historically ran **pyreadline + Tab** without Shell hang; **VS2022 required** this policy for sign-off — treat **VS2022** as **stdio REPL + optional `PY_UEFI_READLINE=1`** only |
 | **Frozen / deepfreeze** | **`Python/deepfreeze/deepfreeze.c`** is **committed** (latin1 + **`statically_allocated`** fixes applied). Regen only when changing frozen inputs — use **`regen_frozen_windows.cmd`** (§5): **`deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
-| **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done** (Session 6); **368 entry on FULL INF** (**`2190f54c`**); **UEFI Phase 8 smoke** — run **Phase V6 FULL** matrix (not signed off in lab) |
+| **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done** (Session 6); **368 entry on FULL INF**; **Lab (2026-08-26):** `import ssl` / hashlib / ctypes one-liners + Shell **`exit`** → BIOS — see [`Python312_VS2022_Lab/`](./Python312_VS2022_Lab/) |
 | **GCC regression** | Last green **2026-07-20**; **mandatory re-run** after commits **`59000200`** / **`3814cf9a`** (REPL teardown, `readline.py`, `pylifecycle.c`) |
 | **V7 CI** | No **`build-python312-uefi-vs2022.yaml`** yet |
 | **Debug scaffolding** | **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** probes, **`Py_DEBUG 1`** in UEFI **`pyconfig.h`** — trim when FULL is stable |
@@ -53,7 +54,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | V3 | MSFT `[BuildOptions]` in `Python312.inf` | **Done** |
 | V4 | Toolchain-split sources; FULL VS2022 link | **Done** (`Python312.efi` / module link green) |
 | V5 | Packaging on Windows (`create_python_pkg.bat`) | **Done** (user **`myUEFIPy312`**; PREFIX volume-relative — see Session 7) |
-| V6 | Runtime smoke (MIN → FULL) | **Partial** — **MIN Done** (2026-07-22, **`PY_UEFI_MSVC_368_ENTRY`**, Windows regen); **FULL** UEFI smoke pending |
+| V6 | Runtime smoke (MIN → FULL) | **Partial (lab)** — MIN Session 10; **FULL:** core Phase 8 one-liners + Shell **`exit`** signed off 2026-08-26 ([lab note](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md)); extended matrix (REPL, zlib, readline) open |
 | V7 | Docs and CI (`build-python312-uefi-vs2022.yaml`) | **Partial** (build guide, deviations doc, this status; no 3.12 CI) |
 | V8 | Vendored FULL on VS2022 (8.1→8.2→8.5→8.3→8.4) | **Done** (same monolithic INF as GCC; MSFT-specific glue only) |
 
@@ -88,10 +89,46 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | ctypes on MSFT | **`libffi_msvc`** + **`| MSFT`** `_ctypes` sources (3.6.8 pattern); vendored **libffi `.S`** **`| GCC`** only |
 | First MSVC target | **X64 RELEASE** (IA32 deferred) |
 | Proof before large builds | **`vs2022_verify/`** after every **`pyconfig.h`** change |
+| UEFI **`import ssl`** | **`PyMod-3.12.13/Lib/ssl/`** — **`_uefi_min.py`** at import (VS2022 Shell **`exit`**); not stock **`ssl.py`** — see **§ UEFI ssl scope** below |
 
 ---
 
-## Locked paths (Windows host)
+## UEFI `ssl` module (FULL) — scope and limitations
+
+On **`os.name == 'uefi'`**, **`import ssl`** loads **`ssl._uefi_min`** only ([`PyMod-3.12.13/Lib/ssl/__init__.py`](./Python-3.12.13/PyMod-3.12.13/Lib/ssl/__init__.py)). This is **not** CPython 3.12’s full pure-Python **`ssl`** package ([`_stdlib.py`](./Python-3.12.13/PyMod-3.12.13/Lib/ssl/_stdlib.py) is used on desktop builds only). The C extension **`_ssl`** (OpenSSL **libssl**) is still linked in FULL builds; limits are in the **Python wrapper**, not “no TLS in firmware.”
+
+### Provided (manufacturing / smoke / typical bootstrap)
+
+| Area | UEFI behavior |
+|------|----------------|
+| **`import ssl`**, **`import _ssl`** | OK; Shell **`exit`** signed off with minimal wrapper (lab 2026-08-26). |
+| **Exceptions, version constants** | Re-exported from **`_ssl`** (`SSLError`, `OPENSSL_VERSION_*`, protocol/cert constants, `RAND_*`, feature flags). |
+| **`SSLContext`** | Alias of **`_ssl._SSLContext`** (C type) — cert chains, verify mode, cipher/options APIs on the context object itself. |
+| **`create_default_context`**, **`_create_unverified_context`** | Implemented; **`Purpose`** is a simple OID holder (strings), not **`_ASN1Object`**. |
+| **`http.client` / stdlib HTTPS hook** | **`_create_default_https_context`** points at **`create_default_context`**. |
+| **System CA store** | **`load_default_certs`** is **not** called on UEFI (no OS trust store); pass **`cafile`/`capath`/`cadata`** explicitly. |
+| **Low-level TLS on a socket** | C **`_SSLContext._wrap_socket(...)`** exists in **`_ssl`**; there is no Python **`SSLSocket`** subclass in **`_uefi_min`**. |
+
+### Not provided at `import ssl` (use `_ssl` or extend PyMod deliberately)
+
+| Missing vs stock **`ssl`** | Impact |
+|-----------------------------|--------|
+| **`SSLSocket`**, **`SSLObject`** Python classes | No **`context.wrap_socket()`** / **`wrap_bio()`** helpers from the stdlib subclass; no **`get_server_certificate()`** (depends on **`SSLSocket`** + **`create_connection`**). |
+| **IntEnum/IntFlag mirrors** (`VerifyMode`, `Options`, `_SSLMethod`, `AlertDescription`, …) | Names not auto-registered on **`ssl`**; use **`_ssl.PROTOCOL_*`**, **`_ssl.CERT_*`**, etc., or import from **`_ssl`**. |
+| **`Purpose` / `_ASN1Object`** with **`fromname`/`fromnid`** | No import-time **`OBJ_txt2obj`**; OIDs are plain strings on UEFI. |
+| **Cert utilities** | No **`cert_time_to_seconds`**, **`DER_cert_to_PEM_cert`**, **`PEM_cert_to_DER_cert`**, **`match_hostname`** helpers in the minimal module (remain in **`_stdlib.py`** only). |
+| **`get_default_verify_paths`**, Windows **`enum_certificates`** | Not exported on UEFI minimal **`ssl`**. |
+| **`import socket` via `ssl`** | Minimal module does **not** pull **`Lib/socket.py`** at import (by design). |
+
+### Expectations for porting apps
+
+- **Manufacturing smokes** (`import ssl`, **`create_default_context()`**, hashlib, ctypes): **in scope** and lab-signed-off.
+- **Full desktop-style HTTPS clients** (urllib without extra work, **`ssl.get_server_certificate`**, rich enum surface): **out of scope** until a **lazy** or **explicit** load of selected **`_stdlib.py`** pieces is designed and re-tested for Shell **`exit`** on VS2022 (and GCC).
+- **Preferred extension path:** add targeted APIs to **`_uefi_min.py`** or lazy-import from **`_stdlib.py`** behind functions, **not** restoring monolithic import of full **`ssl.py`** on UEFI.
+
+Details and deploy checklist: [`Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md`](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md).
+
+---
 
 | Variable | Value |
 |----------|--------|
@@ -478,7 +515,7 @@ Record FULL results here and in **Phase V6 result** when lab sign-off is done. D
 
 ### Phase V6 result
 
-**MIN (VS2022):** **Done** (2026-07-23) — **`-h`**, **`-S -c`**, default / **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware. Production REPL uses **stdio TTY** (pyreadline off by default); see **Runtime Notes §10**. **FULL** UEFI smoke still open.
+**MIN (VS2022):** Session 10 (2026-07-23) — **`-h`**, REPL, stub **`import readline`** signed off. **WIP (2026-08):** Shell **`exit`** after **`-S -c`** (e.g. **`import sys`**) still hangs on lab hardware; use boot trace §7 playbook, stay on WIP **`edk2main`** handoff + FULL teardown skips until last line + **`exit`** behavior are recorded. **FULL** Phase 8 import smokes still open.
 
 ---
 

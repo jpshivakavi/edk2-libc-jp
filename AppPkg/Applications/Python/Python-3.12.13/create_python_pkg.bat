@@ -68,6 +68,20 @@ if not exist "%PYTHON_SRC%\Lib\" (
   exit /b 1
 )
 
+if exist "%PYTHON_SRC%\srcprep.py" (
+  where python >nul 2>&1
+  if not errorlevel 1 (
+    python "%PYTHON_SRC%\srcprep.py"
+  ) else (
+    where py >nul 2>&1
+    if not errorlevel 1 (
+      py -3.10 "%PYTHON_SRC%\srcprep.py"
+    ) else (
+      echo Warning: host python not found; run srcprep.py manually if PyMod Lib changed.
+    )
+  )
+)
+
 mkdir "%OUT_FOLDER%\EFI\bin" 2>nul
 mkdir "%OUT_FOLDER%\EFI\lib\python3.12" 2>nul
 mkdir "%OUT_FOLDER%\EFI\lib\python3.12\lib-dynload" 2>nul

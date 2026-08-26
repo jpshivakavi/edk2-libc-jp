@@ -19,8 +19,8 @@
 #include "efi/edk2stack.h"
 #include "efi/edk2asm.h"
 #include "efi/environ.h"
-#include "efi/edk2excep.h"
 #include "efi/py312boot.h"
+#include "efi/edk2excep.h"
 
 #ifdef PY_UEFI_BOOT_TRACE
 #define PY312_BOOT_PRINT(Step) Print(L"Python312 boot: " Step L"\n")

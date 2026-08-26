@@ -263,6 +263,19 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 2. Confirm: REPL → **`exit(0)`** → Shell → **`exit`**; note whether **`import readline`** loads stub or pyreadline per env.
 3. Record result in **`Python312_VS2022_Migration_Status.md`** Session log (GCC parity line).
 
+### 11.6 FULL **`import ssl`** / Shell **`exit`** — GCC reference vs VS2022 hang
+
+| | **GCC FULL** (lab reference) | **VS2022 FULL** (reported hang) |
+|--|------------------------------|----------------------------------|
+| **`UefiMain` entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on Shell default stack only |
+| **`import ssl` + REPL `exit()`** | Completes; Shell **`exit`** returns to firmware | Often reaches **`before return from UefiMain`** then Shell **`exit`** or relaunch hangs |
+| **Lab bisect (2026-08, VS2022 FULL)** | — | **`import sys`**: Shell **`exit`** OK. **`import _ssl`** / **`socket`**: OK. **`import ssl`** once (`-S -c`, **`ok`**, back to **`Shell>`**): Shell **`exit`** **hangs** (not cumulative — single run reproduces). WIP **`ssl.py`**: **`Purpose`** enum, **`socket` ∉ `sys.modules`**. |
+| **Finalize (2026-08 WIP)** | Normal CPython teardown | Match GCC: full **`_PyModule_Clear`** / **`_ssl`** **`m_clear`**, GC, atexit; **`Lib/ssl/`** package with **`_uefi_min.py`** (no monolithic **`ssl.py`** import graph); **`py312_uefi_phase8_after_finalize`** → **`ERR_clear_error`** + **`edk2_console_handoff_to_shell`** when **`_ssl`** loaded |
+
+**Takeaway:** Do not treat VS2022 ssl/Shell hangs as “OpenSSL on UEFI is broken.” **GCC FULL is the sign-off that Phase 8 + ssl can tear down.** VS2022 fix (2026-08): **`Lib/ssl/_uefi_min.py`** for **`os.name == 'uefi'`**, MSVC teardown aligned with GCC (drop skip-leak path), post-finalize OpenSSL/console handoff — see runtime notes §10.5.
+
+**Longer-term VS2022 goal:** Fix **`edk2_switch_stack`** / alignment for MSVC so FULL can use the **same entry path as GCC** (see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §4), then re-smoke **`import ssl`** without 368-only leaks.
+
 ---
 
-*Last updated: 2026-07-23 (Session 10 — VS2022 MIN manufacturing smoke; §11 runtime divergence).*
+*Last updated: 2026-08-26 (§11.6 **`Lib/ssl/`** UEFI minimal + MSVC teardown parity).*

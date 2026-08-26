@@ -213,6 +213,49 @@ Also set on **`Python312_MIN.inf`** / **`Python312.inf`** MSFT **`CC_FLAGS`** as
 
 **StdLib `Main.c`** boot lines require **`PY_UEFI_BOOT_TRACE`** on the **LibC** compile (via **`AppPkg.dsc`** `[BuildOptions]` when **`BUILD_PYTHON312`**).
 
+### WIP: Shell **`exit`** hang — boot trace playbook (2026-08)
+
+**Symptom:** **`Python312.efi -S -c "…"`** prints **`ok`**, returns to **`Shell>`**, then **`exit`** hangs (BIOS/setup never returns). **Shell `exit` produces no boot lines** — trace only covers **Python + `UefiMain`**.
+
+**Build (WIP tree):** **`PY_UEFI_BOOT_TRACE=1`** is already on **`Python312_MIN.inf`** / **`Python312.inf`** MSFT **`CC_FLAGS`** and **`AppPkg.dsc`** MSFT LibC flags. Rebuild the module you test (MIN or FULL), deploy **`EFI\bin\Python312.efi`** (binary-only OK for these C traces).
+
+**Run on firmware:** Scroll the console or capture serial/log. All lines look like **`Python312 boot: …`**.
+
+**Expected ladder (368 entry, `-S -c` one-liner):**
+
+| Order | Message | Layer |
+|------:|---------|--------|
+| 1 | **`UefiMain enter`** | Firmware entry |
+| 2 | **`ShellCEntryLib 368-style …`** | Before Python |
+| 3 | **`main enter`** … **`after Py_BytesMain`** | **`python.c`** |
+| 4 | **`Py_RunMain after pymain_run_python`** | User **`-c`** finished |
+| 5 | **`Py_FinalizeEx enter`** … **`leave`** | See sub-table below |
+| 6 | **`Py_RunMain after Py_FinalizeEx`** | **`main.c`** |
+| 7 | **`after ShellCEntryLib`** | Back in **`UefiMain`** |
+| 8 | **`after edk2_free_environ`** | Back in **`UefiMain`** (no extra ConIn handoff here — Session 10 / 3.6.8 style) |
+| 9 | **`before return from UefiMain`** | Python app done — **`Shell>`** should appear |
+
+**`Py_FinalizeEx` sub-ladder (pinpoint hang inside finalize):**
+
+| Last line seen | Suspect |
+|----------------|---------|
+| **`finalize_modules enter`** (never **`leave`**) | Module wipe / **`_PyModule_Clear`** / extension **`m_free`** |
+| **`finalize_modules leave`**, hang before **`after finalize_modules`** | **`_PyEval_Fini`** / import fini |
+| Hang after **`before call_ll_exitfuncs`** | C **`atexit`** / **`Py_AtExit`** callbacks (MIN) or **`fflush`** (FULL skips in WIP) |
+| Full ladder through **`before return from UefiMain`**, then Shell **`exit`** hangs | **Post-Python** — Shell/firmware; compare MIN vs FULL and **`import ssl`** vs **`import sys`** |
+
+**Record for each test:** build (**MIN/FULL**), command, **last boot line**, whether **`ok`** printed, whether **`Shell>`** returned, whether **`exit`** hung.
+
+**Bisect commands (same stick, note last line each time):**
+
+```text
+Python312.efi -S -I -c "import sys; print('ok')"
+Python312.efi -S -c "import sys; print('ok')"
+Python312.efi -S -c "import ssl; print('ok')"
+```
+
+**Second launch:** If **`py312_uefi_reentry_cleanup enter`** appears at start of a **second** **`Python312.efi`** without reboot, the prior interpreter was still initialized — note that separately from Shell **`exit`** hangs.
+
 ---
 
 ## 8. Packaging and deployment
@@ -280,6 +323,7 @@ Replacing only **`EFI\bin\Python312.efi`** is OK for **C-only** interpreter chan
 | **`edk2console.c`** | No periodic **1 ms** timer on module init; on detach: drain **ConIn**, **`CloseProtocol`** on **ConInEx**, clear readline hooks |
 | **`edk2main.c`** | No post-**`ShellCEntryLib`** ConOut handoff (3.6.8 has none; MIN verified) |
 | **`pylifecycle.c`** | **FULL only:** skip shutdown **`PyGC_Collect`** / **`_PyGC_CollectNoFail`** on UEFI (**`BUILD_PYTHON312_FULL`**) — MIN keeps stock GC |
+| **`Modules/_ssl.c`** | UEFI: no keylog lock; **`m_clear`/`m_free` no-op; **`moduleobject.c`** skips **`md_dict`** teardown for **`_ssl`** / **`ssl`** module objects |
 
 **Verified flows (VS2022 MIN + 368 entry):**
 
@@ -326,7 +370,56 @@ Disabling **`/LTCG`** on link (**`/LTCG:OFF`** via module **`MSFT:*_*_*_DLINK_FL
 
 ---
 
-## 11. Recommended smoke order (VS2022 + 368 entry)
+## 10.5 FULL **`import ssl`** → Shell **`exit`** hang (VS2022, 2026-07)
+
+| Test | Result |
+|------|--------|
+| **`Python312.efi -S -c "import sys; print(sys.version)"`** then Shell **`exit`** | OK |
+| **`Python312.efi -S -c "import ssl; print('ok')"`** then Shell **`exit`** | **Hang** (Ctrl+Alt+Del) |
+| **`import ctypes`** alone (no **`ssl`**) then Shell **`exit`** | OK (earlier stick) |
+
+**Why `import ssl` hung but `import _ssl` did not:** **`import socket`** loads **`Lib/socket.py`**, which used to **`import selectors`** at module level (**`select` / `_select`**). That chain breaks **Shell `exit`** on VS2022 UEFI; **`import _socket`** alone does not load **`socket.py`**. **`socket.py`** now imports **`selectors`** only inside **`sendfile`** (lazy). Refresh **`EFI\\lib\\python3.12\\socket.py`** (and **`ssl.py`** if testing **`import ssl`**) on the stick — **`.efi`-only is not enough**.
+
+**368 entry interaction:** With **`PY_UEFI_MSVC_368_ENTRY`**, Python returns from **`ShellCEntryLib`**, boot trace can reach **`before return from UefiMain`**, and the hang is still on **Shell `exit`** — firmware teardown after the app image returns, not a Python traceback.
+
+**Do not call `edk2_console_handoff_to_shell()` after `ShellCEntryLib`:** An experiment added post-**`UefiMain`** handoff + **`py312_uefi_openssl_disarm`**; lab trace reached **`before return from UefiMain`** but **Shell `exit`** hung even for **`import sys`**. Console detach stays in **`Programs/python.c`** / **`Modules/main.c`** before **`Py_FinalizeEx`** (§10). **`UefiMain`** matches 3.6.8: **`edk2_free_environ`** then return only.
+
+**Do not drop 368 on VS2022 FULL for ssl exit:** Removing **`/DPY_UEFI_MSVC_368_ENTRY=1`** from **`Python312.inf`** sends FULL through **malloc stack + `py_install_idt`**. On this hardware that **hangs inside `ShellCEntryLib`** (last boot line **`before ShellCEntryLib`**, never **`after ShellCEntryLib`**). **GCC FULL** uses that path successfully; **VS2022 FULL** still needs **368** to reach the interpreter. Fix Shell **`exit`** after **`import ssl`** with teardown/OpenSSL WIP, not by switching entry style.
+
+**VS2022 FULL fix (2026-08 — single-run `import ssl` Shell `exit` hang):**
+
+| Layer | Change |
+|--------|--------|
+| **`Lib/ssl.py`** (UEFI) | **`Purpose`** without **`_txt2obj`**; no **`Lib/socket.py`** at import; **`SSLContext = _SSLContext`**; **stub** **`SSLSocket`/`SSLObject`** (no full socket subtype / wiring at import) |
+| **`pylifecycle.c` / `moduleobject.c`** | Skip **`_PyModule_Clear`** and leaky **`module_dealloc`** for **`ssl`** as well as **`_ssl`** / socket (avoid clearing pure **`ssl`** while **`_ssl`** teardown is MSVC-no-op) |
+| **`py312_openssl_uefi.c`** | **`py312_uefi_phase8_after_finalize()`** → **`ERR_clear_error()`** after **`finalize_modules`** (MSVC FULL only) |
+| **`_ssl.c` / `socketmodule.c`** | Keep MSVC UEFI **`m_clear`/`m_free`** no-ops and no **`WSACleanup`** atexit (documented) |
+
+Redeploy **both** **`Python312.efi`** and **`EFI\lib\python3.12\ssl.py`**.
+
+**FULL build policy (working tree):**
+
+| Change | Role |
+|--------|------|
+| **`Python312.inf`**: keep **`/DPY_UEFI_MSVC_368_ENTRY=1`** | VS2022 FULL must boot (GCC-style entry hangs at **`ShellCEntryLib`**) |
+| Teardown above | MSVC **`import ssl`** parity with GCC sign-off goal |
+| **`OPENSSL_cleanup()`** no-op on **`OPENSSL_SYS_UEFI`** | Avoid stop handlers if anything calls cleanup after **`import ssl`** |
+
+**Stick after rebuild + repackage:**
+
+```text
+Python312.efi -S -c "import ssl; print('ok')"
+```
+
+At **`Shell>`**, type **`exit`**. Must return to firmware without hang.
+
+If boot hangs **before** banner with the GCC-style entry, re-add **`/DPY_UEFI_MSVC_368_ENTRY=1`** to **`Python312.inf`** (required for VS2022 FULL boot today).
+
+---
+
+## 11. Recommended smoke order (VS2022)
+
+**Entry:** **MIN** and **FULL** use **`PY_UEFI_MSVC_368_ENTRY`** on VS2022. GCC-style stack + IDT is for **GCC FULL** only until MSVC entry parity is fixed.
 
 ### MIN (default DSC)
 
@@ -353,6 +446,12 @@ Python312.efi -S -c "import zlib; print(zlib.__name__)"
 Python312.efi -S -c "import ctypes; print(ctypes.__name__)"
 Python312.efi -S -c "import hashlib; print(hashlib.__name__)"
 Python312.efi -S -c "import ssl; print(ssl.__name__)"
+Python312.efi -S -c "import ssl; print('ok')"
+```
+
+After **each** one-liner, at **`Shell>`**, type **`exit`** (must reach firmware).
+
+```text
 Python312.efi -S -c "import zlib, ssl, ctypes, hashlib; print('phase8 ok')"
 ```
 

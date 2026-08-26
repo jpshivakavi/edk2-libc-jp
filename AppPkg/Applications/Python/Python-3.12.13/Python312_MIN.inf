@@ -59,6 +59,7 @@
 
 # --- UEFI glue (from Python312.inf) ---
   PyMod-3.12.13/efi/src/edk2main.c
+  PyMod-3.12.13/efi/src/py312_openssl_uefi.c
   PyMod-3.12.13/efi/src/edk2stack.nasm
   PyMod-3.12.13/efi/src/dummy_dlfcn.c
   PyMod-3.12.13/efi/src/dummy_unistd.c
@@ -84,7 +85,7 @@
   PyMod-3.12.13/Modules/gcmodule.c
   Modules/getbuildinfo.c
   PyMod-3.12.13/Modules/getpath.c
-  Modules/main.c
+  PyMod-3.12.13/Modules/main.c
   Objects/abstract.c
   Objects/boolobject.c
   Objects/bytearrayobject.c
@@ -190,7 +191,7 @@
   Python/pyctype.c
   Python/pyfpe.c
   Python/pyhash.c
-  Python/pylifecycle.c
+  PyMod-3.12.13/Python/pylifecycle.c
   Python/pymath.c
   PyMod-3.12.13/Python/pystate.c
   Python/pystrcmp.c

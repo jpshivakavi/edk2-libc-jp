@@ -163,7 +163,7 @@ DEFINE_RUN_ONCE_STATIC(ossl_init_load_crypto_nodelete)
 #endif
 #if !defined(OPENSSL_USE_NODELETE) \
     && !defined(OPENSSL_NO_PINSHARED)
-# if defined(DSO_WIN32) && !defined(_WIN32_WCE)
+# if defined(DSO_WIN32) && !defined(_WIN32_WCE) && !defined(OPENSSL_SYS_UEFI)
     {
         HMODULE handle = NULL;
         BOOL ret;
@@ -496,6 +496,10 @@ int ossl_init_thread_start(uint64_t opts)
 
 void OPENSSL_cleanup(void)
 {
+#ifdef OPENSSL_SYS_UEFI
+    /* No process exit on UEFI; stop handlers can hang VS2022 Shell exit after import ssl. */
+    return;
+#endif
     OPENSSL_INIT_STOP *currhandler, *lasthandler;
     CRYPTO_THREAD_LOCAL key;
 
@@ -761,6 +765,15 @@ int OPENSSL_init_crypto(uint64_t opts, const OPENSSL_INIT_SETTINGS *settings)
 
 int OPENSSL_atexit(void (*handler)(void))
 {
+#ifdef OPENSSL_SYS_UEFI
+    /*
+     * UEFI has no process exit. Handlers (e.g. store loader, ssl strings)
+     * run during OPENSSL_cleanup() and can hang on VS2022 after import ssl;
+     * GCC FULL smoke does not need them. Skip registration on all UEFI builds.
+     */
+    (void)handler;
+    return 1;
+#else
     OPENSSL_INIT_STOP *newhand;
 
 #if !defined(OPENSSL_USE_NODELETE)\
@@ -823,6 +836,7 @@ int OPENSSL_atexit(void (*handler)(void))
     stop_handlers = newhand;
 
     return 1;
+#endif /* !OPENSSL_SYS_UEFI */
 }
 
 #ifdef OPENSSL_SYS_UNIX

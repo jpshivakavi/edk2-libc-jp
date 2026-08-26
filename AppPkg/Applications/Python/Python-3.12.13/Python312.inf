@@ -59,6 +59,7 @@
 
 # --- UEFI glue (from Python312.inf) ---
   PyMod-3.12.13/efi/src/edk2main.c
+  PyMod-3.12.13/efi/src/py312_openssl_uefi.c
   PyMod-3.12.13/efi/src/edk2stack.nasm
   PyMod-3.12.13/efi/src/dummy_dlfcn.c
   PyMod-3.12.13/efi/src/dummy_unistd.c
@@ -83,7 +84,7 @@
   PyMod-3.12.13/Modules/gcmodule.c
   Modules/getbuildinfo.c
   PyMod-3.12.13/Modules/getpath.c
-  Modules/main.c
+  PyMod-3.12.13/Modules/main.c
   Objects/abstract.c
   Objects/boolobject.c
   Objects/bytearrayobject.c
@@ -189,7 +190,7 @@
   Python/pyctype.c
   Python/pyfpe.c
   Python/pyhash.c
-  Python/pylifecycle.c
+  PyMod-3.12.13/Python/pylifecycle.c
   Python/pymath.c
   PyMod-3.12.13/Python/pystate.c
   Python/pystrcmp.c
@@ -1004,7 +1005,7 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
   PyMod-$(PYTHON_VERSION)/Modules/openssl/efi/src/rand_rdrand.nasm
 
 # Phase 8.4 — libssl + _ssl (same vendored OpenSSL tree as 8.3)
-  Modules/_ssl.c
+  PyMod-3.12.13/Modules/_ssl.c
 
 # libssl sources (44 files) — from LibOpenSSL.inf ssl/ only
   PyMod-$(PYTHON_VERSION)/Modules/openssl/ssl/ssl_ciph.c
@@ -1067,6 +1068,9 @@ PyMod-$(PYTHON_VERSION)/Modules/openssl
 [BuildOptions]
   # libffi: same -I as edk2-py312 edk2-libffi/EFI/LibFFI/LibFFI.inf (Include + libffi/include)
   # Phase 8 FULL (zlib, ctypes, OpenSSL)
+  # FULL VS2022: keep PY_UEFI_MSVC_368_ENTRY — GCC stack+IDT hangs inside ShellCEntryLib
+  # (boot stops at "before ShellCEntryLib"). Shell exit after import ssl is handled via
+  # OpenSSL/Python teardown WIP, not by dropping 368 on FULL.
   MSFT:*_*_*_CC_FLAGS = /GL- /Oi- /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4201 /wd4204 /wd4210 /wd4244 /wd4267 /wd4273 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 /wd4456 /wd4312 /wd4457 /wd4459 /wd4474 /wd4476 /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Include\internal /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\efi\Include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\Modules\_hacl\include /I$(EDK2_LIBC_PATH)\AppPkg\Applications\Python\Python-3.12.13\PyMod-3.12.13\Modules\zlib /I$(LIBFFI_MSVC_INC) /I$(LIBFFI_MSVC_PYMOD_INC) /I$(OPENSSL_ROOT)\efi\include /I$(OPENSSL_ROOT) /I$(OPENSSL_ROOT)\include /DNO_MSABI_VA_FUNCS /DPy_BUILD_CORE /DHAVE_MEMMOVE /DUSE_PYEXPAT_CAPI /DXML_STATIC /DXML_POOR_ENTROPY /DUEFI_C_SOURCE /DPY_UEFI_BOOT_TRACE=1 /DPY_UEFI_MSVC_368_ENTRY=1 /DBUILD_PYTHON312_FULL=1 -D UEFI /WX-
   GCC:*_*_*_CC_FLAGS = -Wno-unused-function -Wno-format -Wno-error -fno-strict-aliasing -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Include/internal -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/efi/Include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_hacl/include -I$(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/zlib -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC) -I$(OPENSSL_ROOT)/efi/include -I$(OPENSSL_ROOT) -I$(OPENSSL_ROOT)/include -DNO_MSABI_VA_FUNCS -Wno-error=maybe-uninitialized -Wno-error=unused-but-set-variable -DPy_BUILD_CORE -DHAVE_MEMMOVE -DBUILD_PYTHON312_FULL=1
   GCC:*_*_X64_PP_FLAGS = -I$(LIBFFI_INC) -I$(LIBFFI_INT_INC)

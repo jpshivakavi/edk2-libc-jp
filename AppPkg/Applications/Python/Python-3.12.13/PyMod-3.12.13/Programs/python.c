@@ -15,8 +15,10 @@ py312_uefi_reentry_cleanup(void)
     if (!Py_IsInitialized()) {
         return;
     }
+    py312_boot_print_ascii("py312_uefi_reentry_cleanup enter");
     edk2_console_detach_readline();
     (void)Py_FinalizeEx();
+    py312_boot_print_ascii("py312_uefi_reentry_cleanup leave");
 }
 
 int

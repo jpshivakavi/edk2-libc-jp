@@ -83,6 +83,16 @@ if [[ ! -d "${PYTHON_SRC}/Lib" ]]; then
   exit 1
 fi
 
+if [[ -f "${PYTHON_SRC}/srcprep.py" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    python3 "${PYTHON_SRC}/srcprep.py"
+  elif command -v python >/dev/null 2>&1; then
+    python "${PYTHON_SRC}/srcprep.py"
+  else
+    echo "Warning: host python not found; run srcprep.py manually if PyMod Lib changed."
+  fi
+fi
+
 BIN_DIR="${OUT_FOLDER}/EFI/bin"
 LIB_DIR="${OUT_FOLDER}/EFI/lib/python3.12"
 ETC_DIR="${OUT_FOLDER}/EFI/stdlib/etc"

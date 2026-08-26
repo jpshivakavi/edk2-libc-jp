@@ -7364,8 +7364,13 @@ os_init(void)
     ret = WSAStartup(0x0101, &WSAData);
     switch (ret) {
     case 0:     /* No error */
+#ifdef UEFI_C_SOURCE
+        /* No process exit; WSACleanup during teardown can hang Shell exit (VS2022). */
+        return 1;
+#else
         Py_AtExit(os_cleanup);
         return 1; /* Success */
+#endif
     case WSASYSNOTREADY:
         PyErr_SetString(PyExc_ImportError,
                         "WSAStartup failed: network not ready");

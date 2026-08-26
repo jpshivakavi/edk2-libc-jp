@@ -1,4 +1,4 @@
-PyMod-3.12.13 ù UEFI overlays for Python 3.12.13 (AppPkg)
+PyMod-3.12.13 ? UEFI overlays for Python 3.12.13 (AppPkg)
 
 Source of truth for all UEFI-specific C, headers, and stdlib Python patches.
 The stock tree under Python-3.12.13/ should match upstream CPython 3.12.13 for
@@ -39,10 +39,12 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Programs/python.c
   Parser/tokenizer.c
   Objects/complexobject.c, Objects/floatobject.c
-  Python/bootstrap_hash.c, fileutils.c, getargs.c, pystate.c, pytime.c, sysmodule.c
+  Python/bootstrap_hash.c, fileutils.c, getargs.c, pystate.c, pytime.c,
+    sysmodule.c, pylifecycle.c
   Modules/config.c, getpath.c, gcmodule.c, posixmodule.c, timemodule.c,
     signalmodule.c, socketmodule.c, faulthandler.c, mathmodule.c, cmathmodule.c,
     _datetimemodule.c, mmapmodule.c, termios.c, _pickle.c, _posixsubprocess.c,
+    main.c, _ssl.c,
     expat/xmlparse.c
   Modules/clinic/posixmodule.c.h
   Include/pyconfig.h, pymath.h, dlfcn.h, pthread.h
@@ -54,9 +56,12 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Modules/readline/          vendored pyreadline (edk2-pyreadline 1e9face)
   Modules/openssl/           vendored OpenSSL 1.1.1f (libcrypto + libssl)
   Modules/libffi/            vendored libffi (_ctypes)
-  Lib/os.py, pathlib.py, site.py, uefipath.py
+  Lib/os.py, pathlib.py, site.py, uefipath.py, socket.py
+  Lib/ssl/               UEFI minimal package (__init__.py, _uefi_min.py, _stdlib.py)
   Lib/importlib/_bootstrap_external.py
   Lib/asyncio/uefi_events.py
+  Tools/uefi_ssl_wrap.py, uefi_ssl_wrap2.py   (optional regen helpers for _stdlib ssl)
+  efi/src/py312_openssl_uefi.c
   efi/                     UefiMain, stack/handler NASM, dummies, pyconfig for -I
 
 Do not reintroduce UEFI edits under Python-3.12.13/ for the paths above.

@@ -486,9 +486,6 @@ def enablerlcompleter():
             pass
 
         if readline.get_current_history_length() == 0:
-            # UEFI: no persistent history or atexit write (hangs / wrong paths).
-            if os.name == 'uefi':
-                return
             # If no history was loaded, default to .python_history.
             # The guard is necessary to avoid doubling history size at
             # each interpreter exit when readline was already configured
