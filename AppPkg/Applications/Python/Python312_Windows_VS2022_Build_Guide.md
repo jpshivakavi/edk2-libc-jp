@@ -158,7 +158,9 @@ dir AppPkg\Applications\Python\Python-3.12.13\patches\*.patch
 
 ## 4. Apply libc patches (**required**, local only — Phase V1.3)
 
-Same four patches as GCC. **Do not commit** `StdLib/` changes.
+Same four patches as GCC. **Do not commit** `StdLib/` changes (target policy for upstream edk2-libc).
+
+**Branch note:** On **`feature/python-3.12.13-vs2022`**, patched StdLib files may **already be in git**; **`git apply`** then fails with *already exists* / *patch does not apply* — skip apply and verify **`upipe.c`** / **`Uefi.inf`** (see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **§ Branch drift — StdLib already patched**). Before **final** upstream push, revert StdLib to baseline and keep **`patches/*.patch`** only (**§ Pre-upstream-push cleanup**).
 
 ```cmd
 cd c:\Users\njayapra\github\edk2-libc-jp-vsfix
@@ -319,8 +321,10 @@ Recommended smoke (MIN): runtime notes **§11** (`-h`, `-S -c`, REPL → **`exit
 | `No module named edk2toolext'` | `pip install -r edk2\pip-requirements.txt` |
 | NASM not found | Set `NASM_PREFIX` (e.g. `C:\NASM\`) before `edksetup` / `build` |
 | Missing `frozen_modules/*.h` | Copy from WSL (§6 A), **`Tools\build\regen_frozen_windows.cmd`** (§6 C), or WSL `make frozen` (§6 B) |
-| `git apply` fails | Apply patches one-by-one; use `--ignore-whitespace` |
+| `git apply` fails | On **`feature/python-3.12.13-vs2022`**, often **already patched** — see migration status **§ Branch drift**; verify **`upipe.c`**. After StdLib reset for upstream, apply patches one-by-one with `--ignore-whitespace` |
 | OpenSSL symlink on Windows | Optional for monolithic build; `git restore` path under `PyMod-.../LibOpenSSL/openssl` if needed |
+| **`LNK2001`** **`OPENSSL_ia32_rdseed_bytes`** / **`rdrand_bytes`** | FULL link: ensure **`PyMod-.../Modules/openssl/efi/src/rand_rdrand.nasm`** is in **`Python312.inf`** and exports those **`global`** symbols (**win64** **`rcx`/`rdx`**). See deviations **§11.7** and lab [`2026-08-27_…_RNG.md`](./Python312_VS2022_Lab/2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md) |
+| **`ssl.create_default_context()`** hangs (VS2022) | Same **§11.7** / lab note — rebuild after **`rand_rdrand.nasm`** + **`rand_efi.c`**; smoke: `-S -c "import ssl; ssl.create_default_context(); print('ok')"` then Shell **`exit`** |
 
 ---
 

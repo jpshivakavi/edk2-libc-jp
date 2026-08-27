@@ -73,9 +73,8 @@ def create_default_context(purpose=Purpose.SERVER_AUTH, *, cafile=None,
     is_client = (purpose == Purpose.CLIENT_AUTH)
     purpose = _materialize_purpose(purpose)
     if is_server:
+        # C _SSLContext(PROTOCOL_TLS_CLIENT) already sets CERT_REQUIRED + check_hostname.
         context = SSLContext(PROTOCOL_TLS_CLIENT)
-        context.verify_mode = CERT_REQUIRED
-        context.check_hostname = True
     elif is_client:
         context = SSLContext(PROTOCOL_TLS_SERVER)
     else:

@@ -1,47 +1,47 @@
-;; --*- nasm -*-
+;; -*- nasm -*-
+;; RDSEED/RDRAND for OpenSSL rand_lib.c (OPENSSL_RAND_SEED_RDCPU).
+;; win64: RCX=buf, RDX=len, return RAX=len (MSVC/EDK VS2022).
+;; elf64: RDI=buf, RSI=len, return RAX=len (GCC UEFI).
+
 section .text
 
-;; size_t OPENSSL_ia32_rdseed_bytes(unsigned char *buf, size_t len);
-;; size_t OPENSSL_ia32_rdrand_bytes(unsigned char *buf, size_t len);
-        
-global OPENSSL_ia32_rdseed_bytes
-
-OPENSSL_ia32_rdseed_bytes:
-        push rcx
-        push rbx
-
-        mov rbx, rsi
-        mov rcx, rsi
-.l1:
-        rdseed rax
-        mov [rdi], al
-        inc rdi
-        
-        loop .l1
-
-        mov rax, rbx
-        
-        pop rbx
-        pop rcx
+%macro DEF_CPU_RANDOM 2
+global %1
+%1:
+%ifidn __OUTPUT_FORMAT__, win64
+        mov     r10, rcx
+        mov     r11, rdx
+        mov     r8, rdx
+        test    r11, r11
+        jz      %1_done
+%1_loop:
+        %2
+        jnc     %1_loop
+        mov     [r10], al
+        inc     r10
+        dec     r11
+        jnz     %1_loop
+        mov     rax, r8
+%1_done:
         ret
-        
-global OPENSSL_ia32_rdrand_bytes
-        
-OPENSSL_ia32_rdrand_bytes:
-        push rcx
-        push rbx
-
-        mov rbx, rsi
-        mov rcx, rsi
-.l1:
-        rdrand rax
-        mov [rdi], al
-        inc rdi
-        
-        loop .l1
-
-        mov rax, rbx
-        
-        pop rbx
-        pop rcx
+%else
+        mov     r10, rdi
+        mov     r11, rsi
+        mov     r8, rsi
+        test    r11, r11
+        jz      %1_done
+%1_loop:
+        %2
+        jnc     %1_loop
+        mov     [r10], al
+        inc     r10
+        dec     r11
+        jnz     %1_loop
+        mov     rax, r8
+%1_done:
         ret
+%endif
+%endmacro
+
+DEF_CPU_RANDOM OPENSSL_ia32_rdseed_bytes, rdseed rax
+DEF_CPU_RANDOM OPENSSL_ia32_rdrand_bytes, rdrand rax

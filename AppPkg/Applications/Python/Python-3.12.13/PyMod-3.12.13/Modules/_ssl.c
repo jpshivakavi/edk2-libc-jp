@@ -3104,7 +3104,13 @@ _ssl__SSLContext_impl(PyTypeObject *type, int proto_version)
         /* stick to OpenSSL's default settings */
         result = 1;
 #else
+#ifdef UEFI_C_SOURCE
+        /* UEFI OpenSSL 1.1.1f: Python's @SECLEVEL=2 cipher string can hang or
+         * misbehave in SSL_CTX_set_cipher_list; match 3.6.8 AppPkg list. */
+        result = SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!eNULL:!MD5");
+#else
         result = SSL_CTX_set_cipher_list(ctx, PY_SSL_DEFAULT_CIPHER_STRING);
+#endif
 #endif
     } else {
         /* SSLv2 needs MD5 */

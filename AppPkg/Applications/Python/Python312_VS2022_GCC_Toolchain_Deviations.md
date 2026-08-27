@@ -276,6 +276,34 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 **Longer-term VS2022 goal:** Fix **`edk2_switch_stack`** / alignment for MSVC so FULL can use the **same entry path as GCC** (see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §4), then re-smoke **`import ssl`** without 368-only leaks.
 
+### 11.7 **`ssl.create_default_context()`** — GCC OK, VS2022 hang (OpenSSL RNG ABI)
+
+| | **GCC FULL** | **VS2022 FULL** (before fix) | **VS2022 FULL** (after fix, lab 2026-08-27) |
+|--|--------------|------------------------------|-----------------------------------------------|
+| **`import ssl; print('ok')`** | OK | OK | OK |
+| **First `SSLContext()` / `create_default_context()`** | OK | Hang inside Python | OK — **`ok`**, **`Shell>`**, **`exit`** → BIOS |
+| **OpenSSL entropy** | Same **`rand_efi.c`** + **`rand_rdrand.nasm`** in INF | Same sources, **different** NASM object ABI | **`win64`** NASM + **`uefi_urandom`** pool fill |
+| **Link** | — | **`LNK2001`** **`OPENSSL_ia32_rdseed_bytes`** / **`rdrand_bytes`** if NASM lacked **`global`** exports | Link green |
+
+**Why GCC is fine:** EDK **GCC** builds **`rand_rdrand.nasm`** as **elf64** — **`rdi`/`rsi`** match the assembly. **VS2022** builds **`win64`** — the old NASM used **`rdi`/`rsi`** while MSVC passes **`buf`/`len` in `rcx`/`rdx`**, so the byte **`loop`** ran with a garbage count → infinite stall the first time OpenSSL **`RAND`** pulled CPU seeding (**`SSL_CTX_new`** on **`create_default_context()`** ).
+
+**Link failure:** **`rand_lib.c`** ( **`OPENSSL_RAND_SEED_RDCPU`** ) references **`OPENSSL_ia32_rdseed_bytes`** and **`OPENSSL_ia32_rdrand_bytes`**. NASM must declare **`global`** with those exact symbol names; otherwise **`rand_lib.obj`** fails at link with **`LNK2001`** even when assembly “looks” correct.
+
+**Not only toolchain:** UEFI **`_ssl.c`** avoids Python 3.12’s **`@SECLEVEL=2:…`** default cipher string (OpenSSL 1.1.1f on firmware); **`Lib/ssl/_uefi_min.py`** avoids duplicating C-set verify flags. Primary stall was **NASM ABI + exports**; cipher/ctor tweaks are belt-and-suspenders.
+
+**VS2022 fix (2026-08-27, PyMod):**
+
+| File | Change |
+|------|--------|
+| **`Modules/openssl/efi/src/rand_rdrand.nasm`** | **`DEF_CPU_RANDOM`**: **`win64`** vs **elf64** args; **`global`** **`OPENSSL_ia32_rdseed_bytes`** / **`OPENSSL_ia32_rdrand_bytes`** |
+| **`Modules/openssl/efi/src/rand_efi.c`** | Fill pools via **`uefi_urandom`** (EFI RNG) with correct entropy counts |
+| **`Modules/_ssl.c`** | UEFI: **`HIGH:!aNULL:!eNULL:!MD5`** instead of **`PY_SSL_DEFAULT_CIPHER_STRING`** |
+| **`Lib/ssl/_uefi_min.py`** | Client **`create_default_context`**: no redundant **`verify_mode`** / **`check_hostname`** |
+
+**Lab sign-off:** [`Python312_VS2022_Lab/2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md`](./Python312_VS2022_Lab/2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md)
+
+**Regression:** After changing NASM or **`rand_efi.c`**, re-smoke **VS2022** with **`import ssl; ssl.create_default_context(); print('ok')`** then Shell **`exit`**. **GCC** one-liner is cheap parity.
+
 ---
 
-*Last updated: 2026-08-26 (§11.6 **`Lib/ssl/`** UEFI minimal + MSVC teardown parity).*
+*Last updated: 2026-08-27 (§11.7 verified: VS2022 **`create_default_context()`** + link symbols).*
