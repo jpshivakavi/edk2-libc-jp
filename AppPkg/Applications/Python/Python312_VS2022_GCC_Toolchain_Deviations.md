@@ -205,7 +205,7 @@ EFI/stdlib/etc/
 ## 10. Maintenance rules
 
 1. **Toolchain split:** new asm → **`| GCC`** vs **`| MSFT`** (or NASM vs `.S`) in **`Python312.inf`**; do not add global MSFT `-I` to vendored libffi on GCC.
-2. **Shared header change** (OpenSSL, `pyconfig`, deepfreeze): run **GCC** and **VS2022** builds before merge to **`apppkg`**.
+2. **Shared header change** (OpenSSL, `pyconfig`, deepfreeze): run **GCC** and **VS2022** builds on **`feature/python-3.12.13-vs2022`** before push/PR (sole manufacturing branch; **`apppkg`** is reference-only).
 3. **MSVC-only link symbol:** prefer UEFI guards in OpenSSL headers first; add to **`openssl_uefi_msvc.c`** only when stubs are required.
 4. **Document** new splits in this file and a line in **`Python312_VS2022_Migration_Status.md`** Session log.
 

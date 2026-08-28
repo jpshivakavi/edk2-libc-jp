@@ -10,9 +10,9 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-08-27 (VS2022 FULL **`create_default_context()`** RNG fix; StdLib drift / pre-upstream-push cleanup)
-**Strategy:** MSVC peer to GCC FULL; same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs stay in **`PyMod-3.12.13/Modules/`**  
-**Branch:** `feature/python-3.12.13-vs2022` (from `feature/python-3.12.13-apppkg`)  
+**Updated:** 2026-08-28 (vs2022 = sole manufacturing branch; apppkg reference-only)
+**Strategy:** **Single line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **`feature/python-3.12.13-apppkg`** kept as **read-only reference** (GCC port / 3.6.8 AppPkg structure alignment) — **no merge back into apppkg**. Same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs in **`PyMod-3.12.13/Modules/`**  
+**Branch:** **`feature/python-3.12.13-vs2022`** — sole manufacturing line (forked from **`feature/python-3.12.13-apppkg`**; apppkg now **reference only**)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
 **Windows WORKSPACE:** `c:\Users\njayapra\github\edk2` (tianocore/edk2 — `edksetup.bat`, `Build\`)  
 **Libc clone / `EDK2_LIBC_PATH`:** `c:\Users\njayapra\github\edk2-libc-jp-vsfix` (active VS2022 workspace; branch **`feature/python-3.12.13-vs2022`**)  
@@ -24,10 +24,12 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 
 ---
 
-## Current status (2026-07-23)
+## Current status (2026-08-28)
 
 **Branch:** `feature/python-3.12.13-vs2022` · **Workspace clone:** `edk2-libc-jp-vsfix` · **Remote:** `jpshivakavi/edk2-libc-jp`  
-**Branch tip:** **`feature/python-3.12.13-vs2022`** — 2026-08-27 commit adds VS2022 FULL **`ssl.create_default_context()`** (OpenSSL RNG/NASM). Tag **`python312-vs2022-full-lab-2026-08-26`** → **`3568d02d`** remains the earlier **`import ssl`** Shell **`exit`** reference.
+**Branch tip:** **`0e34cb60`** — PyMod README cleanup after obsolete **`uefi_ssl_wrap*.py`** removal. **Manufacturing ssl (VS2022 FULL, lab):** **`4dec4edf`** — **`ssl.create_default_context()`** + OpenSSL **`rand_rdrand.nasm`** win64 / **`LNK2001`** fix; **`3568d02d`** — **`import ssl`** + Shell **`exit`** (tag **`python312-vs2022-full-lab-2026-08-26`**). Optional new tag for RNG sign-off: see **§ Git tags**.
+
+**Long-term build line:** Use **this branch** for **both** **`build -t GCC`** (WSL) and **`build -t VS2022`** (Windows) — see **§ Single codebase — one branch for GCC and VS2022**.
 
 ---
 
@@ -43,6 +45,24 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 
 **GCC AppPkg milestone tags (reference):** `python312-apppkg-8.2` … `8.5` on `feature/python-3.12.13-apppkg` — see [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md).
 
+**Optional tag (not created yet):** e.g. **`python312-vs2022-full-lab-2026-08-27`** at **`4dec4edf`** or tip after full V6 matrix — pins **`create_default_context()`** + RNG fix separately from **`3568d02d`**.
+
+---
+
+## Single codebase — one branch for GCC and VS2022 (2026-08-28)
+
+**Goal:** One git branch for manufacturing and development — **no separate GCC-only vs VS2022-only code lines.**
+
+| Question | Answer |
+|----------|--------|
+| **Can `feature/python-3.12.13-vs2022` be that branch?** | **Yes.** Same **`Python312.inf`** / **`Python312_MIN.inf`**, same **`PyMod-3.12.13/`**, same Phase 8 vendored trees. EDK selects **`| GCC`** vs **`| MSFT`** sources and flags per **`build -t`**. |
+| **Where is the GCC AppPkg port?** | **`feature/python-3.12.13-apppkg`** — **reference only** (historical GCC milestones, layout parity with **3.6.8 AppPkg** structure). **Do not use for day-to-day builds.** Manufacturing GCC uses **`feature/python-3.12.13-vs2022`**. As of **2026-08-28**, apppkg has **no commits vs2022 lacks** (merge-base **`a6c0cbd7`**; vs2022 **+23**). |
+| **Two ports?** | **No** — one port with toolchain splits. Details: [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) §1. |
+| **Build commands (same branch, same clone)** | **GCC:** WSL — [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md), **`create_python_pkg.sh GCC …`**. **VS2022:** Windows — [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md), **`create_python_pkg.bat VS2022 …`**. |
+| **Shared PyMod on vs2022 affects GCC too** | Commits after apppkg merge-base (e.g. **`Lib/ssl/`**, **`rand_rdrand.nasm`** elf64+win64, **`rand_efi.c`**, REPL/readline stub policy) apply when you **`build -t GCC`** from this branch — **run GCC regression on vs2022 tip**, not stale apppkg tip. |
+| **Runtime differences** | Same sources; **GCC** uses **`edk2_switch_stack` + `py_install_idt`**; **VS2022** uses **`PY_UEFI_MSVC_368_ENTRY`** — deviations **§11**. Not a reason for two branches. |
+| **End state (locked 2026-08-28)** | **`feature/python-3.12.13-vs2022`** is the **only** active branch for GCC + VS2022 builds and upstream PR work. **No merge** vs2022 → apppkg. **`feature/python-3.12.13-apppkg`** stays frozen as **GCC / 3.6.8-structure reference** (tags **`python312-apppkg-8.x`**, [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)). **Pre-upstream-push cleanup** on **vs2022** is still required before final edk2-libc contribution. |
+
 ---
 
 | Area | State |
@@ -52,7 +72,8 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | **REPL / readline vs GCC** | **Same Python sources** on branch disable pyreadline by default on **`os.name == 'uefi'`**; **GCC Phase 8** historically ran **pyreadline + Tab** without Shell hang; **VS2022 required** this policy for sign-off — treat **VS2022** as **stdio REPL + optional `PY_UEFI_READLINE=1`** only |
 | **Frozen / deepfreeze** | **`Python/deepfreeze/deepfreeze.c`** is **committed** (latin1 + **`statically_allocated`** fixes applied). Regen only when changing frozen inputs — use **`regen_frozen_windows.cmd`** (§5): **`deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
 | **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Link Done**; **368 entry on FULL INF**; **Lab (2026-08-26):** **`import ssl`** + Shell **`exit`**; **Lab (2026-08-27):** **`ssl.create_default_context()`** + Shell **`exit`** — [`Python312_VS2022_Lab/`](./Python312_VS2022_Lab/) |
-| **GCC regression** | Last green **2026-07-20**; **mandatory re-run** after commits **`59000200`** / **`3814cf9a`** (REPL teardown, `readline.py`, `pylifecycle.c`) |
+| **Unified branch (GCC + VS2022)** | **`feature/python-3.12.13-vs2022`** is the **superset** line — see **§ Single codebase** |
+| **GCC regression** | Last green **2026-07-20**; **mandatory re-run on vs2022 tip** after Session 6+ and ssl/RNG PyMod (**`4dec4edf`**, etc.) |
 | **V7 CI** | No **`build-python312-uefi-vs2022.yaml`** yet |
 | **Debug scaffolding** | **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** probes, **`Py_DEBUG 1`** in UEFI **`pyconfig.h`** — trim when FULL is stable |
 
@@ -70,7 +91,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | V3 | MSFT `[BuildOptions]` in `Python312.inf` | **Done** |
 | V4 | Toolchain-split sources; FULL VS2022 link | **Done** (`Python312.efi` / module link green) |
 | V5 | Packaging on Windows (`create_python_pkg.bat`) | **Done** (user **`myUEFIPy312`**; PREFIX volume-relative — see Session 7) |
-| V6 | Runtime smoke (MIN → FULL) | **Partial (lab)** — MIN Session 10; **FULL:** core Phase 8 one-liners + Shell **`exit`** signed off 2026-08-26 ([lab note](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md)); extended matrix (REPL, zlib, readline) open |
+| V6 | Runtime smoke (MIN → FULL) | **Partial (lab)** — MIN Session 10 **Done**; **FULL (VS2022):** **`import ssl`**, **`ssl.create_default_context()`**, hashlib/ctypes smokes + Shell **`exit`** ([2026-08-26](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md), [2026-08-27 RNG](./Python312_VS2022_Lab/2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md)); **open:** full § V6 matrix (zlib combo, FULL REPL), **GCC** smokes on same branch |
 | V7 | Docs and CI (`build-python312-uefi-vs2022.yaml`) | **Partial** (build guide, deviations doc, this status; no 3.12 CI) |
 | V8 | Vendored FULL on VS2022 (8.1→8.2→8.5→8.3→8.4) | **Done** (same monolithic INF as GCC; MSFT-specific glue only) |
 
@@ -95,7 +116,9 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 
 | Item | Choice |
 |------|--------|
-| Baseline | GCC **Phase 8 FULL** on `feature/python-3.12.13-apppkg` — do not regress |
+| Baseline | GCC **Phase 8 FULL** behavior — originally developed on **`feature/python-3.12.13-apppkg`** (reference); **verify on `feature/python-3.12.13-vs2022` tip** |
+| **Manufacturing branch** | **`feature/python-3.12.13-vs2022`** only — **`build -t GCC`** (WSL) and **`-t VS2022`** (Windows); **§ Single codebase** |
+| **`feature/python-3.12.13-apppkg`** | **Reference archive** — GCC port phases, 3.6.8 AppPkg structural alignment; **not** merged into from vs2022 |
 | `PACKAGES_PATH` | `<edk2>;<edk2-libc>` only — no sandbox LibFFI/OpenSSL/zlib packages |
 | INF | **`Python312_MIN.inf`** + **`Python312.inf`** via **`BUILD_PYTHON312_FULL`** in DSC (no `!if` inside INF); MSFT **`PY_UEFI_MSVC_368_ENTRY`** for runtime — see runtime notes |
 | `pyconfig` source of truth | **`PyMod-3.12.13/Include/pyconfig.h`** + **`efi/Include/pyconfig.h`** → **`srcprep.py`** |
@@ -470,7 +493,7 @@ PyMod-3.12.13/Modules/cpu.nasm, cpu_gcc.s, cpu_ia32.nasm, cpu_ia32_gcc.s
 | Step | Action | Result |
 |------|--------|--------|
 | V6.1 | Banner **3.12.13**, `import os, sys, json` | **Done** (MIN, Session 9–10) |
-| V6.2 | FULL: `zlib`, `readline`, `ctypes`, `hashlib`, `ssl` | **Not started** |
+| V6.2 | FULL: `zlib`, `readline`, `ctypes`, `hashlib`, `ssl` | **Partial (VS2022 lab)** — ssl/hashlib/ctypes/**`create_default_context()`** passed; record **zlib** + combined **`phase8 ok`** + FULL REPL in § V6 |
 | V6.3 | **`Python312.efi -S`** / **`-v`** from Shell on correct **`fsN:`** | **Done** (MIN; Session 10) |
 
 See port plan **§ Phase V6** for full matrix.
@@ -532,7 +555,9 @@ Record FULL results here and in **Phase V6 result** when lab sign-off is done. D
 
 ### Phase V6 result
 
-**MIN (VS2022):** Session 10 (2026-07-23) — **`-h`**, REPL, stub **`import readline`** signed off. **WIP (2026-08):** Shell **`exit`** after **`-S -c`** (e.g. **`import sys`**) still hangs on lab hardware; use boot trace §7 playbook, stay on WIP **`edk2main`** handoff + FULL teardown skips until last line + **`exit`** behavior are recorded. **FULL** Phase 8 import smokes still open.
+**MIN (VS2022):** Session 10 (2026-07-23) — **`-h`**, REPL, stub **`import readline`**, Shell **`exit`** signed off.
+
+**FULL (VS2022, lab 2026-08-26 / 2026-08-27):** **`import ssl`**, **`ssl.create_default_context()`**, hashlib, ctypes one-liners; **`Shell>`** → **`exit`** → BIOS — no hang. See lab notes linked from **§ Git tags**. **Still open on this branch:** explicit **`import zlib`**, combined Phase 8 one-liner, FULL REPL regression; **GCC FULL** same smokes on **vs2022 tip** (mandatory before declaring manufacturing-ready).
 
 ---
 
@@ -575,20 +600,21 @@ Execute in order **8.1 → 8.2 → 8.5 → 8.3 → 8.4** (same as GCC); after ea
 
 ## GCC regression gate (mandatory after VS2022 tree changes)
 
-After **`Python312.inf`**, **`pyconfig.h`**, or PyMod MSVC edits:
+Run from **`feature/python-3.12.13-vs2022`** (same branch as VS2022 — **§ Single codebase**). After **`Python312.inf`**, **`pyconfig.h`**, or **any shared PyMod** edit (ssl, openssl, REPL, deepfreeze):
 
-1. WSL: **`git apply`** patches if needed → **`srcprep.py`** → **`BUILD_PYTHON312 -t GCC`** → **`create_python_pkg.sh`**
+1. WSL: **`git apply`** patches if needed (on this branch often **skip** — **§ Branch drift**) → **`srcprep.py`** → **`BUILD_PYTHON312 -t GCC`** + **`BUILD_PYTHON312_FULL=TRUE`** → **`create_python_pkg.sh`**
 2. **`vs2022_verify/verify_pyconfig_gcc.sh`**
 3. On Windows (after pyconfig edits): **`vs2022_verify/verify_pyconfig_msft.bat`**
+4. UEFI smokes: REPL/Shell **`exit`**; **`import ssl; ssl.create_default_context(); print('ok')`** (shared **`rand_rdrand.nasm`** / **`rand_efi.c`**)
 
-Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run required** after Session 6 (deepfreeze, generated headers, OpenSSL **`opensslconf.h`**, **`config.c`**).
+Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run required** on **vs2022 tip** after Session 6+ and **`4dec4edf`** ssl/RNG changes.
 
 ---
 
 ## Known issues / follow-ups
 
-1. ~~**V6 MIN runtime smoke**~~ — **Done** on VS2022 (2026-07-23, Session 10): REPL + Shell **`exit`** + stub **`import readline`**. **FULL** runtime + Phase 8 import smokes still open.
-2. **WSL GCC regression** not re-run after Session 6–10 — mandatory before merge to **`apppkg`** (REPL/readline policy may change GCC UX vs pre-**`59000200`** stick).
+1. ~~**V6 MIN runtime smoke**~~ — **Done** on VS2022 (2026-07-23, Session 10). **FULL (VS2022):** core ssl smokes **Done** (2026-08-26/27 lab); **zlib** / combined import / FULL REPL / **GCC** matrix **open**.
+2. **WSL GCC regression** on **`feature/python-3.12.13-vs2022` tip** — mandatory before upstream PR / manufacturing sign-off (shared PyMod since **`a6c0cbd7`**).
 3. **VS2022 vs GCC runtime** is **not** identical for firmware entry and interactive REPL — documented in **GCC deviations §11**; do not assume GCC pyreadline behavior applies to VS2022 manufacturing.
 4. Re-**`git apply`** **`patches/*.patch`** after **`StdLib/`** cleanup **only if** those trees were reset to unpatched upstream (see **§ Branch drift — StdLib already patched**). On **`feature/python-3.12.13-vs2022`** today, **`git apply`** often fails with *already exists* / *patch does not apply* — that usually means patches are **already** in the tree; skip apply and build.
 5. **`_ctypes_test`**: compiled **`| GCC`** only; excluded from UEFI **`config.c`** on both toolchains.
@@ -600,16 +626,19 @@ Last known green GCC: user WSL **2026-07-20** (after V2/V3 INF prep). **Re-run r
 
 ## Next actions (recommended)
 
-**Follow:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) · [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10
+**Branch:** **`feature/python-3.12.13-vs2022`** for **both** toolchains — sole manufacturing line (**§ Single codebase**). **`feature/python-3.12.13-apppkg`** = reference only.
 
-On Windows, in order:
+**Follow:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) · [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) · [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10 · **§ V6** smoke commands
 
-1. **FULL** build: **`BUILD_PYTHON312_FULL=TRUE`**, package, deploy; smoke **`import zlib`**, **`import ssl`**, **`import ctypes`**, **`hashlib`** (runtime notes §11). **`Python312.inf`** MSFT flags include **`PY_UEFI_MSVC_368_ENTRY`** (same as MIN).
-2. **Cleanup (optional):** remove **`PY_UEFI_BOOT_TRACE`** / **`Main.c`** probes when FULL is stable; consider **`#undef Py_DEBUG`** in UEFI **`pyconfig.h`**.
-3. WSL: **`BUILD_PYTHON312 -t GCC`** + **`create_python_pkg.sh`** — confirm REPL/Shell **`exit`** with post–Session 10 **`readline.py`** / **`site.py`** (deviations §11).
-4. **V7:** **`build-python312-uefi-vs2022.yaml`**, **`Py312ReadMe.txt`** VS2022 section.
-5. **Before final push to upstream edk2-libc:** complete **§ Pre-upstream-push cleanup** (StdLib patch dirt, debug scaffolding, stock-tree policy).
-6. **Future (not manufacturing):** VS2022 default **pyreadline** parity with historical GCC smoke — needs dedicated branch + full teardown matrix.
+**Order:**
+
+1. **VS2022 FULL V6 finish** — package from tip; run remaining § V6 rows (**`import zlib`**, **`phase8 ok`**, FULL REPL → Shell **`exit`**); optional git tag **`python312-vs2022-full-lab-2026-08-27`**.
+2. **GCC regression (same branch, vs2022 tip)** — WSL FULL build + **`create_default_context()`** + REPL/Shell **`exit`** (**§ GCC regression gate**).
+3. **Upstream / PR** — open contribution from **`feature/python-3.12.13-vs2022`** after GCC gate + **§ Pre-upstream-push cleanup** (do **not** back-merge into apppkg).
+4. **Cleanup (optional):** **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** probes, **`Py_DEBUG`** in UEFI **`pyconfig.h`** when FULL stable.
+5. **V7:** **`build-python312-uefi-vs2022.yaml`** (matrix **GCC + VS2022** on **vs2022** branch), **`Py312ReadMe.txt`** VS2022 section.
+6. **Before final upstream edk2-libc PR:** **§ Pre-upstream-push cleanup** (StdLib patch dirt, stock **`Python-3.12.13/`** policy).
+7. **Future (not manufacturing):** VS2022 **pyreadline** parity with historical GCC — separate experiment branch.
 
 ---
 
@@ -652,7 +681,7 @@ Complete before opening the **final** PR / merge to **`jpshivakavi/edk2-libc-jp`
 | 2 | **Build guide / status wording** | Restore “apply patches every checkout” as the **consumer** workflow once (1) is done; remove or shorten **§ Branch drift** when drift is fixed. |
 | 3 | **Stock `Python-3.12.13/`** | Upstream CPython 3.12.13 in git; UEFI **`.py`/`.h`** overlays only via **`PyMod-3.12.13/`** + **`srcprep.py`** — no committed **`Lib/ssl/`** under stock tree (see table **PyMod source of truth**). |
 | 4 | **Debug scaffolding** | Remove or gate **`PY_UEFI_BOOT_TRACE`**, StdLib **`Main.c`** boot probes, optional **`Py_DEBUG`** in UEFI **`pyconfig.h`** when FULL is stable (see **Current status** table). |
-| 5 | **One-off / obsolete tools** | Drop or archive superseded scripts (e.g. monolithic **`uefi_ssl_wrap*.py`**) if **`Lib/ssl/`** package is the only supported path. |
+| 5 | **One-off / obsolete tools** | ~~**`uefi_ssl_wrap*.py`**~~ removed from workspace; PyMod README updated (**`0e34cb60`**). Keep **`Lib/ssl/`** as only ssl path. |
 | 6 | **Lab / tag** | Keep tag **`python312-vs2022-full-lab-2026-08-26`** → **`3568d02d`** as manufacturing reference; re-tag only after (1)–(3) if rebuild is required. |
 
 **After (1):** document in **`Python312_Windows_VS2022_Build_Guide.md`** §4 that **`git apply`** is **required** again on every clean libc checkout.
