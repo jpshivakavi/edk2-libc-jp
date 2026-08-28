@@ -60,7 +60,6 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Lib/ssl/               UEFI minimal package (__init__.py, _uefi_min.py, _stdlib.py)
   Lib/importlib/_bootstrap_external.py
   Lib/asyncio/uefi_events.py
-  Tools/uefi_ssl_wrap.py, uefi_ssl_wrap2.py   (optional regen helpers for _stdlib ssl)
   efi/src/py312_openssl_uefi.c
   efi/                     UefiMain, stack/handler NASM, dummies, pyconfig for -I
 
