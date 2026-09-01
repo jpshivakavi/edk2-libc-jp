@@ -39,8 +39,30 @@ Each: **`-S -c "…"`** → **`Shell>`** → **`exit`** → BIOS/setup, **no han
 
 ---
 
+## Optional pyreadline (GCC only — passed 2026-09-01)
+
+**Not** manufacturing default. Canonical write-up: migration status **§ UEFI REPL / pyreadline**.
+
+```text
+set PY_UEFI_READLINE 1
+Python312.efi -S
+```
+
+| Step | Result |
+|------|--------|
+| **`import readline`** at **`>>>`** (before arrow keys) | Required — installs **`PyOS_ReadlineFunctionPointer`** via **edk2console** |
+| Up-arrow after typing a line | History recall **OK** |
+| Tab | Completion **OK** |
+| **`exit()`** → **`Shell>`** → **`exit`** | **No hang** |
+
+**Failure mode (documented):** with env set but **without** **`import readline`**, up-arrow on stdio REPL → **`SyntaxError: invalid non-printable character U+001B`** (ESC from escape sequence).
+
+**VS2022:** pyreadline opt-in **not** re-tested on this branch after Session 10 policy.
+
+---
+
 ## Meaning
 
 **VS2022-track PyMod** (ssl package, OpenSSL RNG, teardown) does **not** break **GCC FULL** manufacturing on the **same branch**. Host GCC toolchain was **unchanged** from prior AppPkg work (toolchain upgrade deferred).
 
-**Open:** FULL interactive REPL smoke on GCC image; optional git tag; pre-upstream-push cleanup.
+**Open:** default stdio **`Python312.efi -S`** REPL sign-off; pre-upstream-push cleanup; optional unified git tag.

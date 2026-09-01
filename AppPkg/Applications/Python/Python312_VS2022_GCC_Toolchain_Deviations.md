@@ -237,15 +237,18 @@ GCC builds do **not** use the 368 entry workaround.
 
 ### 11.3 Interactive REPL, pyreadline, and Shell **`exit`**
 
-| Topic | GCC (historical reference) | VS2022 (manufacturing sign-off) |
-|--------|----------------------------|----------------------------------|
-| **Phase 8 smoke** ([`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)) | **`import readline`** → **pyreadline**; REPL **Tab** / line editing via **edk2console** | Same **package layout** on stick, but **VS2022** with pyreadline caused **REPL `exit()` hang**, **Shell `exit` hang**, **second launch** failures |
-| **Session 10 policy (both toolchains in source)** | **`main.c`**: skip auto **`readline`** unless **`PY_UEFI_PYREADLINE`** at compile; **`site.py`**: no **`enablerlcompleter`** on **`uefi`**; **`readline.py`**: stub unless env **`PY_UEFI_READLINE=1`** | **User-verified** stdio REPL + Shell teardown; stub **`import readline`** safe |
-| **Default UX after deploy** | **Not re-smoked** on WSL after **`59000200`** / **`3814cf9a`** — packaged GCC stick may now match **stdio REPL** even though earlier GCC sign-off used **pyreadline** | **Stdio `>>>`** (like **3.6.8**), no Tab completion unless experimental opt-in |
+| Topic | GCC (`feature/python-3.12.13-vs2022`) | VS2022 (manufacturing sign-off) |
+|--------|--------------------------------------|----------------------------------|
+| **Historical apppkg lab** | **`import readline`** → **pyreadline**; REPL **Tab** / line editing | Same **package layout** on stick; **VS2022** with pyreadline caused **REPL `exit()` hang**, **Shell `exit` hang**, **second launch** failures |
+| **Session 10 policy (source, both toolchains)** | **`main.c`**: skip auto **`readline`** unless **`PY_UEFI_PYREADLINE`** at **compile**; **`site.py`**: no **`enablerlcompleter`** on **`uefi`**; **`readline.py`**: stub unless shell **`PY_UEFI_READLINE=1`** | **User-verified** stdio REPL + Shell teardown; stub **`import readline`** safe |
+| **Manufacturing default UX** | Stdio **`>>>`** (like **3.6.8**) — **not** auto pyreadline | Same |
+| **GCC re-smoke 2026-09-01** | **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **pass** | **Not re-smoked** with pyreadline opt-in |
 
-**Takeaway:** Do **not** claim “GCC and VS2022 behave the same in the Shell” for the **interactive REPL** path. **VS2022 manufacturing** intentionally **deviates** from the **historical GCC pyreadline** experience until a future change re-enables line editing without Shell hang.
+**Takeaway:** Do **not** claim “GCC and VS2022 behave the same” for **interactive REPL with pyreadline**. **VS2022 manufacturing** stays **stdio default**. **GCC** supports **optional** pyreadline when env + **`import readline`** are used — see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **§ UEFI REPL / pyreadline**.
 
-**Optional pyreadline on VS2022 (development only):** shell env **`PY_UEFI_READLINE=1`** + optional **`/DPY_UEFI_PYREADLINE=1`** on MSFT **`CC_FLAGS`** — **not** manufacturing-signed-off. See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10.
+**`PY_UEFI_READLINE=1` alone does not enable line editing:** REPL still uses stdio until **`import readline`** (or compile **`PY_UEFI_PYREADLINE`**). Arrow keys without import → **`SyntaxError` … U+001B**.
+
+**Optional pyreadline on VS2022 (development only):** shell env **`PY_UEFI_READLINE=1`** + **`import readline`** — **not** manufacturing-signed-off on VS2022. See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10.
 
 ### 11.4 Shared UEFI teardown sources (both toolchains when `UEFI_C_SOURCE` active)
 
@@ -260,9 +263,10 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 ### 11.5 Regression checklist (GCC after VS2022 runtime work)
 
-1. WSL: **`BUILD_PYTHON312 -t GCC`**, **`create_python_pkg.sh`**, deploy.
-2. Confirm: REPL → **`exit(0)`** → Shell → **`exit`**; note whether **`import readline`** loads stub or pyreadline per env.
-3. Record result in **`Python312_VS2022_Migration_Status.md`** Session log (GCC parity line).
+1. WSL: **`BUILD_PYTHON312 -t GCC`**, **`BUILD_PYTHON312_FULL=TRUE`**, **`create_python_pkg.sh`**, deploy.
+2. Phase 8 **`-S -c`** matrix + Shell **`exit`** — **done** 2026-09-01 (**`dbc8416c`**).
+3. Optional pyreadline: **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **GCC pass** 2026-09-01; document in migration **§ UEFI REPL / pyreadline**.
+4. Re-run after shared PyMod/INF edits.
 
 ### 11.6 FULL **`import ssl`** / Shell **`exit`** — GCC reference vs VS2022 hang
 

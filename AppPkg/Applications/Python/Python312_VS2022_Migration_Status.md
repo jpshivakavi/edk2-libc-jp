@@ -10,7 +10,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-09-01 (GCC FULL lab on vs2022 branch; **`dbc8416c`**)
+**Updated:** 2026-09-01 (GCC pyreadline opt-in lab; migration § UEFI REPL / pyreadline)
 **Strategy:** **Single line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **`feature/python-3.12.13-apppkg`** kept as **read-only reference** (GCC port / 3.6.8 AppPkg structure alignment) — **no merge back into apppkg**. Same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs in **`PyMod-3.12.13/Modules/`**  
 **Branch:** **`feature/python-3.12.13-vs2022`** — sole manufacturing line (forked from **`feature/python-3.12.13-apppkg`**; apppkg now **reference only**)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
@@ -34,7 +34,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | Toolchain | Lab | Commit (reference) | Phase 8 **`-S -c`** + Shell **`exit`** |
 |-----------|-----|-------------------|----------------------------------------|
 | **VS2022 FULL** | 2026-08-26 / 27 | **`4dec4edf`** (ssl/RNG), **`3568d02d`** (import ssl) | **Done** — [`Python312_VS2022_Lab/`](./Python312_VS2022_Lab/) |
-| **GCC FULL** | 2026-09-01 | **`dbc8416c`** | **Done** — [GCC regression lab](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md) |
+| **GCC FULL** | 2026-09-01 | **`dbc8416c`** | **Done** — Phase 8 **`-S -c`** + optional **pyreadline** REPL (see **§ UEFI REPL / pyreadline**) |
 
 **Single codebase validated:** **`feature/python-3.12.13-vs2022`** builds **GCC** and **VS2022** FULL; shared PyMod (ssl, OpenSSL, teardown) did not regress GCC on hardware.
 
@@ -42,7 +42,70 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 
 ### Boot trace (GCC vs VS2022)
 
-**`PY_UEFI_BOOT_TRACE=1`** is on **MSFT** `[BuildOptions]` only (**`Python312.inf`**). **GCC** images show **`Python312: UefiMain`**, **`enter main`**, and script output — **not** the MSVC finalize/ssl ladder unless **`-DPY_UEFI_BOOT_TRACE=1`** is added to **`GCC:*_*_*_CC_FLAGS`** for debug.
+**`PY_UEFI_BOOT_TRACE=1`** is on **MSFT** `[BuildOptions]` only (**`Python312.inf`**). **GCC** images show **`Python312: UefiMain`**, **`Python312: enter main`**, and script output — **not** the MSVC finalize/ssl ladder unless **`-DPY_UEFI_BOOT_TRACE=1`** is added to **`GCC:*_*_*_CC_FLAGS`** for debug.
+
+### UEFI interactive REPL and pyreadline (FULL)
+
+**Manufacturing default (GCC and VS2022):** stdio **`>>>`** via StdLib TTY — **no** line editing, **no** Tab history, **no** **`edk2console`** until the operator opts in. This differs from **historical GCC AppPkg** lab notes where **pyreadline** was often on by default; **Session 10** policy on **`feature/python-3.12.13-vs2022`** applies to **both** toolchains in source.
+
+**Packaging:** **`create_python_pkg.sh`** / **`.bat`** still stages **`EFI/lib/python3.12/readline.py`** and **`pyreadline/`** from **`PyMod-3.12.13/Modules/readline/`** (identical for GCC and VS2022 sticks).
+
+#### How opt-in works (three layers)
+
+| Layer | Default on UEFI | Effect |
+|-------|-----------------|--------|
+| **`PyMod-…/Modules/readline/readline.py`** | If **`os.name == 'uefi'`** and shell env **`PY_UEFI_READLINE`** is **not** `1`/`yes`/`true` → **stub** (no **`pyreadline`**, no **`edk2console`**) | **`import readline`** is safe for scripts; does not install **`PyOS_ReadlineFunctionPointer`** |
+| **`PyMod-…/Modules/main.c` `pymain_import_readline`** | Under **`UEFI_C_SOURCE`**, **returns immediately** unless image built with **`PY_UEFI_PYREADLINE`** at **compile** time | **`Python312.efi -S`** does **not** auto-import readline (even when shell env is set) |
+| **`PyMod-…/Lib/site.py` `enablerlcompleter`** | **`if os.name == 'uefi': return`** — no **`sys.__interactivehook__`** | Site does **not** auto-import readline on REPL start |
+
+**Runtime enable (shell env):** before **`Python312.efi`**:
+
+```text
+set PY_UEFI_READLINE 1
+```
+
+This only allows the **real** **`readline.py`** (pyreadline path) when the module is **imported** — it does **not** wire the REPL by itself.
+
+**Compile-time auto-import (optional rebuild):** add **`-DPY_UEFI_PYREADLINE=1`** to **GCC** or **MSFT** **`CC_FLAGS`** in **`Python312.inf`** so **`pymain_import_readline`** runs at startup (old “always on” feel). **Not** manufacturing default; re-smoke Shell **`exit`** after any change.
+
+#### Operator workflow (pyreadline on GCC — lab 2026-09-01)
+
+```text
+set PY_UEFI_READLINE 1
+Python312.efi -S
+```
+
+At **`>>>`**, run **`import readline` first** (before arrow keys or Tab). That calls **`console.install_readline`** → **`edk2console.install_readline_hook`** → **`PyOS_ReadlineFunctionPointer`**.
+
+| Step | Expected |
+|------|----------|
+| Type a line, Enter | Accepted |
+| Up-arrow | Recalls history |
+| Tab | Completion (rlcompleter wired in **`readline.py`**) |
+| **`exit()`** → **`Shell>`** → **`exit`** | Returns to BIOS — **no hang** (GCC FULL lab, 2026-09-01) |
+
+#### Common mistake: arrow keys without `import readline`
+
+If **`PY_UEFI_READLINE=1`** but **`import readline`** was **not** run (e.g. only **`import os`**), the REPL still uses **stdio** input. Arrow keys send **ANSI escape sequences**; Python may report:
+
+```text
+SyntaxError: invalid non-printable character U+001B
+```
+
+**`U+001B`** is **ESC** — not a broken build; import **`readline`** before using line-editing keys.
+
+#### Lab status (hardware)
+
+| Scenario | Toolchain tested | Result |
+|----------|------------------|--------|
+| Phase 8 **`-S -c`** (no pyreadline) | **GCC** + **VS2022** | **Pass** — Shell **`exit`** |
+| Default **`Python312.efi -S`** (stdio REPL) | **VS2022** MIN/FULL sign-off | **Pass** |
+| **`PY_UEFI_READLINE=1`** + **`import readline`** + history/Tab + teardown | **GCC only** (2026-09-01) | **Pass** |
+| Same pyreadline opt-in on **VS2022** FULL | **Not re-smoked** on this branch after Session 10 | VS2022 historically hung Shell **`exit`** with pyreadline — see deviations **§11.3**, runtime notes **§10** |
+
+**Takeaway:** **GCC** can use **optional pyreadline** with current teardown sources when env + **`import readline`** are used. **VS2022 manufacturing** stays **stdio default** until a dedicated VS2022 pyreadline + Shell **`exit`** lab passes.
+
+**Cross-refs:** [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10 · [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) §11.3 · lab [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md)
 
 ---
 
@@ -82,7 +145,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 |------|--------|
 | **VS2022 MIN** (`Python312_MIN.inf`, default DSC) | **Build + manufacturing UEFI runtime Done** — **`-h`**, **`-S -c`**, default / **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware; **`import readline`** without env stays stub-safe |
 | **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT); **GCC still uses** **`edk2_switch_stack` + `py_install_idt`** (see deviations §11) |
-| **REPL / readline vs GCC** | **Same Python sources** on branch disable pyreadline by default on **`os.name == 'uefi'`**; **GCC Phase 8** historically ran **pyreadline + Tab** without Shell hang; **VS2022 required** this policy for sign-off — treat **VS2022** as **stdio REPL + optional `PY_UEFI_READLINE=1`** only |
+| **REPL / readline vs GCC** | **Default:** stdio REPL on **`os.name == 'uefi'`** (both toolchains). **Optional GCC pyreadline** (env **`PY_UEFI_READLINE=1`** + **`import readline`**) — **pass** 2026-09-01, teardown OK — **§ UEFI REPL / pyreadline**. **VS2022** manufacturing: stdio only; pyreadline opt-in **not** re-lab’d |
 | **Frozen / deepfreeze** | **`Python/deepfreeze/deepfreeze.c`** is **committed** (latin1 + **`statically_allocated`** fixes applied). Regen only when changing frozen inputs — use **`regen_frozen_windows.cmd`** (§5): **`deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
 | **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Build + lab Done** — ssl / **`create_default_context()`** / Phase 8 one-liners + Shell **`exit`** (2026-08) |
 | **GCC FULL** (same branch, **`build -t GCC`**) | **Build + lab Done** (2026-09-01, **`dbc8416c`**) — same Phase 8 matrix + Shell **`exit`**; edk2-py312 **`PACKAGES_PATH`** |
@@ -105,7 +168,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | V3 | MSFT `[BuildOptions]` in `Python312.inf` | **Done** |
 | V4 | Toolchain-split sources; FULL VS2022 link | **Done** (`Python312.efi` / module link green) |
 | V5 | Packaging on Windows (`create_python_pkg.bat`) | **Done** (user **`myUEFIPy312`**; PREFIX volume-relative — see Session 7) |
-| V6 | Runtime smoke (MIN → FULL) | **Partial (lab)** — MIN **Done**; **FULL VS2022 + GCC:** Phase 8 **`-S -c`** matrix + Shell **`exit`** **Done** (2026-08 VS2022, 2026-09 GCC — [lab](./Python312_VS2022_Lab/)); **open:** FULL **REPL** (`-S` → `exit()`), **`import readline`** matrix |
+| V6 | Runtime smoke (MIN → FULL) | **Partial (lab)** — MIN **Done**; **FULL** Phase 8 **`-S -c`** VS2022+GCC **Done**; **GCC** optional pyreadline REPL **Done** (2026-09-01); **open:** default stdio **`-S`** REPL — **§ UEFI REPL / pyreadline** |
 | V7 | Docs and CI (`build-python312-uefi-vs2022.yaml`) | **Partial** (build guide, deviations doc, this status; no 3.12 CI) |
 | V8 | Vendored FULL on VS2022 (8.1→8.2→8.5→8.3→8.4) | **Done** (same monolithic INF as GCC; MSFT-specific glue only) |
 
@@ -565,7 +628,18 @@ Python312.efi -S -c "import zlib, ssl, ctypes, hashlib; print('phase8 ok')"
 
 Record FULL results here and in **Phase V6 result** when lab sign-off is done. Detailed order: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §11.
 
-**Not in manufacturing matrix:** **`PY_UEFI_READLINE=1`** / pyreadline line editing (experimental; runtime notes §10).
+**Not in manufacturing matrix (optional development):** **`PY_UEFI_READLINE=1`** pyreadline — see **§ UEFI REPL / pyreadline** and runtime notes §10.
+
+#### Optional — pyreadline on GCC (not manufacturing default)
+
+```text
+set PY_UEFI_READLINE 1
+Python312.efi -S
+```
+
+At **`>>>`**: **`import readline`** **before** arrow keys / Tab. Then verify history, Tab, **`exit()`** → Shell **`exit`** → BIOS. **GCC lab 2026-09-01: pass.** Do **not** assume **VS2022** without re-test.
+
+---
 
 ### Phase V6 result
 
@@ -573,9 +647,9 @@ Record FULL results here and in **Phase V6 result** when lab sign-off is done. D
 
 **FULL (VS2022, lab 2026-08-26 / 2026-08-27):** Phase 8 **`-S -c`** + Shell **`exit`** — no hang. See **§ Git tags** / lab notes.
 
-**FULL (GCC, lab 2026-09-01):** Same manufacturing one-liners on **`feature/python-3.12.13-vs2022`** @ **`dbc8416c`** — **pass**. Build: **`edk2main`** trace fix, **`frozen_modules/*.h`** from edk2-py312 §6. Details: [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md).
+**FULL (GCC, lab 2026-09-01):** Phase 8 **`-S -c`** @ **`dbc8416c`** — **pass**. Optional **pyreadline:** **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **pass** (GCC only). Details: [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md), migration **§ UEFI REPL / pyreadline**.
 
-**Still open:** FULL **REPL** (`Python312.efi -S` → **`exit(0)`** → Shell **`exit`**) on VS2022 and/or GCC package.
+**Still open:** Default **stdio** **`Python312.efi -S`** → **`exit(0)`** → Shell **`exit`** explicitly recorded for **FULL** GCC and VS2022 packages (MIN already signed off).
 
 ---
 
@@ -631,7 +705,7 @@ Last known green GCC FULL: **2026-09-01** on **`feature/python-3.12.13-vs2022`**
 
 ## Known issues / follow-ups
 
-1. ~~**V6 MIN runtime smoke**~~ — **Done** (VS2022, 2026-07-23). ~~**FULL Phase 8 `-S -c` (VS2022 + GCC)**~~ — **Done** (2026-08 / 2026-09 lab). **Open:** FULL REPL smoke.
+1. ~~**V6 MIN runtime smoke**~~ — **Done** (VS2022, 2026-07-23). ~~**FULL Phase 8 `-S -c` (VS2022 + GCC)**~~ — **Done**. ~~**GCC optional pyreadline**~~ — **Done** 2026-09-01 (**§ UEFI REPL / pyreadline**). **Open:** default stdio FULL **`-S`** REPL on GCC/VS2022.
 2. ~~**WSL GCC regression on vs2022 tip**~~ — **Done** 2026-09-01 (**`dbc8416c`**).
 3. **VS2022 vs GCC runtime** is **not** identical for firmware entry and interactive REPL — documented in **GCC deviations §11**; do not assume GCC pyreadline behavior applies to VS2022 manufacturing.
 4. Re-**`git apply`** **`patches/*.patch`** after **`StdLib/`** cleanup **only if** those trees were reset to unpatched upstream (see **§ Branch drift — StdLib already patched**). On **`feature/python-3.12.13-vs2022`** today, **`git apply`** often fails with *already exists* / *patch does not apply* — that usually means patches are **already** in the tree; skip apply and build.
@@ -650,7 +724,7 @@ Last known green GCC FULL: **2026-09-01** on **`feature/python-3.12.13-vs2022`**
 
 **Order:**
 
-1. **FULL REPL** — `Python312.efi -S` → **`exit(0)`** → Shell **`exit`** (VS2022 and/or GCC package).
+1. **FULL stdio REPL** — **`Python312.efi -S`** (no **`PY_UEFI_READLINE`**) → **`exit(0)`** → Shell **`exit`** on GCC and VS2022 packages.
 2. **Upstream / PR** — from **`feature/python-3.12.13-vs2022`** after **§ Pre-upstream-push cleanup**.
 3. **Cleanup (optional):** **`PY_UEFI_BOOT_TRACE`** (or document GCC/MSFT split), StdLib **`Main.c`** probes, **`Py_DEBUG`** in UEFI **`pyconfig.h`**.
 4. **V7:** **`build-python312-uefi-vs2022.yaml`** (matrix **GCC + VS2022**), **`Py312ReadMe.txt`** VS2022 section.
