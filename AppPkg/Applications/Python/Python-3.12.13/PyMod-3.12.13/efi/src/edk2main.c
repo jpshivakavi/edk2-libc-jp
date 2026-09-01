@@ -28,15 +28,15 @@
 #define PY312_BOOT_PRINT(Step) do { } while (0)
 #endif
 
+#ifdef PY_UEFI_BOOT_TRACE
 void
 py312_boot_print_ascii(const char *msg)
 {
-#ifdef PY_UEFI_BOOT_TRACE
     if (msg != NULL) {
         Print(L"Python312 boot: %a\n", msg);
     }
-#endif
 }
+#endif
 
 edk2_globals_t g_edk2_globals;
 
