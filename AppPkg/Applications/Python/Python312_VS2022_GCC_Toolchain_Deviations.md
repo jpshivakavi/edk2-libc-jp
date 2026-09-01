@@ -28,6 +28,7 @@
 | **Typical build flavor** | Often `NOOPT` on WSL | `RELEASE` on Windows | Size/optimize differ |
 | **UEFI firmware entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on default Shell stack only | **No** — see **§11** |
 | **Boot trace verbosity** | **`PY_UEFI_BOOT_TRACE`** not on GCC **`CC_FLAGS`** — short console (UefiMain, enter main) | **`PY_UEFI_BOOT_TRACE=1`** on MSFT — long ladder | N/A (debug only) |
+| **Interactive REPL (manufacturing)** | Post–**`59000200`**: **stub readline** policy in tree | **Stdio REPL** signed off; pyreadline **opt-in** only | **Observed** divergence — **§11** |
 
 ---
 
