@@ -3,13 +3,14 @@
 Guide for the **edk2-libc AppPkg** migration tree (not the old `edk2-py312`
 `make python` flow). Follow these steps on **WSL2 Ubuntu** (20.04 / 22.04 / 24.04).
 
-On branch **`feature/python-3.12.13-apppkg`** (fork), **Phase 8** vendored libs
-are in **`Python312.inf`** — `zlib`, `readline`, `_ctypes`, OpenSSL `_hashlib` / `_ssl`.
+On branch **`feature/python-3.12.13-vs2022`** (sole manufacturing line for **GCC** and **VS2022**). **`feature/python-3.12.13-apppkg`** is reference-only. Status: [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md). **Phase 8** vendored libs are in **`Python312.inf`** — `zlib`, `readline`, `_ctypes`, OpenSSL `_hashlib` / `_ssl`.
+
+**FULL build:** add **`-D BUILD_PYTHON312_FULL=TRUE`** to **`build -D BUILD_PYTHON312`**.
 
 Related docs:
 
-- Plan: [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)
-- Status: [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)
+- Plan: [`Python312_VS2022_Port_Plan.md`](./Python312_VS2022_Port_Plan.md) · [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)
+- Status: [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md)
 - BKMs: [`Python-3.12.13/GCCCompilationBKMs.rst`](./Python-3.12.13/GCCCompilationBKMs.rst) (GCC setup summary)
 - ReadMe: [`Python-3.12.13/Py312ReadMe.txt`](./Python-3.12.13/Py312ReadMe.txt)
 - Tree: `AppPkg/Applications/Python/Python-3.12.13/`
@@ -153,9 +154,9 @@ build -a X64 -b NOOPT -t GCC \
 ## 3. Use the AppPkg migration branch of edk2-libc
 
 ```bash
-cd ~/src/edk2-libc   # or /mnt/c/Users/njayapra/github/edk2-libc
-git status
-git checkout feature/python-3.12.13-apppkg   # if not already on it
+cd ~/src/edk2-libc   # jpshivakavi fork
+git checkout feature/python-3.12.13-vs2022
+git pull
 ```
 
 Confirm these exist:
@@ -296,7 +297,8 @@ export EDK_TOOLS_PATH=$PWD/BaseTools
 
 build -a X64 -b NOOPT -t GCC \
   -p "$EDK2_LIBC_PATH/AppPkg/AppPkg.dsc" \
-  -D BUILD_PYTHON312
+  -D BUILD_PYTHON312 \
+  -D BUILD_PYTHON312_FULL=TRUE
 ```
 
 Expected artifact (path may vary slightly by toolchain):

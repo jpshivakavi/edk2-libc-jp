@@ -27,7 +27,7 @@
 | **Packaging script** | `create_python_pkg.sh GCC …` | `create_python_pkg.bat VS2022 …` | Same **`EFI/`** layout |
 | **Typical build flavor** | Often `NOOPT` on WSL | `RELEASE` on Windows | Size/optimize differ |
 | **UEFI firmware entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on default Shell stack only | **No** — see **§11** |
-| **Interactive REPL (manufacturing)** | Pre–Session 10: **pyreadline** + Tab in GCC smoke; post–**`59000200`**: same **stub policy** in tree | **Stdio REPL** signed off; pyreadline **opt-in** only | **Observed** divergence — **§11** |
+| **Boot trace verbosity** | **`PY_UEFI_BOOT_TRACE`** not on GCC **`CC_FLAGS`** — short console (UefiMain, enter main) | **`PY_UEFI_BOOT_TRACE=1`** on MSFT — long ladder | N/A (debug only) |
 
 ---
 
@@ -306,4 +306,4 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 ---
 
-*Last updated: 2026-08-27 (§11.7 verified: VS2022 **`create_default_context()`** + link symbols).*
+*Last updated: 2026-09-01 (§1 boot trace GCC vs MSFT; GCC FULL lab on vs2022 branch).*
