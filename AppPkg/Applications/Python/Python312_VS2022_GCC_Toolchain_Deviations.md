@@ -265,8 +265,9 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 1. WSL: **`BUILD_PYTHON312 -t GCC`**, **`BUILD_PYTHON312_FULL=TRUE`**, **`create_python_pkg.sh`**, deploy.
 2. Phase 8 **`-S -c`** matrix + Shell **`exit`** — **done** 2026-09-01 (**`dbc8416c`**).
-3. Optional pyreadline: **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **GCC pass** 2026-09-01; document in migration **§ UEFI REPL / pyreadline**.
-4. Re-run after shared PyMod/INF edits.
+3. Default stdio **`Python312.efi -S`** (no pyreadline) + teardown — **GCC** + **VS2022** FULL **pass** 2026-09-01.
+4. Optional pyreadline: **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **GCC pass** 2026-09-01; document in migration **§ UEFI REPL / pyreadline**.
+5. Re-run after shared PyMod/INF edits.
 
 ### 11.6 FULL **`import ssl`** / Shell **`exit`** — GCC reference vs VS2022 hang
 

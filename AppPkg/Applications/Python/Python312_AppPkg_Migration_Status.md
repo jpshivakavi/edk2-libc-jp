@@ -3,8 +3,9 @@
 **Plan:** [`Python312_AppPkg_Migration_Plan.md`](./Python312_AppPkg_Migration_Plan.md)  
 **WSL GCC build guide:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **VS2022 / Windows port (peer):** [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) — branch **`feature/python-3.12.13-vs2022`**  
+**Manufacturing GCC (2026-09-01+):** Build and sign-off on **`feature/python-3.12.13-vs2022`** only — this **`apppkg`** branch is **reference** (tags **`python312-apppkg-8.x`**); see VS2022 status **§ GCC FULL regression**, **§ UEFI REPL / pyreadline**, lab [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md).  
 **Started:** 2026-07-14  
-**Updated:** 2026-07-17 (Phase **8** vendored libs **Done** — 8.4 `_ssl` UEFI smoke **Done**)  
+**Updated:** 2026-09-01 (successor branch + readline policy note; Phase **8** **Done** on apppkg @ 2026-07-17)  
 **Strategy:** **Upstream PR** — Phase 8 **vendors** zlib/openssl/libffi/readline under **PyMod/Modules/**; **no** sandbox `PACKAGES_PATH`  
 **Iteration:** Phase **8** **Done** (8.1–8.3, 8.5, 8.4); next **7.3** CI / **7.6** / upstream PR prep  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (`~/src/edk2-libc` on WSL)  
@@ -99,6 +100,8 @@
 2. UEFI Shell: `import readline` OK; REPL **Tab** completion / line editing works (edk2console + pyreadline).
 3. **Benign:** `SyntaxWarning` in `pyreadline/modes/basemode.py` docstring (`\space`) — same as edk2-py312 vendor @ `1e9face`; no AppPkg patch.
 
+**Superseded on manufacturing line (2026-09-01):** **`feature/python-3.12.13-vs2022`** defaults to **stdio REPL**; pyreadline is **opt-in** — see VS2022 migration status **§ UEFI REPL / pyreadline**. Session 7 behavior reflects **`apppkg`** era only.
+
 ### 2026-07-17 — Session 8 (Phase 8.5 libffi / `_ctypes` — WSL build)
 
 1. Vendored **edk2-libffi** @ `1fcd48b` under `PyMod-3.12.13/Modules/libffi/`; UEFI **`_ctypes`** from **edk2-cpython**; enabled in `config.c` + `Python312.inf` (see [`Python312_Phase8_8.5_Ctypes.md`](./Python312_Phase8_8.5_Ctypes.md)).
@@ -125,6 +128,18 @@
 2. **WSL build:** **Done** (GCC / NOOPT / X64, `BUILD_PYTHON312`).
 3. **UEFI Shell:** `import ssl`; `ssl.OPENSSL_VERSION_INFO` → **OpenSSL 1.1.1f** tuple `(1, 1, 1, 6, 5)` — **not** comparable to Windows CPython 3.12.8 **3.0.x** (expected; same as edk2-py312 **1.1.1f** vendor).
 4. **`ssl.create_default_context()`** — **Done**.
+
+### 2026-09-01 — vs2022 branch GCC FULL sign-off (reference; not on `apppkg` tip)
+
+Manufacturing **GCC FULL** on **`feature/python-3.12.13-vs2022`** @ **`dbc8416c`**. **V6** closed 2026-09-01: Phase 8 **`-S -c`**, stdio **`-S`** REPL on **GCC** + **VS2022** FULL, optional GCC pyreadline — see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md).
+
+| Topic | Historical **`apppkg`** lab (Session 6–7) | **`vs2022`** branch (Session 10 + 2026-09-01) |
+|-------|-------------------------------------------|-----------------------------------------------|
+| **REPL line editing** | **`import readline`** often implied **pyreadline** + Tab/history by default | **Manufacturing default:** stdio **`>>>`**; pyreadline only with **`PY_UEFI_READLINE=1`** and **`import readline`** before arrow keys |
+| **Arrow keys without readline import** | Less documented | **`SyntaxError` … U+001B** (ESC) — expected |
+| **GCC optional pyreadline teardown** | Signed off on older tree | **Pass** 2026-09-01 on vs2022 tip — see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **§ UEFI REPL / pyreadline** |
+
+Do **not** merge **`vs2022` → `apppkg`**; keep **`apppkg`** as Phase 8 milestone archive only.
 
 ---
 

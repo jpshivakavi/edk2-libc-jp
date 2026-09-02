@@ -39,9 +39,24 @@ Each: **`-S -c "…"`** → **`Shell>`** → **`exit`** → BIOS/setup, **no han
 
 ---
 
+## Default stdio REPL (GCC + VS2022 FULL — passed 2026-09-01)
+
+Manufacturing default: **no** **`PY_UEFI_READLINE`**.
+
+```text
+Python312.efi -S
+```
+
+| Step | Result |
+|------|--------|
+| Trivial lines at **`>>>`** | OK |
+| **`exit(0)`** → **`Shell>`** → **`exit`** | **No hang** — **GCC** and **VS2022** FULL images |
+
+---
+
 ## Optional pyreadline (GCC only — passed 2026-09-01)
 
-**Not** manufacturing default. Canonical write-up: migration status **§ UEFI REPL / pyreadline**.
+**Canonical write-up:** migration status **§ UEFI REPL / pyreadline** (build/smoke tables in **§ GCC FULL regression — build and smoke**).
 
 ```text
 set PY_UEFI_READLINE 1
@@ -65,4 +80,4 @@ Python312.efi -S
 
 **VS2022-track PyMod** (ssl package, OpenSSL RNG, teardown) does **not** break **GCC FULL** manufacturing on the **same branch**. Host GCC toolchain was **unchanged** from prior AppPkg work (toolchain upgrade deferred).
 
-**Open:** default stdio **`Python312.efi -S`** REPL sign-off; pre-upstream-push cleanup; optional unified git tag.
+**V6 manufacturing runtime** (Phase 8 **`-S -c`** + stdio **`-S`** on **GCC** and **VS2022** FULL) — **closed** 2026-09-01. **Next:** pre-upstream-push cleanup, optional unified git tag, **V7** CI.
