@@ -151,7 +151,7 @@ SyntaxError: invalid non-printable character U+001B
 
 | Tag | Commit | Meaning |
 |-----|--------|---------|
-| **`python312-unified-full-lab-2026-09-01`** | **`a7c73648`** | **Unified FULL UEFI lab (2026-09-01):** **`feature/python-3.12.13-vs2022`** — **GCC** + **VS2022** FULL; Phase 8 **`-S -c`**, stdio **`Python312.efi -S`** → **`exit(0)`** → Shell **`exit`**; GCC optional **pyreadline**. Lab: [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md). **V6 Done.** |
+| **`python312-unified-full-lab-2026-09-01`** | **`753bfefb`** | **Unified FULL UEFI lab (2026-09-01):** **`feature/python-3.12.13-vs2022`** — **GCC** + **VS2022** FULL; Phase 8 **`-S -c`**, stdio **`Python312.efi -S`** → **`exit(0)`** → Shell **`exit`**; GCC optional **pyreadline**. Lab: [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md). **V6 Done.** |
 | **`python312-vs2022-full-lab-2026-08-26`** | **`3568d02d`** | **VS2022 FULL UEFI lab sign-off (2026-08-26):** `import sys` / **`import ssl`** / **`ssl.create_default_context()`** / **hashlib** / **ctypes** one-liners; **`Shell>`** → **`exit`** → BIOS/setup. PyMod **`Lib/ssl/`** (`_uefi_min`), MSVC teardown parity, post-finalize OpenSSL/console handoff. Details: [`Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md`](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md). |
 
 **Checkout unified manufacturing pin:** `git fetch origin tag python312-unified-full-lab-2026-09-01 && git checkout python312-unified-full-lab-2026-09-01`
