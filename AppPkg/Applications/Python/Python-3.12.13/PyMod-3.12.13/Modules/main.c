@@ -728,7 +728,6 @@ Py_RunMain(void)
 #ifdef UEFI_C_SOURCE
     py312_boot_print_ascii("Py_RunMain after pymain_run_python");
     edk2_console_detach_readline();
-    py312_boot_print_ascii("Py_RunMain after edk2_console_detach_readline");
 #endif
 
     if (Py_FinalizeEx() < 0) {

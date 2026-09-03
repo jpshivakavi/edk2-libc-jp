@@ -1998,6 +1998,8 @@ _bufferedwriter_flush_unlocked(buffered *self)
            blocking another time, possibly indefinitely. */
         if (PyErr_CheckSignals() < 0)
             goto error;
+        if(n == 0)
+          break;
     }
 
 
@@ -2148,6 +2150,8 @@ _io_BufferedWriter_write_impl(buffered *self, Py_buffer *buffer)
            blocking another time, possibly indefinitely. */
         if (PyErr_CheckSignals() < 0)
             goto error;
+        if(n == 0)
+          break;
     }
     if (self->readable)
         _bufferedreader_reset_buf(self);

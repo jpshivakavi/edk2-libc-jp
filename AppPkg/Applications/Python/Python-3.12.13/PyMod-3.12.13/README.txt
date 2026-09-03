@@ -44,9 +44,12 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Modules/config.c, getpath.c, gcmodule.c, posixmodule.c, timemodule.c,
     signalmodule.c, socketmodule.c, faulthandler.c, mathmodule.c, cmathmodule.c,
     _datetimemodule.c, mmapmodule.c, termios.c, _pickle.c, _posixsubprocess.c,
-    main.c, _ssl.c,
+    main.c, _ssl.c, _hashopenssl.c, binascii.c, pwdmodule.c,
+    _io/bufferedio.c, _decimal/_decimal.c, _decimal/docstrings.h, _multiprocessing/multiprocessing.c,
     expat/xmlparse.c
-  Modules/clinic/posixmodule.c.h
+  Python/deepfreeze/deepfreeze.c   (generated; regen -> PyMod only)
+  Python/dynamic_annotations.c, mysnprintf.c, pyhash.c
+  Modules/clinic/posixmodule.c.h, clinic/_ssl.c.h, clinic/mathmodule.c.h
   Include/pyconfig.h, pymath.h, dlfcn.h, pthread.h
   Include/internal/pycore_bitutils.h
   Modules/_sre/sre_lib.h
@@ -56,11 +59,19 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
   Modules/readline/          vendored pyreadline (edk2-pyreadline 1e9face)
   Modules/openssl/           vendored OpenSSL 1.1.1f (libcrypto + libssl)
   Modules/libffi/            vendored libffi (_ctypes)
-  Lib/os.py, pathlib.py, site.py, uefipath.py, socket.py
+  Lib/os.py, pathlib.py, site.py, uefipath.py, socket.py, statistics.py, rlcompleter.py
   Lib/ssl/               UEFI minimal package (__init__.py, _uefi_min.py, _stdlib.py)
+  Lib/ctypes/uefi_pythonapi.py
   Lib/importlib/_bootstrap_external.py
-  Lib/asyncio/uefi_events.py
+  Lib/asyncio/uefi_events.py, Lib/asyncio/__init__.py, Lib/asyncio/selector_events.py
+  Lib/ctypes/__init__.py, Lib/ctypes/util.py
+  Tools/build/deepfreeze.py, generate_global_objects.py,
+    fix_deepfreeze_latin1.py, fix_deepfreeze_statically_allocated.py
   efi/src/py312_openssl_uefi.c
   efi/                     UefiMain, stack/handler NASM, dummies, pyconfig for -I
 
 Do not reintroduce UEFI edits under Python-3.12.13/ for the paths above.
+
+Realign stock tree after dropping in a fresh upstream CPython 3.12.13 tree:
+  python Tools/restore_upstream_from_cpython.py --upstream /path/to/cpython-3.12.13 [--apply]
+Then run srcprep.py before build (create_python_pkg.* runs srcprep automatically).

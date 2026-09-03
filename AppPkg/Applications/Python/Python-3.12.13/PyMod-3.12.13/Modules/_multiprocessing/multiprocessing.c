@@ -155,6 +155,8 @@ _multiprocessing_send_impl(PyObject *module, HANDLE handle, Py_buffer *buf)
 
 #endif
 
+#if !defined(POSIX_SEMAPHORES_NOT_ENABLED)
+
 /*[clinic input]
 _multiprocessing.sem_unlink
 
@@ -169,7 +171,7 @@ _multiprocessing_sem_unlink_impl(PyObject *module, const char *name)
 {
     return _PyMp_sem_unlink(name);
 }
-
+#endif
 /*
  * Function table
  */

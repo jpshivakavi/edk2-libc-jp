@@ -2587,7 +2587,7 @@ dectuple_as_str(PyObject *dectuple)
     if (sign_special[1] == '\0') {
         /* not a special number */
         *cp++ = 'E';
-        n = snprintf(cp, MPD_EXPDIGITS+2, "%" PRI_mpd_ssize_t, exp);
+        n = snprintf(cp, MPD_EXPDIGITS+2, "%lld", (long long)exp);
         if (n < 0 || n >= MPD_EXPDIGITS+2) {
             PyErr_SetString(PyExc_RuntimeError,
                 "internal error in dec_sequence_as_str");

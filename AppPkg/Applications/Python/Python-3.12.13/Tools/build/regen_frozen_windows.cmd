@@ -50,7 +50,8 @@ call :freeze __phello__.spam Lib\__phello__\spam.py %OUT%\__phello__.spam.h || e
 call :freeze frozen_only Tools\freeze\flag.py %OUT%\frozen_only.h || exit /b 1
 
 echo === deepfreeze.c ===
-%HOSTPY% Tools\build\deepfreeze.py ^
+if not exist PyMod-3.12.13\Python\deepfreeze mkdir PyMod-3.12.13\Python\deepfreeze
+%HOSTPY% PyMod-3.12.13\Tools\build\deepfreeze.py ^
   Python/frozen_modules/importlib._bootstrap.h:importlib._bootstrap ^
   Python/frozen_modules/importlib._bootstrap_external.h:importlib._bootstrap_external ^
   Python/frozen_modules/zipimport.h:zipimport ^
@@ -74,22 +75,22 @@ echo === deepfreeze.c ===
   Python/frozen_modules/__phello__.ham.eggs.h:__phello__.ham.eggs ^
   Python/frozen_modules/__phello__.spam.h:__phello__.spam ^
   Python/frozen_modules/frozen_only.h:frozen_only ^
-  -o Python/deepfreeze/deepfreeze.c
+  -o PyMod-3.12.13\Python\deepfreeze\deepfreeze.c
 if errorlevel 1 exit /b 1
 
 echo === fix_deepfreeze_statically_allocated.py ===
-%HOSTPY% Tools\build\fix_deepfreeze_statically_allocated.py
+%HOSTPY% PyMod-3.12.13\Tools\build\fix_deepfreeze_statically_allocated.py
 if errorlevel 1 exit /b 1
 
 echo === generate_global_objects.py ===
-%HOSTPY% Tools\build\generate_global_objects.py
+%HOSTPY% PyMod-3.12.13\Tools\build\generate_global_objects.py
 if errorlevel 1 exit /b 1
 
 echo === fix_deepfreeze_latin1.py ===
-%HOSTPY% Tools\build\fix_deepfreeze_latin1.py
+%HOSTPY% PyMod-3.12.13\Tools\build\fix_deepfreeze_latin1.py
 if errorlevel 1 exit /b 1
 
-findstr /c:".statically_allocated = 1," Python\deepfreeze\deepfreeze.c >nul
+findstr /c:".statically_allocated = 1," PyMod-3.12.13\Python\deepfreeze\deepfreeze.c >nul
 if errorlevel 1 (
     echo WARNING: deepfreeze.c has no .statically_allocated = 1 markers — check deepfreeze.py / host Python
     exit /b 1

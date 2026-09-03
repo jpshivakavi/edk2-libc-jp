@@ -66,7 +66,7 @@ PyOS_vsnprintf(char *str, size_t size, const char  *format, va_list va)
         goto Done;
     }
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
     len = _vsnprintf(str, size, format, va);
 #else
     len = vsnprintf(str, size, format, va);

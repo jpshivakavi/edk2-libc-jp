@@ -130,7 +130,7 @@ pwd_getpwuid(PyObject *module, PyObject *uidobj)
     uid_t uid;
     int nomem = 0;
     struct passwd *p;
-    char *buf = NULL, *buf2 = NULL;
+    char *buf = NULL;
 
     if (!_Py_Uid_Converter(uidobj, &uid)) {
         if (PyErr_ExceptionMatches(PyExc_OverflowError))
@@ -139,6 +139,7 @@ pwd_getpwuid(PyObject *module, PyObject *uidobj)
         return NULL;
     }
 #ifdef HAVE_GETPWUID_R
+    char *buf2 = NULL
     int status;
     Py_ssize_t bufsize;
     /* Note: 'pwd' will be used via pointer 'p' on getpwuid_r success. */
@@ -211,7 +212,7 @@ static PyObject *
 pwd_getpwnam_impl(PyObject *module, PyObject *name)
 /*[clinic end generated code: output=359ce1ddeb7a824f input=a6aeb5e3447fb9e0]*/
 {
-    char *buf = NULL, *buf2 = NULL, *name_chars;
+    char *buf = NULL,  *name_chars;
     int nomem = 0;
     struct passwd *p;
     PyObject *bytes, *retval = NULL;
@@ -222,6 +223,7 @@ pwd_getpwnam_impl(PyObject *module, PyObject *name)
     if (PyBytes_AsStringAndSize(bytes, &name_chars, NULL) == -1)
         goto out;
 #ifdef HAVE_GETPWNAM_R
+    char *buf2 = NULL;
     int status;
     Py_ssize_t bufsize;
     /* Note: 'pwd' will be used via pointer 'p' on getpwnam_r success. */

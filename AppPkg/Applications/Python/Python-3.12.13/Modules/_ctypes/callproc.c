@@ -1161,11 +1161,11 @@ PyObject *_ctypes_callproc(PPROC pProc,
             PyObject *checker)
 {
     Py_ssize_t i, n, argcount, argtype_count;
-    void *resbuf = NULL;
-    struct argument *args = NULL, *pa = NULL;
-    ffi_type **atypes = NULL;
-    ffi_type *rtype = NULL;
-    void **avalues = NULL;
+    void *resbuf;
+    struct argument *args, *pa;
+    ffi_type **atypes;
+    ffi_type *rtype;
+    void **avalues;
     PyObject *retval = NULL;
 
     n = argcount = PyTuple_GET_SIZE(argtuple);
@@ -1182,7 +1182,7 @@ PyObject *_ctypes_callproc(PPROC pProc,
         return NULL;
     }
 
-    args = (struct argument*)PyMem_RawMalloc(sizeof(struct argument) * argcount);
+    args = alloca(sizeof(struct argument) * argcount);
     memset(args, 0, sizeof(struct argument) * argcount);
     argtype_count = argtypes ? PyTuple_GET_SIZE(argtypes) : 0;
 #ifdef MS_WIN32
@@ -1235,7 +1235,7 @@ PyObject *_ctypes_callproc(PPROC pProc,
         rtype = _ctypes_get_ffi_type(restype);
     }
 
-    resbuf = PyMem_RawMalloc(max(rtype->size, sizeof(ffi_arg)));
+    resbuf = alloca(max(rtype->size, sizeof(ffi_arg)));
 
 #ifdef _Py_MEMORY_SANITIZER
     /* ffi_call actually initializes resbuf, but from asm, which
@@ -1244,8 +1244,8 @@ PyObject *_ctypes_callproc(PPROC pProc,
         __msan_unpoison(resbuf, max(rtype->size, sizeof(ffi_arg)));
     }
 #endif
-    avalues = (void **)PyMem_RawMalloc(sizeof(void *) * argcount);
-    atypes = (ffi_type **)PyMem_RawMalloc(sizeof(ffi_type *) * argcount);
+    avalues = (void **)alloca(sizeof(void *) * argcount);
+    atypes = (ffi_type **)alloca(sizeof(ffi_type *) * argcount);
     if (!resbuf || !avalues || !atypes) {
         PyErr_NoMemory();
         goto cleanup;
@@ -1313,14 +1313,6 @@ PyObject *_ctypes_callproc(PPROC pProc,
   cleanup:
     for (i = 0; i < argcount; ++i)
         Py_XDECREF(args[i].keep);
-    if(args != NULL) 
-      PyMem_RawFree(args);
-    if(resbuf != NULL)
-      PyMem_RawFree(resbuf);
-    if(avalues != NULL)
-      PyMem_RawFree(avalues);
-    if(atypes != NULL)
-      PyMem_RawFree(atypes);
     return retval;
 }
 

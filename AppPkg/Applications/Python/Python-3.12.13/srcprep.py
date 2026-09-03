@@ -2,6 +2,9 @@
 
 Mirrors AppPkg Python-3.6.8/srcprep.py. Only .h and .py are copied;
 .C sources under PyMod are referenced directly from Python312.inf.
+
+Skipped under PyMod (not overlaid): Modules/readline/, Modules/libffi/,
+Modules/zlib/, Modules/openssl/ — vendored trees used only at link/stage time.
 """
 import os
 import shutil

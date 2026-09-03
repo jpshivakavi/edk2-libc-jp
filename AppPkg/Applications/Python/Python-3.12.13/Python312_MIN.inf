@@ -18,8 +18,7 @@
   DEFINE OPENSSL_ROOT       = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/openssl
   DEFINE LIBFFI_INT_INC       = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/libffi/libffi/include
   # MSVC _ctypes uses libffi_msvc (Python368 pattern), not vendored edk2-libffi headers
-  DEFINE LIBFFI_MSVC_INC      = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/Modules/_ctypes/libffi_msvc
-  DEFINE LIBFFI_MSVC_PYMOD_INC = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/_ctypes/libffi_msvc
+  DEFINE LIBFFI_MSVC_INC      = $(EDK2_LIBC_PATH)/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Modules/_ctypes/libffi_msvc
   # VS2022 Iteration 1 MIN — no zlib/ctypes/OpenSSL (see Python312_MIN.inf)
 
 [Packages]
@@ -155,9 +154,9 @@
   Python/codecs.c
   Python/compile.c
   Python/context.c
-  Python/deepfreeze/deepfreeze.c
+  PyMod-3.12.13/Python/deepfreeze/deepfreeze.c
   Python/dtoa.c
-  Python/dynamic_annotations.c
+  PyMod-3.12.13/Python/dynamic_annotations.c
   Python/errors.c
   PyMod-3.12.13/Python/fileutils.c
   Python/flowgraph.c
@@ -182,7 +181,7 @@
   Python/legacy_tracing.c
   Python/marshal.c
   Python/modsupport.c
-  Python/mysnprintf.c
+  PyMod-3.12.13/Python/mysnprintf.c
   Python/mystrtoul.c
   Python/pathconfig.c
   Python/perf_trampoline.c
@@ -190,7 +189,7 @@
   Python/pyarena.c
   Python/pyctype.c
   Python/pyfpe.c
-  Python/pyhash.c
+  PyMod-3.12.13/Python/pyhash.c
   PyMod-3.12.13/Python/pylifecycle.c
   Python/pymath.c
   PyMod-3.12.13/Python/pystate.c
@@ -221,7 +220,7 @@
   Modules/_io/iobase.c
   Modules/_io/fileio.c
   Modules/_io/bytesio.c
-  Modules/_io/bufferedio.c
+  PyMod-3.12.13/Modules/_io/bufferedio.c
   Modules/_io/textio.c
   Modules/_io/stringio.c
   Modules/itertoolsmodule.c
@@ -235,7 +234,7 @@
   Modules/_operator.c
   Modules/_stat.c
   Modules/symtablemodule.c
-  Modules/pwdmodule.c
+  PyMod-3.12.13/Modules/pwdmodule.c
 
 # --- Ext MIN (PythonExtLib minus ffi/ssl/zlib/readline) ---
   Modules/_asynciomodule.c
@@ -246,7 +245,7 @@
   Modules/_contextvarsmodule.c
   Modules/_csv.c
   PyMod-3.12.13/Modules/_datetimemodule.c
-  Modules/_decimal/_decimal.c
+  PyMod-3.12.13/Modules/_decimal/_decimal.c
   Modules/_decimal/libmpdec/basearith.c
   Modules/_decimal/libmpdec/constants.c
   Modules/_decimal/libmpdec/context.c
@@ -269,7 +268,7 @@
   Modules/_heapqmodule.c
   Modules/_json.c
   Modules/_lsprof.c
-  Modules/_multiprocessing/multiprocessing.c
+  PyMod-3.12.13/Modules/_multiprocessing/multiprocessing.c
   Modules/_multiprocessing/posixshmem.c
   Modules/_multiprocessing/semaphore.c
   Modules/_opcode.c
@@ -286,7 +285,7 @@
   Modules/_zoneinfo.c
   Modules/arraymodule.c
   Modules/audioop.c
-  Modules/binascii.c
+  PyMod-3.12.13/Modules/binascii.c
   Modules/cjkcodecs/_codecs_cn.c
   Modules/cjkcodecs/_codecs_hk.c
   Modules/cjkcodecs/_codecs_iso2022.c

@@ -157,8 +157,3 @@ Python/frozen_modules/MANIFEST
 # Ignore ./python binary on Unix but still look into ./Python/ directory.
 /python
 !/Python/
-
-# Duplicate vendor trees; build uses PyMod-3.12.13/Modules/openssl and PyMod efi/.
-/Modules/openssl/
-/Modules/zlib/
-/efi/

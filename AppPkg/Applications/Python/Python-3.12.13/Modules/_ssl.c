@@ -65,7 +65,7 @@
 #include "openssl/bio.h"
 #include "openssl/dh.h"
 
-#if !defined(OPENSSL_THREADS) && !defined(UEFI_C_SOURCE)
+#ifndef OPENSSL_THREADS
 #  error "OPENSSL_THREADS is not defined, Python requires thread-safe OpenSSL"
 #endif
 
@@ -5341,7 +5341,7 @@ _ssl_nid2obj_impl(PyObject *module, int nid)
     return result;
 }
 
-#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
+#ifdef _MSC_VER
 
 static PyObject*
 certEncodingType(DWORD encodingType)

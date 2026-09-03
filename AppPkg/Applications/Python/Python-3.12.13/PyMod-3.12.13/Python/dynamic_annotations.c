@@ -27,7 +27,7 @@
  * Author: Kostya Serebryany
  */
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(UEFI_C_SOURCE)
 # include <windows.h>
 #endif
 
@@ -124,6 +124,8 @@ static int GetRunningOnValgrind(void) {
   if (running_on_valgrind_str) {
     return strcmp(running_on_valgrind_str, "0") != 0;
   }
+#elif defined(UEFI_C_SOURCE)
+  /* No Win32 GetEnvironmentVariableA; Valgrind is not used on UEFI. */
 #else
   /* Visual Studio issues warnings if we use getenv,
    * so we use GetEnvironmentVariableA instead.

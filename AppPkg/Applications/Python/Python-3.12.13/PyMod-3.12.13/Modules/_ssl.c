@@ -25,10 +25,6 @@
 
 #include "Python.h"
 
-#ifdef UEFI_C_SOURCE
-#include "efi/py312boot.h"
-#endif
-
 /* Include symbols from _socket module */
 #include "socketmodule.h"
 
@@ -3032,13 +3028,9 @@ _ssl__SSLContext_impl(PyTypeObject *type, int proto_version)
         return NULL;
     }
 
-#ifdef UEFI_C_SOURCE
-    ctx = SSL_CTX_new(method);
-#else
     PySSL_BEGIN_ALLOW_THREADS
     ctx = SSL_CTX_new(method);
     PySSL_END_ALLOW_THREADS
-#endif
 
     if (ctx == NULL) {
         _setSSLError(get_ssl_state(module), NULL, 0, __FILE__, __LINE__);
@@ -3104,13 +3096,7 @@ _ssl__SSLContext_impl(PyTypeObject *type, int proto_version)
         /* stick to OpenSSL's default settings */
         result = 1;
 #else
-#ifdef UEFI_C_SOURCE
-        /* UEFI OpenSSL 1.1.1f: Python's @SECLEVEL=2 cipher string can hang or
-         * misbehave in SSL_CTX_set_cipher_list; match 3.6.8 AppPkg list. */
-        result = SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!eNULL:!MD5");
-#else
         result = SSL_CTX_set_cipher_list(ctx, PY_SSL_DEFAULT_CIPHER_STRING);
-#endif
 #endif
     } else {
         /* SSLv2 needs MD5 */
@@ -6123,32 +6109,6 @@ parse_openssl_version(unsigned long libver,
 static int
 sslmodule_init_versioninfo(PyObject *m)
 {
-#ifdef UEFI_C_SOURCE
-    /* Avoid OpenSSL_version_num() / OpenSSL_version(): global init breaks
-     * Shell exit after "import ssl" even when Python finalize completed. */
-    PyObject *r;
-    unsigned long libver = OPENSSL_VERSION_NUMBER;
-    unsigned int major, minor, fix, patch, status;
-
-    parse_openssl_version(libver, &major, &minor, &fix, &patch, &status);
-    r = PyLong_FromUnsignedLong(libver);
-    if (_PyModule_Add(m, "OPENSSL_VERSION_NUMBER", r) < 0) {
-        return -1;
-    }
-    r = Py_BuildValue("IIIII", major, minor, fix, patch, status);
-    if (_PyModule_Add(m, "OPENSSL_VERSION_INFO", r) < 0) {
-        return -1;
-    }
-    r = PyUnicode_FromString(OPENSSL_VERSION_TEXT);
-    if (_PyModule_Add(m, "OPENSSL_VERSION", r) < 0) {
-        return -1;
-    }
-    r = Py_BuildValue("IIIII", major, minor, fix, patch, status);
-    if (_PyModule_Add(m, "_OPENSSL_API_VERSION", r) < 0) {
-        return -1;
-    }
-    return 0;
-#else
     PyObject *r;
     unsigned long libver;
     unsigned int major, minor, fix, patch, status;
@@ -6178,7 +6138,6 @@ sslmodule_init_versioninfo(PyObject *m)
         return -1;
 
     return 0;
-#endif
 }
 
 static int
@@ -6255,12 +6214,6 @@ sslmodule_init_strings(PyObject *module)
 static int
 sslmodule_init_lock(PyObject *module)
 {
-#ifdef UEFI_C_SOURCE
-    /* keylog_lock is unused; PyThread_free_lock can hang on UEFI dummy pthread. */
-    _sslmodulestate *state = get_ssl_state(module);
-    state->keylog_lock = NULL;
-    return 0;
-#else
     _sslmodulestate *state = get_ssl_state(module);
     state->keylog_lock = PyThread_allocate_lock();
     if (state->keylog_lock == NULL) {
@@ -6268,7 +6221,6 @@ sslmodule_init_lock(PyObject *module)
         return -1;
     }
     return 0;
-#endif
 }
 
 static PyModuleDef_Slot sslmodule_slots[] = {
@@ -6340,9 +6292,7 @@ sslmodule_free(void *m)
 {
     sslmodule_clear((PyObject *)m);
     _sslmodulestate *state = get_ssl_state(m);
-    if (state->keylog_lock != NULL) {
-        PyThread_free_lock(state->keylog_lock);
-    }
+    PyThread_free_lock(state->keylog_lock);
 }
 
 static struct PyModuleDef _sslmodule_def = {
@@ -6360,11 +6310,5 @@ static struct PyModuleDef _sslmodule_def = {
 PyMODINIT_FUNC
 PyInit__ssl(void)
 {
-    PyObject *m = PyModuleDef_Init(&_sslmodule_def);
-#ifdef UEFI_C_SOURCE
-    if (m != NULL) {
-        py312_uefi_note_ssl_used();
-    }
-#endif
-    return m;
+    return PyModuleDef_Init(&_sslmodule_def);
 }
