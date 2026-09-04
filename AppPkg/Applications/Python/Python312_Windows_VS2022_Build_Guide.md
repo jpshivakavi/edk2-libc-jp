@@ -187,7 +187,7 @@ Re-apply after resetting `StdLib` on a clean checkout.
 ## 5. srcprep (Phase V1.4)
 
 ```cmd
-cd AppPkg\Applications\Python\Python-3.12.13
+cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
 python srcprep.py
 findstr PLATFORM Include\pyconfig.h
 ```
@@ -199,11 +199,18 @@ Expect `#define PLATFORM "uefi"`.
 From **VS2022 dev shell** or after **`edksetup.bat`**:
 
 ```cmd
-cd AppPkg\Applications\Python\Python-3.12.13\vs2022_verify
+cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13\vs2022_verify
 verify_pyconfig_msft.bat
 ```
 
 Expect: `OK: V2 MSVC pyconfig verify passed` (uses **`/DUEFI_MSVC_64`**, same as **`Python312.inf`** X64 MSFT flags).
+
+**What it proves:** [`verify_pyconfig_sizes.c`](./Python-3.12.13/vs2022_verify/verify_pyconfig_sizes.c) includes
+the generated **`Include/pyconfig.h`** and **`#error`**s if the integer model is wrong for the toolchain —
+MSVC **LLP64** (**`SIZEOF_LONG`** 4, pointers/**`size_t`**/**`off_t`** 8) vs GCC **LP64** (**`SIZEOF_LONG`** 8),
+plus **`PLATFORM == "uefi"`**. It only compiles one **`.c`** to a temp **`.obj`** and deletes it — no build
+artifacts, a few seconds. Run it after **`srcprep.py`** and after any **`pyconfig.h`** edit: a wrong
+**`SIZEOF_LONG`** links fine and corrupts at runtime, so catching it here is far cheaper than a FULL build.
 
 On WSL, run **`vs2022_verify/verify_pyconfig_gcc.sh`** to confirm the GCC reference **`#else`** sizes.
 
