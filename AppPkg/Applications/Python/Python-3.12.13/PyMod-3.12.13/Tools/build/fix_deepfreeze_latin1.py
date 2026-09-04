@@ -6,7 +6,7 @@ from pathlib import Path
 # Always run from regen_frozen_windows.cmd or manually after regen — see
 # AppPkg/Applications/Python/Python312_VS2022_UEFI_Runtime_Notes.md section 5.
 
-p = Path(__file__).resolve().parents[1] / "Python" / "deepfreeze" / "deepfreeze.c"
+p = Path(__file__).resolve().parents[2] / "Python" / "deepfreeze" / "deepfreeze.c"
 text = p.read_text(encoding="utf-8")
 text = re.sub(r"&_Py_LATIN1_CHR\((\'.\')\)", r"_Py_LATIN1_CHR(\1)", text)
 text = re.sub(r"&_Py_ID\((.)\)", r"_Py_LATIN1_CHR('\1')", text)

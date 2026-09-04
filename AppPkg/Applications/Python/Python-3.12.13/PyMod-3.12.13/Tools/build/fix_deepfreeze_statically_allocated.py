@@ -10,7 +10,7 @@ See Python312_VS2022_UEFI_Runtime_Notes.md section 5.
 import re
 from pathlib import Path
 
-p = Path(__file__).resolve().parents[1] / "Python" / "deepfreeze" / "deepfreeze.c"
+p = Path(__file__).resolve().parents[2] / "Python" / "deepfreeze" / "deepfreeze.c"
 text = p.read_text(encoding="utf-8")
 
 pattern = re.compile(
