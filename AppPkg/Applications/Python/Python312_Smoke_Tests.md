@@ -286,6 +286,8 @@ flags — its presence proves nothing about whether readline is wired.
 | Scenario | GCC FULL | VS2022 FULL | VS2022 MIN |
 |----------|----------|-------------|------------|
 | Phase 8 **`-S -c`** + Shell **`exit`** | **Pass** | **Pass** | n/a |
+| **`ctypes.sizeof(c_void_p)`** == **`8`** (§3) | **Pass** (09-04) | **Pass** (09-04) | n/a |
+| Four modules, one process (§3 `phase8 ok`) | **Pass** (09-04) | **Pass** (09-04) | n/a |
 | Stdio **`-S`** REPL + teardown | **Pass** | **Pass** | **Pass** |
 | `import readline` stays stub, no env (§5.2) | Observed safe | Observed safe | **Pass** (Session 10) |
 | Interactive pyreadline opt-in (§5.4) | **Pass** | **Not re-smoked** | n/a |
@@ -297,12 +299,15 @@ teardown, but never asserted which code path had loaded. Treat them as unrun.
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
 
-**Latest regression — VS2022 + GCC FULL @ `3afa03f5` (2026-09-04):** Phase 8 spot-check
-(**`sys.version`**; **`zlib, ctypes, hashlib`**; **`ssl.create_default_context()`**) plus Shell
-**`exit`** and relaunch — **pass on both toolchains**, from the **same code state** (later
-commits are docs-only). First hardware run on either toolchain **after the PyMod-3.12.13
-consolidation**, so it clears the relocated frozen/deepfreeze artifacts on **both** entry paths.
-Open gap: **`ctypes.sizeof(c_void_p)`** was not asserted, so the LLP64 canary is unexercised —
+**Latest regression — VS2022 + GCC FULL @ `3afa03f5` (2026-09-04):** §3 Phase 8 including
+**`ctypes.sizeof(c_void_p)` → `8`** and **`phase8 ok`**, plus Shell **`exit`** and relaunch —
+**pass on both toolchains**, from the **same code state** (later commits are docs-only). First
+hardware run on either toolchain **after the PyMod-3.12.13 consolidation**, so it clears the
+relocated frozen/deepfreeze artifacts on **both** entry paths.
+
+**Every check guarding a known historical failure is green at this code state** — OpenSSL RNG
+hang, `socket.py`/`selectors` teardown, LLP64 pointer width, deepfreeze static strings, and
+finalize/re-entry. Still open: §2 baseline rows, itemised §4 REPL rows, and all of §5 —
 [`Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md).
 
 **Build parity does not imply runtime parity.** VS2022 enters via

@@ -66,9 +66,25 @@ Protocol: each one-liner → **`Shell>`** → **`exit`** → BIOS/setup.
 | `Python312.efi -S -c "import sys; print(sys.version)"` | **OK** (3.12.13) | **OK** |
 | `Python312.efi -S -c "import zlib, ctypes, hashlib; print('ok')"` | **OK** | **OK** |
 | `Python312.efi -S -c "import ssl; ssl.create_default_context(); print('ok')"` | **OK** | **OK** |
+| `Python312.efi -S -c "import ctypes; print(ctypes.sizeof(ctypes.c_void_p))"` | **`8`** | **`8`** |
+| `Python312.efi -S -c "import zlib, ssl, ctypes, hashlib; print('phase8 ok')"` | **`phase8 ok`** | **`phase8 ok`** |
 | Shell **`exit`** → firmware after each (hang test) | **No hang** | **No hang** |
 | Relaunch without reboot | **OK** — banner normal | **OK** |
 | Optional pyreadline | **Not exercised** | **Not exercised** this round (passed 2026-09-01) |
+
+**Two results carry specific weight beyond "no error":**
+
+**`ctypes.sizeof(c_void_p)` → `8` on both.** This is the LLP64 / **`UEFI_MSVC_64`** canary. A
+`4` here would mean `libffi_msvc/types.c` built `ffi_type_pointer` as 4 bytes against Python's
+8-byte `struct.calcsize("P")`, which surfaces as
+**`SystemError: sizeof(py_object) wrong: 4 instead of 8`** (deviations §2.2). `import ctypes`
+succeeding does **not** test this; only the value does. Notably it is green on **VS2022**,
+where the LLP64 model makes it the real risk — GCC is LP64 and less exposed.
+
+**`phase8 ok` — all four vendored modules in a single process.** Earlier rows imported `ssl`
+alone. Loading `zlib`, `ssl`, `ctypes` and `hashlib` together, then tearing down cleanly,
+covers the `socket.py` / `selectors` interaction that historically broke Shell `exit` on
+VS2022.
 
 **`ssl.create_default_context()` is the load-bearing pass.** It is the primary VS2022 canary
 (OpenSSL RNG / NASM ABI, deviations §11.7) and the historical Shell-`exit` hang case. Passing
@@ -82,35 +98,41 @@ paths — MSVC 368 and GCC stack-switch + IDT.
 
 Applies to **both** toolchains. See [`../Python312_Smoke_Tests.md`](../Python312_Smoke_Tests.md).
 
+The two gaps originally recorded here — **`ctypes.sizeof(c_void_p)`** and the single-process
+four-module import — were **closed the same day** and are in the pass table above. Remaining:
+
 | Gap | Note |
 |-----|------|
-| **`ctypes.sizeof(ctypes.c_void_p)` → `8`** | **Highest-value gap.** `import ctypes` succeeding does **not** prove pointer width; only the `sizeof` value catches the LLP64 / `UEFI_MSVC_64` bug (deviations §2.2) |
-| `import zlib, ssl, ctypes, hashlib` in **one** process | `ssl` was imported alone; all four together is a distinct case given the historical `socket.py` / `selectors` teardown chain |
 | `ssl.__file__` → UEFI `ssl/__init__.py` | Package-identity check; weaker than the `create_default_context()` pass already obtained |
 | `hashlib.sha256(b'x').hexdigest()[:8]` | Value check — only `import hashlib` was exercised |
 | `-h`, `print(1+1)`, `import os, sys, json` | §2 baseline rows |
 | Interactive `>>>` lines, `exit(0)`, stub `import readline` | Relaunch banner confirmed; individual §4 REPL rows not itemized |
+| pyreadline stub-vs-real assertions (§5.2), non-interactive opt-in (§5.3) | New checks; never run on either toolchain |
 
-**Cheapest way to close the main gap** (run on both sticks):
-
-```text
-Python312.efi -S -c "import ctypes; print(ctypes.sizeof(ctypes.c_void_p))"
-Python312.efi -S -c "import zlib, ssl, ctypes, hashlib; print('phase8 ok')"
-```
-
-Expect **`8`** and **`phase8 ok`**, each followed by Shell **`exit`** reaching firmware.
+None of the remaining items guard a known historical failure, unlike the two that were closed.
 
 ---
 
 ## Status
 
-**VS2022 FULL and GCC FULL @ `3afa03f5`: Phase 8 spot-check + teardown + relaunch — pass.**
+**VS2022 FULL and GCC FULL @ `3afa03f5`: Phase 8 + LLP64 pointer width + single-process
+four-module import + teardown + relaunch — pass on both.**
 
-Not a full re-run of the smoke matrix; the 2026-09-01 V6 sign-off remains the comprehensive
-record, and GCC pyreadline sign-off still rests on that date. This run's contribution is
-**unified regression coverage across the PyMod consolidation on a single code state**, which
-the 2026-09-01 unified tag does not cover.
+With `ctypes.sizeof(c_void_p)` and `phase8 ok` green, every check that guards a **known
+historical failure** on this port is now covered at this code state:
 
-**Candidate tag:** a post-PyMod unified pin would supersede
-`python312-unified-full-lab-2026-09-01` for clone-and-build purposes — worth cutting once the
-`ctypes.sizeof` gap is closed.
+| Historical failure | Guarding check | Status |
+|--------------------|----------------|--------|
+| OpenSSL RNG / NASM ABI hang (VS2022) | `ssl.create_default_context()` | **Pass** both |
+| `socket.py` / `selectors` Shell `exit` hang | `zlib, ssl, ctypes, hashlib` one process | **Pass** both |
+| LLP64 `ffi_type_pointer` 4-vs-8 (VS2022) | `ctypes.sizeof(c_void_p)` == `8` | **Pass** both |
+| deepfreeze latin1 / `statically_allocated` | `import sys; sys.version` under `Py_DEBUG` | **Pass** both |
+| Interpreter finalize / re-entry | Shell `exit` + relaunch | **Pass** both |
+
+Still not a full re-run of the smoke matrix — §2 baseline rows, the itemised §4 REPL rows and
+all pyreadline checks remain open, and GCC pyreadline sign-off still rests on 2026-09-01. But
+this run's contribution is **unified regression coverage across the PyMod consolidation on a
+single code state**, which the 2026-09-01 unified tag does not cover.
+
+**Candidate tag:** the `ctypes.sizeof` precondition is now met, so a post-PyMod unified pin
+can supersede `python312-unified-full-lab-2026-09-01` for clone-and-build. Not yet cut.
