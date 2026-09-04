@@ -128,8 +128,13 @@ call edksetup.bat
 Verify:
 
 ```cmd
-if exist BaseTools\Bin\Win32\build.exe (echo BaseTools OK) else (echo BaseTools MISSING)
+if exist BaseTools\Bin\Win32\GenFw.exe (echo BaseTools OK) else (echo BaseTools MISSING)
 ```
+
+**Do not** test for **`BaseTools\Bin\Win32\build.exe`** — it never exists. **`Edk2ToolsBuild.py`**
+produces the native C tools (**`GenFw`**, **`GenFv`**, **`GenSec`**, **`VfrCompile`**, … — 14 **`.exe`**),
+while **`build`** is the Python wrapper **`BaseTools\BinWrappers\WindowsLike\build.bat`** put on
+**`PATH`** by **`edksetup.bat`**. The end-to-end check is **`build --help`** after **`edksetup`**.
 
 If `Edk2ToolsBuild.py` fails with `No module named 'edk2toolext'`, install edk2
 Python requirements from **`pip-requirements.txt`** in the edk2 root (see

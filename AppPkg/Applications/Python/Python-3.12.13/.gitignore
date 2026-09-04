@@ -157,3 +157,9 @@ Python/frozen_modules/MANIFEST
 # Ignore ./python binary on Unix but still look into ./Python/ directory.
 /python
 !/Python/
+
+# UEFI fork: srcprep.py overlays every .h/.py from PyMod-3.12.13 onto this tree.
+# These two helpers resolve deepfreeze.c relative to the PyMod root, so the
+# overlaid copies cannot work here; edit and run the PyMod originals instead.
+Tools/build/fix_deepfreeze_latin1.py
+Tools/build/fix_deepfreeze_statically_allocated.py

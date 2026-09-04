@@ -479,9 +479,9 @@ Confirm REPL teardown and relaunch again (no regression vs MIN).
 | [`PyMod-3.12.13/efi/src/edk2main.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) | **`UefiMain`**, 368-style MSVC path |
 | [`PyMod-3.12.13/efi/src/msvc_chkstk.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/msvc_chkstk.c) | MIN **`__chkstk`** |
 | [`StdLib/LibC/Main/Main.c`](../../StdLib/LibC/Main/Main.c) | **`ShellAppMain`** boot **`Print`** |
-| [`Tools/build/generate_global_objects.py`](./Python-3.12.13/Tools/build/generate_global_objects.py) | Global **`_Py_ID`** / unicode init headers |
-| [`Tools/build/fix_deepfreeze_latin1.py`](./Python-3.12.13/Tools/build/fix_deepfreeze_latin1.py) | Normalize 1-char refs in **`deepfreeze.c`** |
-| [`Tools/build/fix_deepfreeze_statically_allocated.py`](./Python-3.12.13/Tools/build/fix_deepfreeze_statically_allocated.py) | **`statically_allocated`** on deepfreeze unicode (Py_DEBUG) |
+| [`PyMod-3.12.13/Tools/build/generate_global_objects.py`](./Python-3.12.13/PyMod-3.12.13/Tools/build/generate_global_objects.py) | Global **`_Py_ID`** / unicode init headers |
+| [`PyMod-3.12.13/Tools/build/fix_deepfreeze_latin1.py`](./Python-3.12.13/PyMod-3.12.13/Tools/build/fix_deepfreeze_latin1.py) | Normalize 1-char refs in **`deepfreeze.c`** |
+| [`PyMod-3.12.13/Tools/build/fix_deepfreeze_statically_allocated.py`](./Python-3.12.13/PyMod-3.12.13/Tools/build/fix_deepfreeze_statically_allocated.py) | **`statically_allocated`** on deepfreeze unicode (Py_DEBUG) |
 | [`Tools/build/regen_frozen_windows.cmd`](./Python-3.12.13/Tools/build/regen_frozen_windows.cmd) | Windows frozen + deepfreeze + globals regen |
 | [`Python-3.12.13/create_python_pkg.bat`](./Python-3.12.13/create_python_pkg.bat) | Windows packaging |
 
