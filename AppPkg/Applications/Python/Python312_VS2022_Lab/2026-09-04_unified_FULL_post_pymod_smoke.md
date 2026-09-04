@@ -134,5 +134,6 @@ all pyreadline checks remain open, and GCC pyreadline sign-off still rests on 20
 this run's contribution is **unified regression coverage across the PyMod consolidation on a
 single code state**, which the 2026-09-01 unified tag does not cover.
 
-**Candidate tag:** the `ctypes.sizeof` precondition is now met, so a post-PyMod unified pin
-can supersede `python312-unified-full-lab-2026-09-01` for clone-and-build. Not yet cut.
+**Tag:** **`python312-unified-full-lab-2026-09-04`** @ **`779b20cc`** — cut from this run;
+supersedes `python312-unified-full-lab-2026-09-01` as the clone-and-build pin, which predates
+the PyMod consolidation. See migration status **§ Git tags**.

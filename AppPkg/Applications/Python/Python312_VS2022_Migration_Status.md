@@ -169,10 +169,13 @@ SyntaxError: invalid non-printable character U+001B
 
 | Tag | Commit | Meaning |
 |-----|--------|---------|
-| **`python312-unified-full-lab-2026-09-01`** | **`753bfefb`** | **Unified FULL UEFI lab (2026-09-01):** **`feature/python-3.12.13-vs2022`** — **GCC** + **VS2022** FULL; Phase 8 **`-S -c`**, stdio **`Python312.efi -S`** → **`exit(0)`** → Shell **`exit`**; GCC optional **pyreadline**. Lab: [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md). **V6 Done.** |
+| **`python312-unified-full-lab-2026-09-04`** | **`779b20cc`** | **Current clone-and-build pin — unified FULL, post-PyMod (2026-09-04):** **`feature/python-3.12.13-vs2022`** — **GCC** + **VS2022** FULL built from the **same code state** (**`3afa03f5`** last code-bearing commit). Phase 8 **`-S -c`**, **`ssl.create_default_context()`**, **`ctypes.sizeof(c_void_p)`**→**`8`**, **`import zlib, ssl, ctypes, hashlib`**→**`phase8 ok`**, Shell **`exit`** → firmware, relaunch — **pass on both**. **First pin that includes the PyMod-3.12.13 consolidation** (**`9d465ec2`**), frozen headers under PyMod (**`55219522`**) and the deepfreeze helper path fix (**`0a674ac0`**) — so a fresh clone of this tag builds without regen. All **known-historical-failure guards green**. Lab: [`2026-09-04_unified_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md). Not covered: **pyreadline** (GCC opt-in rests on 2026-09-01; §5.2/§5.3 assertions unrun). |
+| **`python312-unified-full-lab-2026-09-01`** | **`753bfefb`** | **Superseded** by the 09-04 pin for clone-and-build — **predates PyMod consolidation**. **Unified FULL UEFI lab (2026-09-01):** **`feature/python-3.12.13-vs2022`** — **GCC** + **VS2022** FULL; Phase 8 **`-S -c`**, stdio **`Python312.efi -S`** → **`exit(0)`** → Shell **`exit`**; GCC optional **pyreadline**. Lab: [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md). **V6 Done.** |
 | **`python312-vs2022-full-lab-2026-08-26`** | **`3568d02d`** | **VS2022 FULL UEFI lab sign-off (2026-08-26):** `import sys` / **`import ssl`** / **`ssl.create_default_context()`** / **hashlib** / **ctypes** one-liners; **`Shell>`** → **`exit`** → BIOS/setup. PyMod **`Lib/ssl/`** (`_uefi_min`), MSVC teardown parity, post-finalize OpenSSL/console handoff. Details: [`Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md`](./Python312_VS2022_Lab/2026-08-26_VS2022_FULL_ssl_Shell_exit.md). |
 
-**Checkout unified manufacturing pin:** `git fetch origin tag python312-unified-full-lab-2026-09-01 && git checkout python312-unified-full-lab-2026-09-01`
+**Checkout current unified manufacturing pin (post-PyMod):** `git fetch origin tag python312-unified-full-lab-2026-09-04 && git checkout python312-unified-full-lab-2026-09-04`
+
+**Older unified pin (pre-PyMod, superseded):** `git fetch origin tag python312-unified-full-lab-2026-09-01 && git checkout python312-unified-full-lab-2026-09-01`
 
 **Checkout VS2022-only pin (older):** `git fetch origin tag python312-vs2022-full-lab-2026-08-26 && git checkout python312-vs2022-full-lab-2026-08-26`
 
@@ -453,7 +456,7 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 4. **Gaps closed same day:** **`ctypes.sizeof(c_void_p)`** → **`8`** on both (LLP64 / **`UEFI_MSVC_64`** canary — a **`4`** would be the `libffi_msvc` `ffi_type_pointer` bug, deviations §2.2), and **`import zlib, ssl, ctypes, hashlib`** → **`phase8 ok`** in a single process on both, teardown clean. Every check guarding a **known historical failure** is now green at **`3afa03f5`**. Remaining open items guard no known regression: §2 baseline rows, itemised REPL rows, and the new pyreadline stub-vs-real assertions. GCC pyreadline sign-off still rests on 2026-09-01.
 5. **Docs:** **`65b7326a`** added [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) — consolidated runnable MIN/FULL/REPL procedure for both toolchains, linked from both build guides, runtime notes §11 and the MIN doc.
 6. **Lab note:** [`Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md).
-7. **Follow-up:** the **`ctypes.sizeof`** precondition is now met, so a post-PyMod unified tag can supersede **`python312-unified-full-lab-2026-09-01`** as the clone-and-build pin. **Not yet cut.**
+7. **Tag cut:** **`python312-unified-full-lab-2026-09-04`** @ **`779b20cc`** — first pin containing the PyMod consolidation; supersedes **`python312-unified-full-lab-2026-09-01`** for clone-and-build (**§ Git tags**).
 
 ### 2026-07-23 — Session 10 (VS2022 REPL exit, Shell teardown, readline stub — **user-verified**, pushed)
 
