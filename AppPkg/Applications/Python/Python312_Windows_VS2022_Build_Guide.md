@@ -13,6 +13,8 @@ that switch to **FALSE** and **`-D BUILD_PYTHON312`** alone builds **MIN**.
 
 **UEFI runtime (VS2022 hang, MIN, deepfreeze, deploy, GCC vs VS2022 REPL):** [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md)
 
+**Smoke tests (both toolchains, MIN + FULL):** [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md)
+
 **Plan / status:**
 
 - [`Python312_VS2022_Port_Plan.md`](./Python312_VS2022_Port_Plan.md)
@@ -405,7 +407,7 @@ Copy the **`EFI\`** folder to the FAT volume root (e.g. `fs0:\EFI\`), then from 
 
 **Manufacturing default (VS2022):** stdio REPL; **`import readline`** is a stub unless **`PY_UEFI_READLINE=1`**. **GCC** reference smoke historically used **pyreadline** — see [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) **§11**.
 
-Recommended smoke (MIN): runtime notes **§11** (`-h`, `-S -c`, REPL → **`exit(0)`** → Shell **`exit`**).
+**Smoke tests:** [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) — runnable MIN / FULL / REPL procedure for **both** toolchains, with expected values and failure signatures. Ordering rationale stays in runtime notes **§11**.
 
 ---
 

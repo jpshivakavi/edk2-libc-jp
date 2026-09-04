@@ -112,6 +112,8 @@ Python312.efi -S -c "import ssl"
 
 Expect **`-h`** with return to prompt, **`import ssl` → ModuleNotFoundError** (or no `_ssl`).
 
+Full MIN matrix, teardown protocol and failure signatures: [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §2.
+
 When MIN is green, enable Phase 8 via **`BUILD_PYTHON312_FULL=TRUE`** or batches **8.1 → 8.2 → 8.5 → 8.3 → 8.4** per [`Python312_VS2022_Port_Plan.md`](./Python312_VS2022_Port_Plan.md).
 
 ---

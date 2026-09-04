@@ -423,6 +423,8 @@ If boot hangs **before** banner with the GCC-style entry, re-add **`/DPY_UEFI_MS
 
 ## 11. Recommended smoke order (VS2022)
 
+> **Runnable procedure:** [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) consolidates MIN / FULL / REPL for **both** toolchains with expected values and failure signatures. This section remains the source for **ordering and rationale**.
+
 **Entry:** **MIN** and **FULL** use **`PY_UEFI_MSVC_368_ENTRY`** on VS2022. GCC-style stack + IDT is for **GCC FULL** only until MSVC entry parity is fixed.
 
 ### MIN (default DSC)

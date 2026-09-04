@@ -455,7 +455,9 @@ cd EFI\bin
 Python312.efi
 ```
 
-Smoke (FULL — matches `create_python_pkg.sh` hints):
+**Full smoke procedure:** [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) — MIN / FULL / REPL matrix with expected values, the Shell **`exit`** teardown protocol, GCC-only pyreadline steps, and failure signatures. Use it for sign-off rather than the quick list below.
+
+Quick check (FULL):
 
 ```text
 >>> import sys; print(sys.version)   # expect 3.12.13
@@ -464,6 +466,8 @@ Smoke (FULL — matches `create_python_pkg.sh` hints):
 >>> hashlib.sha256(b"x").hexdigest()
 >>> ssl.create_default_context()
 ```
+
+Each one-liner must be followed by Shell **`exit`** reaching firmware — that teardown step is the real test.
 
 `ssl.OPENSSL_VERSION_INFO` on UEFI reflects vendored **OpenSSL 1.1.1f**, not desktop 3.12.x **3.0.x**.
 
