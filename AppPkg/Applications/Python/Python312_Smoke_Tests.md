@@ -182,12 +182,13 @@ documented behaviour, not a regression.
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
 
-**Latest regression — VS2022 FULL @ `3afa03f5` (2026-09-04):** Phase 8 spot-check
+**Latest regression — VS2022 + GCC FULL @ `3afa03f5` (2026-09-04):** Phase 8 spot-check
 (**`sys.version`**; **`zlib, ctypes, hashlib`**; **`ssl.create_default_context()`**) plus Shell
-**`exit`** and relaunch — **pass**. First VS2022 FULL hardware run **after the PyMod-3.12.13
-consolidation**, so it clears the relocated frozen/deepfreeze artifacts on MSVC.
+**`exit`** and relaunch — **pass on both toolchains**, from the **same code state** (later
+commits are docs-only). First hardware run on either toolchain **after the PyMod-3.12.13
+consolidation**, so it clears the relocated frozen/deepfreeze artifacts on **both** entry paths.
 Open gap: **`ctypes.sizeof(c_void_p)`** was not asserted, so the LLP64 canary is unexercised —
-[`Python312_VS2022_Lab/2026-09-04_VS2022_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_VS2022_FULL_post_pymod_smoke.md).
+[`Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md).
 
 **Build parity does not imply runtime parity.** VS2022 enters via
 **`PY_UEFI_MSVC_368_ENTRY`** on the Shell stack while GCC uses **`edk2_switch_stack`** plus a
