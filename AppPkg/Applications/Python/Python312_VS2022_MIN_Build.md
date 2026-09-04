@@ -42,6 +42,11 @@ Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runt
 
 Same as the Windows build guide: patches (local) if needed, **`srcprep.py`**, then **`build`**. Frozen artifacts are **in git** under **`PyMod-3.12.13/Python/frozen_modules/`** and **`deepfreeze/`** — no regen on fresh clone. Run **`Tools\build\regen_frozen_windows.cmd`** only when changing frozen inputs (runtime notes §5; WSL guide §6).
 
+**Run the pre-flight checks before either destructive step** — both are usually no-ops on this branch, and both fail confusingly when run blind:
+
+- **Patches:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) **§4** — classifies each patch **`NEEDS APPLY`** / **`ALREADY APPLIED`** / **`CONFLICT`** instead of just failing.
+- **Frozen regen:** same guide **§6** — host must be **Python 3.12.x** (**`magic 168627659`**); a different minor rewrites all 24 headers with a bad magic that only fails at **runtime**.
+
 ```cmd
 set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix
 set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%

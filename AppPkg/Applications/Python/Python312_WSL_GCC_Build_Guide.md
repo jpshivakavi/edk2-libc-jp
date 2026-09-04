@@ -177,21 +177,52 @@ apply patches locally as a build prerequisite (re-apply after a clean
 checkout). **Patch 0001 (`upipe`) is required** to link; 0002–0004 are
 strongly recommended for GCC runtime.
 
-Use `--ignore-whitespace` (patch context can carry trailing spaces):
+Use `--ignore-whitespace` (patch context can carry trailing spaces).
+
+### 4.1 Pre-flight — **run this first**, it decides whether to apply at all
 
 ```bash
-cd ~/src/edk2-libc   # same tree as EDK2_LIBC_PATH / PACKAGES_PATH
+cd "$EDK2_LIBC_PATH"          # same tree as PACKAGES_PATH — not a second libc clone
+git rev-parse --abbrev-ref HEAD
+git status --short StdLib StdLibPrivateInternalFiles
 
-# Prefer a clean StdLib baseline (no half-applied local edits):
-#   git checkout -- StdLib StdLibPrivateInternalFiles
-#   git clean -fd StdLib StdLibPrivateInternalFiles
+for p in AppPkg/Applications/Python/Python-3.12.13/patches/*.patch; do
+  if git apply --check --ignore-whitespace "$p" 2>/dev/null; then
+    echo "NEEDS APPLY     : $(basename "$p")"
+  elif git apply --reverse --check --ignore-whitespace "$p" 2>/dev/null; then
+    echo "ALREADY APPLIED : $(basename "$p")"
+  else
+    echo "CONFLICT        : $(basename "$p")"
+  fi
+done
+```
 
-git apply --check --ignore-whitespace \
-  AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+| Line | Meaning | Action |
+|------|---------|--------|
+| **`NEEDS APPLY`** | Not in the tree and applies cleanly | Apply it (§4.2) |
+| **`ALREADY APPLIED`** | Reverse-apply succeeds, so the content is **already present** | **Skip** — re-applying fails or double-applies |
+| **`CONFLICT`** | Applies in **neither** direction | Partially applied or drifted — **stop** and inspect |
+
+**Why the reverse check:** a failing **`git apply --check`** cannot tell *already applied* from a *real conflict* — both just fail. Reverse-applying succeeds **only** if the change is already in the tree. Checking **`patches/*.patch`** in one **`git apply`** is also misleading: one bad patch fails the whole set, so loop per patch.
+
+**Expected on `feature/python-3.12.13-vs2022`:** all four **`ALREADY APPLIED`**, **`git status`** empty, and both new-file markers present:
+
+```bash
+ls StdLib/LibC/Uefi/upipe.c StdLib/LibC/Uefi/Devices/Console/daAnsi.c
+```
+
+**`upipe.c`** (**0001**) and **`daAnsi.c`** (**0002**) are **added** files, so their presence is an unambiguous applied-marker. The empty **`git status`** is your baseline — it is what makes **`git checkout -- StdLib StdLibPrivateInternalFiles`** a safe undo.
+
+> **WSL: use a native Linux clone, not `/mnt/c`.** Against a Windows clone (**`core.autocrlf=true`**) WSL git has no **`autocrlf`** and sees CRLF working files against an LF index, so **`git status`** reports **every** text file modified — **11** spurious **`StdLib`** entries on this setup — and the baseline check above fails for no reason. Build from **`~/src/...`**.
+
+### 4.2 Apply (only for patches reported `NEEDS APPLY`)
+
+```bash
+cd "$EDK2_LIBC_PATH"
 git apply --ignore-whitespace \
-  AppPkg/Applications/Python/Python-3.12.13/patches/*.patch
+  AppPkg/Applications/Python/Python-3.12.13/patches/0001-Implement-minimal-emulation-of-pipe-functionality.patch
+# …repeat per patch reported NEEDS APPLY…
 
-# Verify upipe landed:
 ls StdLib/LibC/Uefi/upipe.c
 ```
 
@@ -259,7 +290,42 @@ After **`git pull`** on the same branch:
 
 ### 6.3 When you must regenerate
 
-Only if you change frozen **`.py`** sources, bump the 3.12.x patch level, or refresh **`deepfreeze.c`** / global-string headers:
+Only if you change frozen **`.py`** sources, bump the 3.12.x patch level, or refresh **`deepfreeze.c`** / global-string headers.
+
+**Pre-flight — run this first; on WSL it usually tells you to regen on Windows instead:**
+
+```bash
+APP_PY=$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13
+
+python3 -c 'import sys, importlib._bootstrap_external as b; print(sys.version.split()[0], "magic", b._RAW_MAGIC_NUMBER)'
+python3 -c 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)' \
+  && echo "host is 3.12 — regen OK" || echo "host is NOT 3.12 — do not regen here"
+
+ls "$APP_PY/PyMod-3.12.13/Python/frozen_modules"/*.h | wc -l          # expect 24
+test -f "$APP_PY/PyMod-3.12.13/Python/deepfreeze/deepfreeze.c" \
+  && echo "deepfreeze present" || echo "deepfreeze MISSING"
+
+cd "$EDK2_LIBC_PATH"
+git status --short -- AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Python
+```
+
+| Check | Expect | If it differs |
+|-------|--------|---------------|
+| Host **`python3`** | **3.12.x**, **`magic 168627659`** | **Stop.** Distro **`python3`** is usually **3.8** / **3.10** (Ubuntu 20.04 gives **3.8.10**, magic **168627541**). Regenerating writes all 24 headers with the **wrong marshal magic** — it still links and fails at **runtime**. Regen on Windows and commit, or use §6.4 |
+| Header count | **24** | Artifacts are **committed** — **`git pull`** / **`git checkout`** rather than regenerating. A clone older than **`55219522`** has **0** here and cannot build |
+| **`deepfreeze.c`** | **`present`** | Same as above |
+| **`git status`** | **empty** | Commit or stash first, otherwise regen output is indistinguishable from your edits |
+
+**Post-regen — confirm what actually changed:**
+
+```bash
+cd "$EDK2_LIBC_PATH"
+git diff --stat -- AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Python
+```
+
+**No output** means regen reproduced the committed artifacts byte-for-byte — expected when inputs did not change. **All 24** headers changing after editing one **`.py`** is the signature of the **wrong host interpreter**.
+
+Regen paths:
 
 | Host | Command |
 |------|---------|
@@ -410,9 +476,9 @@ Smoke (FULL — matches `create_python_pkg.sh` hints):
 [ ] edk2 BaseTools + edksetup.sh
 [ ] PACKAGES_PATH / EDK2_LIBC_PATH set (edk2 + edk2-libc only)
 [ ] branch feature/python-3.12.13-vs2022
-[ ] git apply --ignore-whitespace patches/*.patch (upipe.c present) — or skip if already patched (migration status § Branch drift)
+[ ] §4.1 pre-flight run; patches applied only where it printed NEEDS APPLY (upipe.c + daAnsi.c present)
 [ ] python3 srcprep.py
-[ ] PyMod frozen/deepfreeze present (§6.1 — default on fresh clone; no regen)
+[ ] PyMod frozen/deepfreeze present — 24 headers + deepfreeze.c (§6.1 — default on fresh clone; no regen)
 [ ] build -D BUILD_PYTHON312 -t GCC
 [ ] Python312.efi produced
 [ ] create_python_pkg.sh + UEFI REPL smoke (zlib, readline, ctypes, hashlib, ssl)

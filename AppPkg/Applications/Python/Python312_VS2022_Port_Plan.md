@@ -115,9 +115,9 @@ Use the same **MIN → link → package → smoke → FULL batches** rhythm as G
    - IDE workspace = that libc clone; EDK **`build`** still runs from **`edk2`**.
    - `set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix`
    - `set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%`
-3. **StdLib patches:** `git apply` the four patches under `Python-3.12.13/patches/` (same as GCC; not committed).
+3. **StdLib patches:** `git apply` the four patches under `Python-3.12.13/patches/` (same as GCC; not committed) — run the **§4 pre-flight** first ([`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md)); on this branch they are normally **already applied**.
 4. **`srcprep.py`** from `Python-3.12.13\`.
-5. **Frozen:** On **`feature/python-3.12.13-vs2022`**, PyMod frozen artifacts are **in git** — no regen on fresh clone. Regenerate with **`Tools\build\regen_frozen_windows.cmd`** only when changing frozen inputs (WSL/Windows guides §6).
+5. **Frozen:** On **`feature/python-3.12.13-vs2022`**, PyMod frozen artifacts are **in git** — no regen on fresh clone. Regenerate with **`Tools\build\regen_frozen_windows.cmd`** only when changing frozen inputs, after the **§6 pre-flight** (host must be **Python 3.12.x**) — WSL/Windows guides §6.
 6. **`edksetup.bat`** in `edk2` WORKSPACE.
 
 #### Deliverable
