@@ -106,7 +106,7 @@ Apply the same defines to **`Python312.inf`** MSFT flags when testing **FULL** o
 
 ### Why two steps (deepfreeze + globals)
 
-**`Tools/build/deepfreeze.py`** emits **`deepfreeze.c`** with **`&_Py_ID(x)`** for **single-character** identifiers (e.g. **`d`**, **`_`**, **`s`**). This AppPkg fork’s **`generate_global_objects.py`** deliberately **does not** register 1-character names as **`_Py_ID`** in **`pycore_global_strings.h`** (matches upstream 3.12 + avoids **`Py_DEBUG`** assert failures). Until upstream deepfreeze changes, you **must** run **`fix_deepfreeze_latin1.py`** after any step that refreshes **`deepfreeze.c`** or **`generate_global_objects.py`** output.
+**`PyMod-3.12.13/Tools/build/deepfreeze.py`** emits **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** with **`&_Py_ID(x)`** for **single-character** identifiers (e.g. **`d`**, **`_`**, **`s`**). This AppPkg fork’s **`PyMod-3.12.13/Tools/build/generate_global_objects.py`** deliberately **does not** register 1-character names as **`_Py_ID`** in **`pycore_global_strings.h`** (matches upstream 3.12 + avoids **`Py_DEBUG`** assert failures). Until upstream deepfreeze changes, you **must** run **`PyMod-3.12.13/Tools/build/fix_deepfreeze_latin1.py`** after any step that refreshes **`deepfreeze.c`** or **`generate_global_objects.py`** output.
 
 **Symptoms if post-deepfreeze fixes are skipped:**
 
@@ -131,18 +131,22 @@ Tools\build\regen_frozen_windows.cmd
 
 | Step | Tool | Output |
 |------|------|--------|
-| 1 | **`Programs\_freeze_module.py`** (×24 modules) | **`Python/frozen_modules/*.h`** |
-| 2 | **`Tools/build/deepfreeze.py`** | **`Python/deepfreeze/deepfreeze.c`** (may contain **`&_Py_ID(d)`**, etc.) |
-| 2b | **`Tools/build/fix_deepfreeze_statically_allocated.py`** | Ensures **`.statically_allocated = 1`** on immortal unicode **`.state`** (Py_DEBUG consistency) |
-| 3 | **`Tools/build/generate_global_objects.py`** | **`Include/internal/pycore_global_strings.h`**, **`pycore_runtime_init_generated.h`**, **`pycore_unicodeobject_generated.h`**, fini header |
-| 4 | **`Tools/build/fix_deepfreeze_latin1.py`** | Rewrites single-char **`&_Py_ID(c)`** → **`_Py_LATIN1_CHR('c')`** (no **`&`**) |
+| 1 | **`Programs\_freeze_module.py`** (×24 modules) | **`PyMod-3.12.13/Python/frozen_modules/*.h`** |
+| 2 | **`PyMod-3.12.13/Tools/build/deepfreeze.py`** | **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** (may contain **`&_Py_ID(d)`**, etc.) |
+| 2b | **`PyMod-3.12.13/Tools/build/fix_deepfreeze_statically_allocated.py`** | Ensures **`.statically_allocated = 1`** on immortal unicode **`.state`** (Py_DEBUG consistency) |
+| 3 | **`PyMod-3.12.13/Tools/build/generate_global_objects.py`** | **`Include/internal/pycore_global_strings.h`**, **`pycore_runtime_init_generated.h`**, **`pycore_unicodeobject_generated.h`**, fini header |
+| 4 | **`PyMod-3.12.13/Tools/build/fix_deepfreeze_latin1.py`** | Rewrites single-char **`&_Py_ID(c)`** → **`_Py_LATIN1_CHR('c')`** (no **`&`**) |
 | 5 | **`findstr`** check | **`deepfreeze.c`** must contain **`.statically_allocated = 1,`** |
 
-Then rebuild **`Python312.efi`** (MIN or FULL — same **`deepfreeze.c`**). Commit **`deepfreeze.c`** and generated headers when they change (**`git add -f`** if needed — CPython **`.gitignore`**).
+Then rebuild **`Python312.efi`** (MIN or FULL — same **`deepfreeze.c`**). Commit **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** and **`frozen_modules/*.h`** when they change.
 
 ### Fresh clone — build without regen
 
-**Normal path:** pull **`feature/python-3.12.13-vs2022`**, apply StdLib patches, **`srcprep.py`**, **`build`**, **`create_python_pkg.bat`**. The repo ships a checked-in **`Python/deepfreeze/deepfreeze.c`** with **`.statically_allocated = 1`** and **`_Py_LATIN1_CHR`** for 1-char refs — you should **not** see **C2039** or **`_PyUnicodeCheckConsistency` / `!_Py_IsImmortal`** on **`Py_DEBUG`** UEFI builds **unless** you regenerate frozen artifacts incorrectly.
+**Normal path:** clone/pull **`feature/python-3.12.13-vs2022`**, apply StdLib patches if needed, **`srcprep.py`**, **`build`**, **`create_python_pkg.bat`** / **`.sh`**. The repo ships **`PyMod-3.12.13/Python/frozen_modules/*.h`**, **`PyMod-3.12.13/Python/frozen.c`**, and **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** with **`.statically_allocated = 1`** and **`_Py_LATIN1_CHR`** for 1-char refs — you should **not** see **C2039** or **`_PyUnicodeCheckConsistency` / `!_Py_IsImmortal`** on **`Py_DEBUG`** UEFI builds **unless** you regenerate frozen artifacts incorrectly.
+
+### Existing clone — after `git pull`
+
+Re-run **`srcprep.py`** when overlay headers change; rebuild. No frozen regen unless you are editing frozen **`.py`** sources or running a deliberate refresh (below). Remove stale **`Python/frozen_modules/*.h`** if left over from an older layout (PyMod paths are canonical since **`55219522`**).
 
 **You can still break runtime if you:**
 
@@ -161,9 +165,9 @@ Always use **`Tools\build\regen_frozen_windows.cmd`** for a full refresh (includ
 | Situation | Commands (from **`Python-3.12.13/`**) |
 |-----------|----------------------------------------|
 | **Full refresh** | **`Tools\build\regen_frozen_windows.cmd`** |
-| **Only global headers** ( **`deepfreeze.c` already latin1-fixed** ) | **`py -3.12 Tools\build\generate_global_objects.py`** — re-run **`fix_deepfreeze_latin1.py`** if **`deepfreeze.c`** was regenerated since last fix |
-| **Only `deepfreeze.c`** (frozen `.h` already current) | **`py -3.12 Tools\build\deepfreeze.py`** … **`-o Python/deepfreeze/deepfreeze.c`** (same args as batch) → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
-| **WSL copy** from edk2-py312 | After copy into this fork, still run **`python3 Tools/build/generate_global_objects.py`** then **`python3 Tools/build/fix_deepfreeze_latin1.py`** (fork **`generate_global_objects.py`** differs from stock CPython) |
+| **Only global headers** ( **`deepfreeze.c` already latin1-fixed** ) | **`py -3.12 PyMod-3.12.13\Tools\build\generate_global_objects.py`** — re-run **`fix_deepfreeze_latin1.py`** if **`deepfreeze.c`** was regenerated since last fix |
+| **Only `deepfreeze.c`** (frozen `.h` already current) | **`py -3.12 PyMod-3.12.13\Tools\build\deepfreeze.py`** … **`-o PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** (same args as batch) → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
+| **WSL copy** from edk2-py312 | Copy into **`PyMod-3.12.13/Python/frozen_modules/`** and **`PyMod-3.12.13/Python/deepfreeze/`** — then **`python3 PyMod-3.12.13/Tools/build/generate_global_objects.py`**, **`fix_deepfreeze_statically_allocated.py`**, **`fix_deepfreeze_latin1.py`** |
 
 **What `fix_deepfreeze_latin1.py` does:** regex replace **`&_Py_ID(.)`** → **`_Py_LATIN1_CHR('…')`**; strips erroneous **`&_Py_LATIN1_CHR`**. Prints **`remaining single-char &_Py_ID: 0`** when done.
 
@@ -183,8 +187,8 @@ With **`Py_DEBUG`** enabled in UEFI **`pyconfig.h`**, **`_PyUnicode_InitStaticSt
 | Error | Cause | Fix |
 |--------|--------|-----|
 | **C2102** **`&` requires l-value** | **`&_Py_LATIN1_CHR('…')`** | Use **`_Py_LATIN1_CHR('…')`** only |
-| **C2039** **`_py_x` is not a member** | **`&_Py_ID(x)`** for 1-char **`x`** after globals regen | **`py -3.12 Tools\build\fix_deepfreeze_latin1.py`** (or full **`regen_frozen_windows.cmd`**) |
-| **`_PyUnicodeCheckConsistency`** / **`!_Py_IsImmortal`** | Immortal **`deepfreeze`** unicode without **`.statically_allocated = 1`** | **`py -3.12 Tools\build\fix_deepfreeze_statically_allocated.py`**, rebuild **`.efi`** |
+| **C2039** **`_py_x` is not a member** | **`&_Py_ID(x)`** for 1-char **`x`** after globals regen | **`py -3.12 PyMod-3.12.13\Tools\build\fix_deepfreeze_latin1.py`** (or full **`regen_frozen_windows.cmd`**) |
+| **`_PyUnicodeCheckConsistency`** / **`!_Py_IsImmortal`** | Immortal **`deepfreeze`** unicode without **`.statically_allocated = 1`** | **`py -3.12 PyMod-3.12.13\Tools\build\fix_deepfreeze_statically_allocated.py`**, rebuild **`.efi`** |
 | Stale `&_Py_STR(dot)` etc. | Old deepfreeze vs current **`deepfreeze.py`** | Full regen; some literals use **`_Py_SINGLETON(strings).ascii[N]`** (Session 6) |
 
 ---

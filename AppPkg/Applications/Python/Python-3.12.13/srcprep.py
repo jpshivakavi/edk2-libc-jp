@@ -5,6 +5,10 @@ Mirrors AppPkg Python-3.6.8/srcprep.py. Only .h and .py are copied;
 
 Skipped under PyMod (not overlaid): Modules/readline/, Modules/libffi/,
 Modules/zlib/, Modules/openssl/ — vendored trees used only at link/stage time.
+
+Also skipped: Python/frozen_modules/ — frozen marshal headers and frozen.c
+are built from PyMod-3.12.13/Python/ (see Python312.inf); stock Python/frozen_modules/
+stays upstream-clean (README only).
 """
 import os
 import shutil
@@ -26,6 +30,8 @@ def copyDirTree(root_src_dir, root_dst_dir):
             continue
         norm_dst = os.path.normpath(dst_dir).replace("\\", "/")
         if norm_dst.endswith("Modules/libffi") or "/Modules/libffi/" in norm_dst:
+            continue
+        if norm_dst.endswith("Python/frozen_modules") or "/Python/frozen_modules/" in norm_dst:
             continue
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)

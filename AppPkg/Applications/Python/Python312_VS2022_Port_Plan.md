@@ -117,7 +117,7 @@ Use the same **MIN → link → package → smoke → FULL batches** rhythm as G
    - `set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%`
 3. **StdLib patches:** `git apply` the four patches under `Python-3.12.13/patches/` (same as GCC; not committed).
 4. **`srcprep.py`** from `Python-3.12.13\`.
-5. **Frozen:** Run frozen/deepfreeze generation on Windows (port commands from WSL guide § frozen); confirm generated files match what `Python312.inf` already lists.
+5. **Frozen:** On **`feature/python-3.12.13-vs2022`**, PyMod frozen artifacts are **in git** — no regen on fresh clone. Regenerate with **`Tools\build\regen_frozen_windows.cmd`** only when changing frozen inputs (WSL/Windows guides §6).
 6. **`edksetup.bat`** in `edk2` WORKSPACE.
 
 #### Deliverable

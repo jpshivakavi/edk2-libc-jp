@@ -33,7 +33,7 @@ and does **not** count toward **Python312.efi** size.
 | Python312.efi (3.12.13) | ~10–11 MB | `NOOPT` + `GCC` + `BUILD_PYTHON312` |
 
 Example from a successful WSL build tree: packaged `Python312.efi` ~11 MB;
-source file `Python/deepfreeze/deepfreeze.c` ~5.1 MB on disk before compile.
+source file `PyMod-3.12.13/Python/deepfreeze/deepfreeze.c` ~5.1 MB on disk before compile.
 
 ---
 
@@ -42,7 +42,7 @@ source file `Python/deepfreeze/deepfreeze.c` ~5.1 MB on disk before compile.
 ### 1. Deepfreeze (largest single factor)
 
 CPython 3.12 embeds a large **frozen** import/bootstrap corpus in
-`Python/deepfreeze/deepfreeze.c` (plus `frozenmain.c` and `frozen_modules/*.h`).
+`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c` (plus `frozenmain.c` and `PyMod-3.12.13/Python/frozen_modules/*.h`).
 That generated translation unit alone can be **on the order of ~5 MB** of C source.
 
 Python 3.6.8 in AppPkg uses a minimal `Python/frozen.c` (hundreds of bytes to a few
@@ -50,7 +50,7 @@ KB in-tree), not a multi-megabyte deepfreeze blob.
 
 `Python312.inf` lists:
 
-- `Python/deepfreeze/deepfreeze.c`
+- `PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`
 - `Python/frozen.c`
 - `Python/frozenmain.c`
 
@@ -122,7 +122,7 @@ ls -lh ~/src/edk2-libc/Build/AppPkg/NOOPT_GCC/X64/Python312.efi
 ls -lh ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13/py312_efi/EFI/bin/Python312.efi
 
 # Deepfreeze source bulk
-wc -c ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13/Python/deepfreeze/deepfreeze.c
+wc -c ~/src/edk2-libc-jp-vsfix/AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Python/deepfreeze/deepfreeze.c
 
 # Compare frozen stub (3.6 vs 3.12)
 wc -c ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.6.8/Python/frozen.c

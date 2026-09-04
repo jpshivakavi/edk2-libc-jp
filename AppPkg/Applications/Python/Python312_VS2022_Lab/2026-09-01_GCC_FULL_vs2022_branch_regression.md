@@ -13,7 +13,7 @@
 | Issue | Fix |
 |-------|-----|
 | **`py312_boot_print_ascii` redefinition** | **`dbc8416c`**: define in **`edk2main.c`** only when **`PY_UEFI_BOOT_TRACE`** (MSFT-only in INF); GCC uses **`py312boot.h`** inline stub |
-| **Missing `frozen_modules/*.h`** | Copy/regen per [`Python312_WSL_GCC_Build_Guide.md`](../Python312_WSL_GCC_Build_Guide.md) §6 (not committed in git) |
+| **Missing `frozen_modules/*.h`** | **Resolved on vs2022 tip (`55219522`)** — committed under **`PyMod-3.12.13/Python/frozen_modules/`**; see [`Python312_WSL_GCC_Build_Guide.md`](../Python312_WSL_GCC_Build_Guide.md) §6 |
 
 ---
 

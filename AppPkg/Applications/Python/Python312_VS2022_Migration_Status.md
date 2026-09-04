@@ -10,7 +10,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-09-01 (V6 FULL stdio **`-S`** REPL — GCC + VS2022; lab tables)  
+**Updated:** 2026-09-04 (PyMod frozen artifacts in git; fresh-clone build docs)  
 **Strategy:** **Single line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **`feature/python-3.12.13-apppkg`** kept as **read-only reference** (GCC port / 3.6.8 AppPkg structure alignment) — **no merge back into apppkg**. Same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs in **`PyMod-3.12.13/Modules/`**  
 **Branch:** **`feature/python-3.12.13-vs2022`** — sole manufacturing line (forked from **`feature/python-3.12.13-apppkg`**; apppkg now **reference only**)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
@@ -21,6 +21,22 @@
 **3.6.8 VS2022 CI:** [`.github/workflows/build-python-uefi-vs2022.yaml`](../.github/workflows/build-python-uefi-vs2022.yaml) (`BUILD_PYTHON368` only today)
 
 Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc fork — **not** `-p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc` alone.
+
+---
+
+## Build workflows — fresh clone vs existing clone
+
+**Branch:** **`feature/python-3.12.13-vs2022`** · **`EDK2_LIBC_PATH`** → **`edk2-libc-jp-vsfix`** (or equivalent fork path).
+
+Frozen / deepfreeze outputs live under **`PyMod-3.12.13/Python/`** (`frozen_modules/*.h`, **`frozen.c`**, **`deepfreeze/deepfreeze.c`**) and are **committed** (since **`55219522`**). Stock **`Python/frozen_modules/`** is not used for builds.
+
+| Situation | Steps |
+|-----------|--------|
+| **Fresh clone** | Clone libc fork → checkout **`feature/python-3.12.13-vs2022`** → libc patches if needed (often skip — **§ Branch drift**) → **`srcprep.py`** → **`build -D BUILD_PYTHON312`** (+ **`BUILD_PYTHON312_FULL=TRUE`** for FULL) → package script. **No** `make frozen` / **`regen_frozen_windows.cmd`** for first build. |
+| **Existing clone (`git pull`)** | Pull → **`srcprep.py`** if overlay / **`srcprep.py`** changed → rebuild. Regen frozen **only** when editing frozen **`.py`** or refreshing deepfreeze — **`Tools/build/regen_frozen_windows.cmd`** (Windows). Delete stale **`Python/frozen_modules/*.h`** if upgrading from pre-PyMod layout. |
+| **GCC (WSL)** | [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §6 |
+| **VS2022 (Windows)** | [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) §6 |
+| **Regen pitfalls** | [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5 |
 
 ---
 
@@ -49,7 +65,7 @@ Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc f
 | Issue | Fix |
 |-------|-----|
 | **`py312_boot_print_ascii` redefinition** | **`dbc8416c`**: implementation in **`edk2main.c`** only when **`PY_UEFI_BOOT_TRACE`** (MSFT-only in **`Python312.inf`**); GCC uses **`py312boot.h`** inline stub |
-| **Missing `Python/frozen_modules/*.h`** | Copy/regen per [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §6 (`make frozen` in edk2-py312 layout — not committed in git) |
+| **Missing `Python/frozen_modules/*.h`** | **Resolved (`55219522`)** — 24× headers + **`PyMod-3.12.13/Python/frozen.c`** committed under **`PyMod-3.12.13/Python/frozen_modules/`**; fresh clone needs no freeze step — [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §6 |
 
 #### Manufacturing smoke (hardware — passed 2026-09-01)
 
@@ -185,7 +201,7 @@ SyntaxError: invalid non-printable character U+001B
 | **VS2022 MIN** (`Python312_MIN.inf`, default DSC) | **Build + manufacturing UEFI runtime Done** — **`-h`**, **`-S -c`**, default / **`-S`** REPL, **`exit(0)`** → Shell → **`exit`** → firmware; **`import readline`** without env stays stub-safe |
 | **MSVC entry** | **`PY_UEFI_MSVC_368_ENTRY=1`** — **`ShellCEntryLib`** on Shell stack (no custom stack switch / IDT); **GCC still uses** **`edk2_switch_stack` + `py_install_idt`** (see deviations §11) |
 | **REPL / readline vs GCC** | **Default:** stdio REPL on **`os.name == 'uefi'`** (both toolchains). **Optional GCC pyreadline** (env **`PY_UEFI_READLINE=1`** + **`import readline`**) — **pass** 2026-09-01, teardown OK — **§ UEFI REPL / pyreadline**. **VS2022** manufacturing: stdio only; pyreadline opt-in **not** re-lab’d |
-| **Frozen / deepfreeze** | **`Python/deepfreeze/deepfreeze.c`** is **committed** (latin1 + **`statically_allocated`** fixes applied). Regen only when changing frozen inputs — use **`regen_frozen_windows.cmd`** (§5): **`deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`** |
+| **Frozen / deepfreeze** | **`PyMod-3.12.13/Python/frozen_modules/*.h`**, **`frozen.c`**, and **`deepfreeze/deepfreeze.c`** are **committed** (latin1 + **`statically_allocated`**). Fresh clone: no regen. Regen only when changing frozen inputs — **`Tools/build/regen_frozen_windows.cmd`** → PyMod outputs — see runtime notes §5 |
 | **VS2022 FULL** (`BUILD_PYTHON312_FULL=TRUE`, `Python312.inf`) | **Build + lab Done** — Phase 8 **`-S -c`**, stdio **`-S`** REPL, Shell **`exit`** (2026-08 one-liners; 2026-09-01 **`-S`**) |
 | **GCC FULL** (same branch, **`build -t GCC`**) | **Build + lab Done** (2026-09-01, **`dbc8416c`**) — Phase 8 matrix, stdio **`-S`**, optional pyreadline; edk2-py312 **`PACKAGES_PATH`** |
 | **Unified branch (GCC + VS2022)** | **`feature/python-3.12.13-vs2022`** — **hardware sign-off both toolchains** — see **§ Single codebase** |
@@ -219,7 +235,7 @@ SyntaxError: invalid non-printable character U+001B
 |------------|--------|
 | 0–1 Scaffold | **V1** workspace |
 | 2 PyMod / pyconfig | **V2** + PyMod MSVC fixes in **V4** |
-| 3 Frozen | **V1** (Windows copy / GCC tree) |
+| 3 Frozen | **Done** — artifacts under **`PyMod-3.12.13/Python/`** (committed; §6 in WSL/Windows guides) |
 | 4 INF MIN | **V3–V4** MSFT options + splits |
 | 5 DSC / patches | **V1** + same patch policy as GCC |
 | 6 MIN smoke | **V4–V6** |
@@ -422,7 +438,7 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 ### 2026-09-01 — GCC FULL on vs2022 branch (lab + docs)
 
 1. **Hardware:** Phase 8 **`-S -c`** matrix + Shell **`exit`** on **`feature/python-3.12.13-vs2022`** @ **`dbc8416c`** — **pass** (see **§ GCC FULL regression — build and smoke**).
-2. **Build:** GCC **`py312_boot_print_ascii`** guard in **`edk2main.c`**; frozen **`Python/frozen_modules/*.h`** per WSL guide §6.
+2. **Build:** GCC **`py312_boot_print_ascii`** guard in **`edk2main.c`**; frozen artifacts under **`PyMod-3.12.13/Python/frozen_modules/`** (in git — WSL guide §6).
 3. **Optional pyreadline (GCC only):** **`PY_UEFI_READLINE=1`**, **`import readline`**, history/Tab, teardown — **pass**; **§ UEFI REPL / pyreadline** + lab note.
 4. **Docs:** **`0b9fe05f`** (pyreadline); migration status lab build/smoke tables.
 5. **V6 close:** FULL stdio **`Python312.efi -S`** (no pyreadline) — **GCC** + **VS2022** hardware **pass** (trivial **`>>>`**, **`exit(0)`**, Shell **`exit`**).
@@ -477,7 +493,7 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 | V1.2 | `edk2` + **`edk2-libc-jp-vsfix`** on **`feature/python-3.12.13-vs2022`** | **Done** |
 | V1.3 | Apply **`patches/*.patch`** locally | **Done** (0001–0004) |
 | V1.4 | **`srcprep.py`**; `PLATFORM "uefi"` | **Done** |
-| V1.5 | Frozen + **`deepfreeze.c`** | **Done** (24× `.h` + deepfreeze present) |
+| V1.5 | Frozen + **`deepfreeze.c`** | **Done** — **`PyMod-3.12.13/Python/frozen_modules/`** (24× `.h`) + **`frozen.c`** + **`deepfreeze.c`** in git |
 | V1.6 | **`Edk2ToolsBuild.py -t VS2022`** | **Done** |
 | V1.7 | **`BUILD_PYTHON368`** VS2022 X64 RELEASE | **Done** |
 | V1.8 | Windows + 3.6.8 build guides | **Done** |
@@ -761,7 +777,7 @@ Last known green GCC FULL: **2026-09-01** on **`feature/python-3.12.13-vs2022`**
 5. **`_ctypes_test`**: compiled **`| GCC`** only; excluded from UEFI **`config.c`** on both toolchains.
 6. Do not put port tools under CPython **`Tools/`** — use **`vs2022_verify/`**.
 7. **`build-python312-uefi-vs2022.yaml`** (**V7.5**) not added.
-8. **`deepfreeze.c`** / **`getpath.h`**: tracked via **`git add -f`** (CPython **`.gitignore`**); regenerate when changing **`getpath.py`** / deepfreeze inputs.
+8. **Frozen / deepfreeze:** **`PyMod-3.12.13/Python/frozen_modules/*.h`**, **`frozen.c`**, **`deepfreeze.c`** committed; regenerate with **`Tools/build/regen_frozen_windows.cmd`** only when frozen **`.py`** inputs change.
 
 ---
 

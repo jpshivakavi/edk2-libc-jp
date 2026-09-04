@@ -33,12 +33,12 @@ not a standalone `~/src/edk2` clone (unless you have verified that tree builds A
 
 ```text
 ~/src/edk2-py312/edk2     # WORKSPACE + BaseTools + Build/  (edksetup here)
-~/src/edk2-libc           # jpshivakavi fork, branch feature/python-3.12.13-apppkg
-~/src/edk2-py312          # optional: frozen/deepfreeze copy source only
+~/src/edk2-libc-jp-vsfix  # jpshivakavi fork, branch feature/python-3.12.13-vs2022
+~/src/edk2-py312          # optional: host CPython freeze only if you regen artifacts (§6)
 ```
 
 ```bash
-export EDK2_LIBC_PATH=$HOME/src/edk2-libc
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc-jp-vsfix   # or ~/src/edk2-libc if same remote/branch
 export PACKAGES_PATH=$HOME/src/edk2-py312/edk2:$EDK2_LIBC_PATH
 # edksetup in ~/src/edk2-py312/edk2 — see §2 Option A, §7
 ```
@@ -47,7 +47,7 @@ Windows paths (example):
 
 ```text
 /mnt/c/Users/njayapra/github/edk2-py312/edk2
-/mnt/c/Users/njayapra/github/edk2-libc-jp   # or edk2-libc if same remote
+/mnt/c/Users/njayapra/github/edk2-libc-jp-vsfix
 ```
 
 Using `/mnt/c/...` works but is slower. Prefer `~/src/...` under WSL for builds.
@@ -143,7 +143,7 @@ Quick smoke (optional; run after **Option A** `edksetup`):
 
 ```bash
 export PACKAGES_PATH=$HOME/src/edk2-py312/edk2:$HOME/src/edk2-libc
-export EDK2_LIBC_PATH=$HOME/src/edk2-libc
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc-jp-vsfix   # or ~/src/edk2-libc if same remote/branch
 build -a X64 -b NOOPT -t GCC \
   -p $EDK2_LIBC_PATH/AppPkg/AppPkg.dsc \
   -m $EDK2_LIBC_PATH/AppPkg/Applications/Hello/Hello.inf
@@ -207,7 +207,7 @@ applying patches) until tianocore lands equivalents.
 ## 5. srcprep (overlay headers / Lib)
 
 ```bash
-cd ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13
+cd ~/src/edk2-libc-jp-vsfix/AppPkg/Applications/Python/Python-3.12.13
 python3 srcprep.py
 # Expect: Include/pyconfig.h with PLATFORM "uefi"
 grep PLATFORM Include/pyconfig.h
@@ -215,69 +215,81 @@ grep PLATFORM Include/pyconfig.h
 
 ---
 
-## 6. Generate frozen / deepfreeze outputs (**required**)
+## 6. Frozen / deepfreeze artifacts
 
-These files are **gitignored** in CPython and were **not** copied into AppPkg:
+Port-generated frozen outputs live under **`PyMod-3.12.13/`** (not the stock
+`Python-3.12.13/Python/` tree):
 
-- `Python/frozen_modules/*.h`
-- `Python/deepfreeze/deepfreeze.c`
+| Artifact | Path (under `Python-3.12.13/`) |
+|----------|--------------------------------|
+| 24× marshal headers | **`PyMod-3.12.13/Python/frozen_modules/*.h`** |
+| Frozen table | **`PyMod-3.12.13/Python/frozen.c`** (built from INF; includes `frozen_modules/*.h`) |
+| Deepfreeze | **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** |
 
-`Python312.inf` lists `Python/deepfreeze/deepfreeze.c`, so the build will fail without them.
+`Python312.inf` / `Python312_MIN.inf` list the PyMod paths above. Stock
+`Python/frozen_modules/` is upstream layout only (README stub); do **not** copy
+headers there.
 
-**Windows:** [`Tools/build/regen_frozen_windows.cmd`](./Python-3.12.13/Tools/build/regen_frozen_windows.cmd) (Python **3.12.x** host; see [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) §6 Option C).
+### 6.1 Fresh clone — no freeze step
 
-### Option A — Recommended: reuse edk2-py312 freeze (fastest)
+On **`feature/python-3.12.13-vs2022`** at commit **`55219522`** or later:
 
-If you already have `~/src/edk2-py312` (or `/mnt/c/Users/njayapra/github/edk2-py312`):
+1. Clone **`edk2-libc-jp-vsfix`** (or your fork) and check out **`feature/python-3.12.13-vs2022`**.
+2. Apply libc patches if needed (often already in-tree — migration status **§ Branch drift**).
+3. Run **`srcprep.py`** (§5).
+4. **`build -D BUILD_PYTHON312`** — frozen artifacts are **already in git** under PyMod.
+
+Verify (optional):
 
 ```bash
-cd ~/src/edk2-py312   # adjust path
-git submodule update --init --recursive   # if needed
+APP_PY=$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13
+test -f "$APP_PY/PyMod-3.12.13/Python/deepfreeze/deepfreeze.c" && echo deepfreeze OK
+test -f "$APP_PY/PyMod-3.12.13/Python/frozen_modules/importlib._bootstrap.h" && echo frozen OK
+ls "$APP_PY/PyMod-3.12.13/Python/frozen_modules"/*.h | wc -l   # expect 24
+```
 
-# Builds host _freeze_module / bootstrap and generates frozen headers + deepfreeze.c
-make local_python    # once; takes a while
-make frozen
+### 6.2 Existing clone — pull and build
 
-# Copy generated artifacts into the AppPkg tree
-APP_PY=~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13
+After **`git pull`** on the same branch:
+
+1. Re-run **`srcprep.py`** if **`PyMod-3.12.13/Include/pyconfig.h`**, overlay headers, or **`srcprep.py`** changed.
+2. Rebuild — **no** frozen regen unless you are developing frozen inputs (below).
+
+**Upgrading from an older tree** (pre-PyMod frozen layout): pull latest tip, then remove any stale generated files under stock **`Python/frozen_modules/*.h`** if they still exist locally (only **`README.txt`** should remain). Use **`PyMod-3.12.13/Python/frozen_modules/`** from git.
+
+### 6.3 When you must regenerate
+
+Only if you change frozen **`.py`** sources, bump the 3.12.x patch level, or refresh **`deepfreeze.c`** / global-string headers:
+
+| Host | Command |
+|------|---------|
+| **Windows** (recommended) | From **`Python-3.12.13/`**: **`Tools\build\regen_frozen_windows.cmd`** (host **Python 3.12.x**). Writes **`PyMod-3.12.13/Python/frozen_modules/*.h`** and **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`**, then runs PyMod fix scripts. See [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) §6 and [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5. |
+| **WSL** | Run regen on Windows and commit, **or** copy from a host CPython tree into **PyMod** paths (§6.4) and run PyMod **`generate_global_objects.py`** + **`fix_deepfreeze_latin1.py`**. |
+
+Do **not** run **`generate_global_objects.py`** alone after a fresh **`deepfreeze.py`** — use the full batch order in runtime notes §5.
+
+### 6.4 Optional — copy from edk2-py312 `make frozen` (legacy)
+
+If you already maintain **`~/src/edk2-py312/edk2-cpython`** with **`make local_python`** + **`make frozen`**, you may copy into **PyMod** (not stock `Python/`):
+
+```bash
+APP_PY=$EDK2_LIBC_PATH/AppPkg/Applications/Python/Python-3.12.13
 SRC_PY=~/src/edk2-py312/edk2-cpython
 
-mkdir -p "$APP_PY/Python/frozen_modules" "$APP_PY/Python/deepfreeze"
-cp -a "$SRC_PY/Python/frozen_modules/"*.h "$APP_PY/Python/frozen_modules/"
-cp -a "$SRC_PY/Python/deepfreeze/deepfreeze.c" "$APP_PY/Python/deepfreeze/"
+mkdir -p "$APP_PY/PyMod-3.12.13/Python/frozen_modules" \
+         "$APP_PY/PyMod-3.12.13/Python/deepfreeze"
+cp -a "$SRC_PY/Python/frozen_modules/"*.h "$APP_PY/PyMod-3.12.13/Python/frozen_modules/"
+cp -a "$SRC_PY/Python/deepfreeze/deepfreeze.c" "$APP_PY/PyMod-3.12.13/Python/deepfreeze/"
 
-ls "$APP_PY/Python/deepfreeze/deepfreeze.c"
-ls "$APP_PY/Python/frozen_modules" | wc -l
+cd "$APP_PY"
+python3 PyMod-3.12.13/Tools/build/generate_global_objects.py
+python3 PyMod-3.12.13/Tools/build/fix_deepfreeze_statically_allocated.py
+python3 PyMod-3.12.13/Tools/build/fix_deepfreeze_latin1.py
 ```
 
-**AppPkg fork (`edk2-libc-jp-vsfix`):** after copying artifacts, run this fork’s global + latin1 fix (stock edk2-py312 **`deepfreeze.c`** still has single-char **`&_Py_ID`**):
+Stock edk2-py312 **`deepfreeze.c`** still needs the fork fix scripts (single-char **`&_Py_ID`**, **`statically_allocated`**).
 
-```bash
-cd ~/src/edk2-libc-jp-vsfix/AppPkg/Applications/Python/Python-3.12.13   # adjust path
-python3 Tools/build/generate_global_objects.py
-python3 Tools/build/fix_deepfreeze_latin1.py
-```
-
-See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
-
-### Option B — Freeze using AppPkg tree + edk2-py312 host tools
-
-```bash
-cd ~/src/edk2-py312
-make local_python   # produces build/cpython/... _freeze_module
-
-cd ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13
-make -f frozen/frozen_modules.mk ROOT_DIR=~/src/edk2-py312
-```
-
-(You may need small path fixes in `frozen_modules.mk` if `ROOT_DIR` layout differs.)
-
-### Verify before build
-
-```bash
-test -f Python/deepfreeze/deepfreeze.c && echo deepfreeze OK
-test -f Python/frozen_modules/importlib._bootstrap.h && echo frozen OK
-```
+**Option B — `frozen_modules.mk`:** only if you adapt output paths to **`PyMod-3.12.13/Python/frozen_modules/`**; prefer **`regen_frozen_windows.cmd`** or §6.4 copy + fix scripts.
 
 ---
 
@@ -288,7 +300,7 @@ Python + INF live in **`edk2-libc`** (fork); BaseTools + **`Build/`** live under
 **`edk2-py312/edk2`**.
 
 ```bash
-export EDK2_LIBC_PATH=$HOME/src/edk2-libc    # jpshivakavi fork on feature/python-3.12.13-apppkg
+export EDK2_LIBC_PATH=$HOME/src/edk2-libc-jp-vsfix   # or ~/src/edk2-libc if same remote/branch    # jpshivakavi fork on feature/python-3.12.13-apppkg
 export PACKAGES_PATH=$HOME/src/edk2-py312/edk2:$EDK2_LIBC_PATH
 
 cd $HOME/src/edk2-py312/edk2
@@ -347,7 +359,7 @@ Work the errors in this order and append each batch to
 | `PyInit__ctypes` / `_ssl` / `zlib` undefined | Enable in `PyMod-3.12.13/Modules/config.c` and matching `[Sources]` in `Python312.inf` (FULL); see Phase 8 guides |
 | OpenSSL `e_os.h` missing | Vendor repo-root `PyMod-.../Modules/openssl/e_os.h` (see Phase 8.3 Status) |
 | OpenSSL `OPENSSL_ia32_rdseed_bytes` | Add `PyMod-.../Modules/openssl/efi/src/rand_rdrand.nasm` to INF |
-| Missing frozen `*.h` | Restore from edk2-cpython or run freeze |
+| Missing frozen `*.h` / `frozen.c` | **`git pull`** on **`feature/python-3.12.13-vs2022`**; artifacts live under **`PyMod-3.12.13/Python/frozen_modules/`** (§6). Regen on Windows with **`Tools/build/regen_frozen_windows.cmd`** only when changing frozen inputs |
 | Stack protector / `StackCheckLib` | edk2-py312 sets `StackCheckLibNull` in its DSC; AppPkg may need the same if GCC complains |
 
 Save the log:
@@ -397,10 +409,10 @@ Smoke (FULL — matches `create_python_pkg.sh` hints):
 [ ] apt packages + nasm/gcc/python3
 [ ] edk2 BaseTools + edksetup.sh
 [ ] PACKAGES_PATH / EDK2_LIBC_PATH set (edk2 + edk2-libc only)
-[ ] branch feature/python-3.12.13-apppkg (Phase 8 FULL)
-[ ] git apply --ignore-whitespace patches/*.patch (upipe.c present)
+[ ] branch feature/python-3.12.13-vs2022
+[ ] git apply --ignore-whitespace patches/*.patch (upipe.c present) — or skip if already patched (migration status § Branch drift)
 [ ] python3 srcprep.py
-[ ] frozen/deepfreeze artifacts present
+[ ] PyMod frozen/deepfreeze present (§6.1 — default on fresh clone; no regen)
 [ ] build -D BUILD_PYTHON312 -t GCC
 [ ] Python312.efi produced
 [ ] create_python_pkg.sh + UEFI REPL smoke (zlib, readline, ctypes, hashlib, ssl)

@@ -40,7 +40,7 @@ Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runt
 
 ## Prerequisites
 
-Same as the Windows build guide: patches (local), `srcprep.py`, **24×** `Python/frozen_modules/*.h`, **`deepfreeze.c`** — regen with **`Tools\build\regen_frozen_windows.cmd`** (or WSL §6; runtime notes §5), BaseTools, `PACKAGES_PATH`.
+Same as the Windows build guide: patches (local) if needed, **`srcprep.py`**, then **`build`**. Frozen artifacts are **in git** under **`PyMod-3.12.13/Python/frozen_modules/`** and **`deepfreeze/`** — no regen on fresh clone. Run **`Tools\build\regen_frozen_windows.cmd`** only when changing frozen inputs (runtime notes §5; WSL guide §6).
 
 ```cmd
 set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix

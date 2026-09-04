@@ -100,10 +100,11 @@ Source alignment (important):
   Do not add UEFI_C_SOURCE edits under Python-3.12.13/ for paths listed in
   PyMod-3.12.13/README.txt; Python312.inf builds those .c files from PyMod.
 
-  Frozen / deepfreeze artifacts are gitignored.  Before the first build on a
-  clean tree, ensure Python/deepfreeze/deepfreeze.c and related frozen headers
-  exist.  Regeneration steps are in Python312_WSL_GCC_Build_Guide.md (use the
-  edk2-py31213 CPython tree as the reference revision).
+  Frozen / deepfreeze for this port live under PyMod-3.12.13/Python/ (frozen_modules/*.h,
+  frozen.c, deepfreeze/deepfreeze.c).  On feature/python-3.12.13-vs2022 they are committed
+  in git — fresh clone: srcprep.py then build (no make frozen).  Regen only when changing
+  frozen .py inputs: Tools/build/regen_frozen_windows.cmd (Windows) — see
+  Python312_WSL_GCC_Build_Guide.md §6 and Python312_Windows_VS2022_Build_Guide.md §6.
 
   3.4 Built-in module set (config.c)
   -----------------------------------

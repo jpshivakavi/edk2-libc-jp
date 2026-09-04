@@ -154,15 +154,18 @@ GCC benefits from the same guards (no accidental inclusion of desktop-only paths
 
 **Shared** across toolchains (not tagged in INF):
 
-- **`Python/deepfreeze/deepfreeze.c`** — must match **`Tools/build/generate_global_objects.py`** output (`pycore_global_strings.h`, runtime init, unicodeobject generated headers).
-- After **`deepfreeze.py`**, run **`fix_deepfreeze_latin1.py`** so single-char **`&_Py_ID`** become **`_Py_LATIN1_CHR`** (fork policy; avoids **C2039** / **`Py_DEBUG`** asserts).
+- **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** — must match **`PyMod-3.12.13/Tools/build/generate_global_objects.py`** output (`pycore_global_strings.h`, runtime init, unicodeobject generated headers).
+- **`PyMod-3.12.13/Python/frozen_modules/*.h`** and **`PyMod-3.12.13/Python/frozen.c`** — committed for clone-and-build; regen when frozen **`.py`** inputs change.
+- After **`deepfreeze.py`**, run **`PyMod-3.12.13/Tools/build/fix_deepfreeze_latin1.py`** so single-char **`&_Py_ID`** become **`_Py_LATIN1_CHR`** (fork policy; avoids **C2039** / **`Py_DEBUG`** asserts).
 
 Regenerate after deepfreeze or global-header changes:
 
 | Host | Command |
 |------|---------|
-| **Windows** | **`Tools\build\regen_frozen_windows.cmd`** (freeze → deepfreeze → **`fix_deepfreeze_statically_allocated.py`** → globals → **`fix_deepfreeze_latin1.py`**) |
+| **Windows** | **`Tools\build\regen_frozen_windows.cmd`** (writes PyMod paths; freeze → deepfreeze → **`fix_deepfreeze_statically_allocated.py`** → globals → **`fix_deepfreeze_latin1.py`**) |
 | **Manual** | Same order as the batch file — **never** **`generate_global_objects.py`** alone if **`deepfreeze.c`** was not latin1-fixed |
+
+**Fresh clone:** no regen step — see WSL / Windows build guides §6.
 
 Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
 

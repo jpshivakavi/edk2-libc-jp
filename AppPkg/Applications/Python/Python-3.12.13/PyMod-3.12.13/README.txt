@@ -48,6 +48,8 @@ Inventory (mirrored path = same relative path under PyMod-3.12.13/):
     _io/bufferedio.c, _decimal/_decimal.c, _decimal/docstrings.h, _multiprocessing/multiprocessing.c,
     expat/xmlparse.c
   Python/deepfreeze/deepfreeze.c   (generated; regen -> PyMod only)
+  Python/frozen.c                  (INF builds PyMod copy; not overlaid by srcprep)
+  Python/frozen_modules/*.h        (committed under PyMod; srcprep does not copy to stock)
   Python/dynamic_annotations.c, mysnprintf.c, pyhash.c
   Modules/clinic/posixmodule.c.h, clinic/_ssl.c.h, clinic/mathmodule.c.h
   Include/pyconfig.h, pymath.h, dlfcn.h, pthread.h

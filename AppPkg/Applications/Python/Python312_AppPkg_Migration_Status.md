@@ -419,7 +419,7 @@ Same **`unix64.S` / `win64.S`** sources as **edk2-py312** (`edk2-libffi` @ `1fcd
 ## Known issues / follow-ups
 
 1. **Windows agent cannot run GCC AppPkg build** — continue on Linux/WSL (see WSL GCC guide).
-2. **Frozen/deepfreeze artifacts missing** — gitignored; must generate/copy before AppPkg build.
+2. **Frozen/deepfreeze artifacts** — committed under **`PyMod-3.12.13/Python/`** on **`feature/python-3.12.13-vs2022`**; regen only when changing frozen inputs (guides §6).
 3. ~~**Stock CPython tree still has UEFI deltas**~~ — **Done** (7.5): forked paths reverted to upstream 3.12.13; UEFI only under `PyMod-3.12.13/`. Run `srcprep.py` before build for overlay `.h`/`.py`.
 4. **`create_python_pkg.*` + basic REPL smoke** — **Done** (3.12.13 on UEFI Shell). Extended testing later.
 5. **Local StdLib dirt** may exist from prior `git apply` / `make patch_libc` — discard or keep locally; never stage for Python commits.
@@ -440,7 +440,7 @@ On WSL Ubuntu, in order:
 2. Check out `feature/python-3.12.13-apppkg`.
 3. **Required:** `git apply --ignore-whitespace Python-3.12.13/patches/*.patch` (0001 = `upipe`).
 4. `python3 srcprep.py` (if overlays changed).
-5. Ensure frozen/deepfreeze artifacts are present (gitignored).
+5. Frozen/deepfreeze under **`PyMod-3.12.13/Python/`** are in git on the vs2022 branch; fresh clone needs no copy step (WSL/Windows guides §6).
 6. ~~`build -D BUILD_PYTHON312 -t GCC`; package; basic REPL smoke~~ — **Done** (Phase 6).
 7. ~~Phase **8.1** zlib vendored build + `import zlib` / CRC parity~~ — **Done** (WSL).
 8. ~~Phase **8.2** readline package + `import readline` / REPL Tab~~ — **Done** (UEFI Shell).

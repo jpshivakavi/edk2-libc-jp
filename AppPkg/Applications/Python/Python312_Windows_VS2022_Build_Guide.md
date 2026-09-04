@@ -203,30 +203,29 @@ On WSL, run **`vs2022_verify/verify_pyconfig_gcc.sh`** to confirm the GCC refere
 
 ## 6. Frozen / deepfreeze (Phase V1.5)
 
-`Python312.inf` requires:
+`Python312.inf` / `Python312_MIN.inf` compile frozen code from **PyMod** (port overlay):
 
-- `Python/deepfreeze/deepfreeze.c`
-- `Python/frozen.c` includes headers under `Python/frozen_modules/*.h` (gitignored)
+| Artifact | Path (under `Python-3.12.13/`) |
+|----------|--------------------------------|
+| 24× marshal headers | **`PyMod-3.12.13/Python/frozen_modules/*.h`** |
+| Frozen module table | **`PyMod-3.12.13/Python/frozen.c`** |
+| Deepfreeze | **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`** |
 
-### Option A — Copy from WSL (fastest if GCC tree already built)
+Stock **`Python/frozen_modules/`** is not used for builds (README only).
 
-From WSL (adjust `~/src/edk2-libc` if needed):
+### Fresh clone
 
-```bash
-cp ~/src/edk2-libc/AppPkg/Applications/Python/Python-3.12.13/Python/frozen_modules/*.h \
-   /mnt/c/Users/njayapra/github/edk2-libc-jp-vsfix/AppPkg/Applications/Python/Python-3.12.13/Python/frozen_modules/
-```
+On **`feature/python-3.12.13-vs2022`** (commit **`55219522`**+): after patches (if needed) and **`srcprep.py`**, run **`build`** — **do not** run freeze/regen first. All PyMod frozen artifacts are **in git**.
 
-### Option B — edk2-py312 `make frozen` (Linux or WSL)
+### Existing clone
 
-See [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §6.
+After **`git pull`**: re-run **`srcprep.py`** when overlay headers change; rebuild. Regen frozen outputs **only** when you edit frozen **`.py`** sources or refresh deepfreeze/globals.
 
-Requires host `_freeze_module` bootstrap (`edk2-py312` `make local_python` + `make frozen`,
-or `make -f frozen/frozen_modules.mk` with `ROOT_DIR` pointing at a built host CPython).
+If you still have old **`Python/frozen_modules/*.h`** from before the PyMod move, delete those files (keep stock **`README.txt`**) and use **`PyMod-3.12.13/Python/frozen_modules/`** from git.
 
-### Option C — Windows-native regen (Python 3.12.x host)
+### Regenerate (when developing frozen inputs)
 
-From **`Python-3.12.13`** (or anywhere; the script `cd`s to the tree root):
+**Option C — Windows-native (recommended):**
 
 ```cmd
 cd /d c:\Users\njayapra\github\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13
@@ -235,7 +234,7 @@ Tools\build\regen_frozen_windows.cmd
 
 **Host:** **Python 3.12.x** (e.g. **3.12.10** installer) — same **3.12** minor as this **3.12.13** source; marshal magic must be **168627659** (script checks `sys.version_info[:2] == (3, 12)`). Override interpreter: `set HOSTPY=C:\Path\To\python.exe` then run the batch file.
 
-The script runs, **in order:** **`Programs\_freeze_module.py`** → **`deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**, then verifies **`.statically_allocated = 1`** in **`deepfreeze.c`**.
+The script writes **`PyMod-3.12.13/Python/frozen_modules/*.h`** and **`PyMod-3.12.13/Python/deepfreeze/deepfreeze.c`**, then runs **in order:** **`Programs\_freeze_module.py`** → **`PyMod-3.12.13\Tools\build\deepfreeze.py`** → **`fix_deepfreeze_statically_allocated.py`** → **`generate_global_objects.py`** → **`fix_deepfreeze_latin1.py`**, and verifies **`.statically_allocated = 1`** in **`deepfreeze.c`**.
 
 **Important:** **`fix_deepfreeze_latin1.py`** is **required** after **`deepfreeze.py`** / **`generate_global_objects.py`**. Running **`generate_global_objects.py`** alone leaves single-char **`&_Py_ID`** in **`deepfreeze.c`** and breaks VS2022 with **C2039** (`_py_d`, `_py__`, …). See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §5.
 
@@ -243,22 +242,26 @@ The script runs, **in order:** **`Programs\_freeze_module.py`** → **`deepfreez
 
 ```cmd
 cd /d c:\Users\njayapra\github\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13
-py -3.12 Tools\build\fix_deepfreeze_latin1.py
+py -3.12 PyMod-3.12.13\Tools\build\fix_deepfreeze_latin1.py
 ```
 
 Expect **`remaining single-char &_Py_ID: 0`**, then rebuild.
+
+### Optional — WSL / edk2-py312 copy
+
+If you freeze on Linux, copy into **PyMod** paths and run the PyMod fix scripts — see [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) §6.4. Do **not** copy only into stock **`Python/frozen_modules/`**.
 
 ### Verify
 
 ```cmd
 cd AppPkg\Applications\Python\Python-3.12.13
-if exist Python\deepfreeze\deepfreeze.c (echo deepfreeze OK) else (echo deepfreeze MISSING)
-dir /b Python\frozen_modules\*.h | find /c /v ""
+if exist PyMod-3.12.13\Python\deepfreeze\deepfreeze.c (echo deepfreeze OK) else (echo deepfreeze MISSING)
+dir /b PyMod-3.12.13\Python\frozen_modules\*.h | find /c /v ""
 ```
 
 Expect **24** `.h` files (typical 3.12 set).
 
-**Fresh clone:** you do **not** need to run regen before the first **`build`** — **`Python/deepfreeze/deepfreeze.c`** is tracked in this fork with **`statically_allocated`** and latin1 fixes. Regenerate only when changing frozen module sources; always use **`regen_frozen_windows.cmd`** (both post-deepfreeze fix scripts). See runtime notes §5 *Fresh clone*.
+Details and partial-regen pitfalls: runtime notes §5 *Fresh clone* / *Manual regen*.
 
 ---
 
@@ -320,7 +323,7 @@ Recommended smoke (MIN): runtime notes **§11** (`-h`, `-S -c`, REPL → **`exit
 | `Cannot find BaseTools Bin Win32` | Run `pip-requirements.txt` + `Edk2ToolsBuild.py -t VS2022` |
 | `No module named edk2toolext'` | `pip install -r edk2\pip-requirements.txt` |
 | NASM not found | Set `NASM_PREFIX` (e.g. `C:\NASM\`) before `edksetup` / `build` |
-| Missing `frozen_modules/*.h` | Copy from WSL (§6 A), **`Tools\build\regen_frozen_windows.cmd`** (§6 C), or WSL `make frozen` (§6 B) |
+| Missing frozen headers / `frozen.c` | **`git pull`**; files are under **`PyMod-3.12.13/Python/frozen_modules/`** (§6). Run **`Tools\build\regen_frozen_windows.cmd`** only when changing frozen inputs |
 | `git apply` fails | On **`feature/python-3.12.13-vs2022`**, often **already patched** — see migration status **§ Branch drift**; verify **`upipe.c`**. After StdLib reset for upstream, apply patches one-by-one with `--ignore-whitespace` |
 | OpenSSL symlink on Windows | Optional for monolithic build; `git restore` path under `PyMod-.../LibOpenSSL/openssl` if needed |
 | **`LNK2001`** **`OPENSSL_ia32_rdseed_bytes`** / **`rdrand_bytes`** | FULL link: ensure **`PyMod-.../Modules/openssl/efi/src/rand_rdrand.nasm`** is in **`Python312.inf`** and exports those **`global`** symbols (**win64** **`rcx`/`rdx`**). See deviations **§11.7** and lab [`2026-08-27_…_RNG.md`](./Python312_VS2022_Lab/2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md) |
@@ -337,7 +340,7 @@ Recommended smoke (MIN): runtime notes **§11** (`-h`, `-S -c`, REPL → **`exit
 [ ] EDK2_LIBC_PATH + PACKAGES_PATH set (cmd)
 [ ] Four libc patches applied locally; upipe.c exists
 [ ] srcprep.py run; PLATFORM "uefi"
-[ ] deepfreeze.c + 24 frozen_modules/*.h present (or run Tools\build\regen_frozen_windows.cmd)
+[ ] PyMod deepfreeze + 24× frozen_modules/*.h present (§6 — default on fresh clone; else Tools\build\regen_frozen_windows.cmd)
 [ ] (Optional) BUILD_PYTHON368 smoke on VS2022
 ```
 
