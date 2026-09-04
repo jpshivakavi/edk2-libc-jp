@@ -170,9 +170,38 @@ Same four patches as GCC. **Do not commit** `StdLib/` changes (target policy for
 
 **Branch note:** On **`feature/python-3.12.13-vs2022`**, patched StdLib files may **already be in git**; **`git apply`** then fails with *already exists* / *patch does not apply* — skip apply and verify **`upipe.c`** / **`Uefi.inf`** (see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **§ Branch drift — StdLib already patched**). Before **final** upstream push, revert StdLib to baseline and keep **`patches/*.patch`** only (**§ Pre-upstream-push cleanup**).
 
+### Pre-flight — **run this first**, it decides whether to apply at all
+
 ```cmd
-cd c:\Users\njayapra\github\edk2-libc-jp-vsfix
-git apply --check --ignore-whitespace AppPkg\Applications\Python\Python-3.12.13\patches\0001-Implement-minimal-emulation-of-pipe-functionality.patch
+cd /d %EDK2_LIBC_PATH%
+git rev-parse --abbrev-ref HEAD
+git status --short StdLib StdLibPrivateInternalFiles
+for %P in (AppPkg\Applications\Python\Python-3.12.13\patches\*.patch) do @(git apply --check --ignore-whitespace "%P" >nul 2>&1 && echo NEEDS APPLY     : %~nxP) || (git apply --reverse --check --ignore-whitespace "%P" >nul 2>&1 && echo ALREADY APPLIED : %~nxP) || echo CONFLICT        : %~nxP
+```
+
+(Interactive **`cmd`** uses **`%P`**; inside a **`.bat`** file write **`%%P`**.)
+
+| Line | Meaning | Action |
+|------|---------|--------|
+| **`NEEDS APPLY`** | Not in the tree and applies cleanly | Apply it (below) |
+| **`ALREADY APPLIED`** | Reverse-apply succeeds, so the content is **already present** | **Skip** — re-applying fails or double-applies |
+| **`CONFLICT`** | Applies in **neither** direction | Partially applied or drifted — **stop** and inspect before building |
+
+**Why the reverse check:** a failing **`git apply --check`** on its own cannot tell *already applied* from a *real conflict* — both just fail. Reverse-applying succeeds **only** if the change is already in the tree, which is exactly the branch-drift case in the note above.
+
+**Expected on `feature/python-3.12.13-vs2022`:** all four **`ALREADY APPLIED`**, and the two checks below confirm it independently.
+
+```cmd
+dir StdLib\LibC\Uefi\upipe.c
+dir StdLib\LibC\Uefi\Devices\Console\daAnsi.c
+```
+
+**`upipe.c`** (added by **0001**) and **`daAnsi.c`** (added by **0002**) are **new files**, so their presence is a reliable applied-marker. The **`git status`** line above should be **empty** before you apply anything — that is your baseline, and it is what makes **`git checkout -- StdLib StdLibPrivateInternalFiles`** a safe undo.
+
+### Apply (only for patches reported `NEEDS APPLY`)
+
+```cmd
+cd /d %EDK2_LIBC_PATH%
 git apply --ignore-whitespace AppPkg\Applications\Python\Python-3.12.13\patches\0001-Implement-minimal-emulation-of-pipe-functionality.patch
 git apply --ignore-whitespace AppPkg\Applications\Python\Python-3.12.13\patches\0002-Introduce-support-for-ANSI-escape-codes-for-console.patch
 git apply --ignore-whitespace AppPkg\Applications\Python\Python-3.12.13\patches\0003-Fix-uninitialized-static-variable.patch
@@ -240,12 +269,43 @@ If you still have old **`Python/frozen_modules/*.h`** from before the PyMod move
 
 ### Regenerate (when developing frozen inputs)
 
+### Pre-flight — **run this first**, regen is usually *not* needed
+
+Frozen artifacts are **committed**. A normal build must **not** regen (§6 *Fresh clone*). Regen **only** after editing frozen **`.py`** inputs or refreshing deepfreeze/globals.
+
+```cmd
+py -3.12 -c "import sys, importlib._bootstrap_external as b; assert sys.version_info[:2]==(3,12), sys.version; print(sys.version); print('magic', b._RAW_MAGIC_NUMBER)"
+cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
+dir /b PyMod-3.12.13\Python\frozen_modules\*.h | find /c /v ""
+if exist PyMod-3.12.13\Python\deepfreeze\deepfreeze.c (echo deepfreeze present) else (echo deepfreeze MISSING)
+cd /d %EDK2_LIBC_PATH%
+git status --short -- AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Python
+```
+
+| Check | Expect | If it differs |
+|-------|--------|---------------|
+| Host Python | **3.12.x**, **`magic 168627659`** | **Stop.** A different minor rewrites all 24 headers with a **wrong marshal magic** — the build still links and fails at runtime. Install 3.12.x or set **`HOSTPY`** |
+| Header count | **24** | Missing artifacts — **`git pull`** / **`git checkout`** the PyMod tree rather than regenerating |
+| **`deepfreeze.c`** | **`present`** | Same as above |
+| **`git status`** | **empty** | Commit or stash first, otherwise you cannot tell regen output from your own edits |
+
+The batch file re-checks the host interpreter and exits before touching anything, but running the individual steps by hand **bypasses that guard** — which is the case this pre-flight covers.
+
 **Option C — Windows-native (recommended):**
 
 ```cmd
-cd /d c:\Users\njayapra\github\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13
+cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
 Tools\build\regen_frozen_windows.cmd
 ```
+
+### Post-regen — confirm what actually changed
+
+```cmd
+cd /d %EDK2_LIBC_PATH%
+git diff --stat -- AppPkg/Applications/Python/Python-3.12.13/PyMod-3.12.13/Python
+```
+
+**No output** means regen reproduced the committed artifacts byte-for-byte — the expected result when inputs did not change, and a good determinism check. **Any diff** should be reviewed before commit; the run must also have printed **`.statically_allocated`** and **`remaining single-char &_Py_ID: 0`**. A diff touching **all 24** headers when you edited only one **`.py`** almost always means the **wrong host Python**.
 
 **Host:** **Python 3.12.x** (e.g. **3.12.10** installer) — same **3.12** minor as this **3.12.13** source; marshal magic must be **168627659** (script checks `sys.version_info[:2] == (3, 12)`). Override interpreter: `set HOSTPY=C:\Path\To\python.exe` then run the batch file.
 
