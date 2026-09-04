@@ -161,7 +161,7 @@
   Python/flowgraph.c
   Python/formatter_unicode.c
   Python/frame.c
-  Python/frozen.c
+  PyMod-3.12.13/Python/frozen.c
   Python/frozenmain.c
   Python/future.c
   PyMod-3.12.13/Python/getargs.c

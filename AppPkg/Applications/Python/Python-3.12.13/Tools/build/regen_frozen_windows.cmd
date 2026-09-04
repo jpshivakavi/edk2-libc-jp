@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-REM Regenerate Python/frozen_modules/*.h, Python/deepfreeze/deepfreeze.c,
+REM Regenerate PyMod-3.12.13/Python/frozen_modules/*.h, deepfreeze.c,
 REM and UEFI fork global-string headers (generate_global_objects + latin1 fix).
 REM
 REM Host: Python 3.12.x (e.g. 3.12.10) against this 3.12.13 source tree.
@@ -14,7 +14,7 @@ if errorlevel 1 (
 
 if not defined HOSTPY set "HOSTPY=py -3.12"
 set "FM=Programs\_freeze_module.py"
-set "OUT=Python\frozen_modules"
+set "OUT=PyMod-3.12.13\Python\frozen_modules"
 
 echo === Host Python ===
 %HOSTPY% -c "import sys, importlib._bootstrap_external as b; assert sys.version_info[:2]==(3,12), sys.version; print(sys.version); print('magic', b._RAW_MAGIC_NUMBER)"
@@ -52,29 +52,29 @@ call :freeze frozen_only Tools\freeze\flag.py %OUT%\frozen_only.h || exit /b 1
 echo === deepfreeze.c ===
 if not exist PyMod-3.12.13\Python\deepfreeze mkdir PyMod-3.12.13\Python\deepfreeze
 %HOSTPY% PyMod-3.12.13\Tools\build\deepfreeze.py ^
-  Python/frozen_modules/importlib._bootstrap.h:importlib._bootstrap ^
-  Python/frozen_modules/importlib._bootstrap_external.h:importlib._bootstrap_external ^
-  Python/frozen_modules/zipimport.h:zipimport ^
-  Python/frozen_modules/abc.h:abc ^
-  Python/frozen_modules/codecs.h:codecs ^
-  Python/frozen_modules/io.h:io ^
-  Python/frozen_modules/_collections_abc.h:_collections_abc ^
-  Python/frozen_modules/_sitebuiltins.h:_sitebuiltins ^
-  Python/frozen_modules/genericpath.h:genericpath ^
-  Python/frozen_modules/ntpath.h:ntpath ^
-  Python/frozen_modules/posixpath.h:posixpath ^
-  Python/frozen_modules/os.h:os ^
-  Python/frozen_modules/site.h:site ^
-  Python/frozen_modules/stat.h:stat ^
-  Python/frozen_modules/importlib.util.h:importlib.util ^
-  Python/frozen_modules/importlib.machinery.h:importlib.machinery ^
-  Python/frozen_modules/runpy.h:runpy ^
-  Python/frozen_modules/__hello__.h:__hello__ ^
-  Python/frozen_modules/__phello__.h:__phello__ ^
-  Python/frozen_modules/__phello__.ham.h:__phello__.ham ^
-  Python/frozen_modules/__phello__.ham.eggs.h:__phello__.ham.eggs ^
-  Python/frozen_modules/__phello__.spam.h:__phello__.spam ^
-  Python/frozen_modules/frozen_only.h:frozen_only ^
+  PyMod-3.12.13/Python/frozen_modules/importlib._bootstrap.h:importlib._bootstrap ^
+  PyMod-3.12.13/Python/frozen_modules/importlib._bootstrap_external.h:importlib._bootstrap_external ^
+  PyMod-3.12.13/Python/frozen_modules/zipimport.h:zipimport ^
+  PyMod-3.12.13/Python/frozen_modules/abc.h:abc ^
+  PyMod-3.12.13/Python/frozen_modules/codecs.h:codecs ^
+  PyMod-3.12.13/Python/frozen_modules/io.h:io ^
+  PyMod-3.12.13/Python/frozen_modules/_collections_abc.h:_collections_abc ^
+  PyMod-3.12.13/Python/frozen_modules/_sitebuiltins.h:_sitebuiltins ^
+  PyMod-3.12.13/Python/frozen_modules/genericpath.h:genericpath ^
+  PyMod-3.12.13/Python/frozen_modules/ntpath.h:ntpath ^
+  PyMod-3.12.13/Python/frozen_modules/posixpath.h:posixpath ^
+  PyMod-3.12.13/Python/frozen_modules/os.h:os ^
+  PyMod-3.12.13/Python/frozen_modules/site.h:site ^
+  PyMod-3.12.13/Python/frozen_modules/stat.h:stat ^
+  PyMod-3.12.13/Python/frozen_modules/importlib.util.h:importlib.util ^
+  PyMod-3.12.13/Python/frozen_modules/importlib.machinery.h:importlib.machinery ^
+  PyMod-3.12.13/Python/frozen_modules/runpy.h:runpy ^
+  PyMod-3.12.13/Python/frozen_modules/__hello__.h:__hello__ ^
+  PyMod-3.12.13/Python/frozen_modules/__phello__.h:__phello__ ^
+  PyMod-3.12.13/Python/frozen_modules/__phello__.ham.h:__phello__.ham ^
+  PyMod-3.12.13/Python/frozen_modules/__phello__.ham.eggs.h:__phello__.ham.eggs ^
+  PyMod-3.12.13/Python/frozen_modules/__phello__.spam.h:__phello__.spam ^
+  PyMod-3.12.13/Python/frozen_modules/frozen_only.h:frozen_only ^
   -o PyMod-3.12.13\Python\deepfreeze\deepfreeze.c
 if errorlevel 1 exit /b 1
 
