@@ -4,6 +4,9 @@ Guide for the **edk2-libc AppPkg** tree on branch **`feature/python-3.12.13-vs20
 This documents **Phase V1** host/workspace setup and will grow through **V7** as MSVC
 support lands in `Python312.inf`.
 
+**FULL requires `-D BUILD_PYTHON312_FULL=TRUE`** (§7). Since **`bdb1033c`** the DSC defaults
+that switch to **FALSE** and **`-D BUILD_PYTHON312`** alone builds **MIN**.
+
 **GCC reference (same tree):** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)
 
 **GCC vs VS2022 (INF splits, flags, libffi, OpenSSL glue, runtime divergence):** [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) — **§11** documents where VS2022 **deviates** from GCC for firmware entry and REPL.
@@ -267,20 +270,35 @@ Details and partial-regen pitfalls: runtime notes §5 *Fresh clone* / *Manual re
 
 ## 7. Build Python312 with VS2022 (Phase V3–V4)
 
+**`-D BUILD_PYTHON312_FULL=TRUE` is required for the FULL image this guide describes.**
+[`AppPkg.dsc`](../../AppPkg.dsc) defaults **`BUILD_PYTHON312_FULL`** to **FALSE**, so
+**`-D BUILD_PYTHON312`** alone selects **`Python312_MIN.inf`** — no zlib, ctypes/libffi, or
+OpenSSL (**`_ssl`**, **`_hashlib`**). The MIN build **succeeds**; the omission only surfaces
+as **`ModuleNotFoundError`** on hardware. MIN is documented in
+[`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md).
+
 ```cmd
 set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix
 set PACKAGES_PATH=c:\Users\njayapra\github\edk2;%EDK2_LIBC_PATH%
 set NASM_PREFIX=C:\NASM\
 cd /d c:\Users\njayapra\github\edk2
 call edksetup.bat
-build -t VS2022 -a X64 -b RELEASE -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312
+build -t VS2022 -a X64 -b NOOPT -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
+
+**Build flavor:** **`NOOPT`** is the flavor carrying VS2022 FULL runtime sign-off (Phase 8
+**`-S -c`** matrix, stdio REPL, **`ssl.create_default_context()`** RNG fix). **`RELEASE`**
+also builds; substitute it in the paths below if you use it. Keep the flavor **identical**
+in the packaging command — a mismatch stages a stale **`.efi`** from an earlier build.
 
 Artifact (typical):
 
 ```text
-edk2\Build\AppPkg\RELEASE_VS2022\X64\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312\DEBUG\Python312.efi
+edk2\Build\AppPkg\NOOPT_VS2022\X64\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\Python312\DEBUG\Python312.efi
 ```
+
+The module directory is **`Python312\`** for FULL and **`Python312_MIN\`** for MIN — the
+quickest way to confirm which image you actually built.
 
 ### Packaging (Phase V5)
 
@@ -290,8 +308,11 @@ Use **`create_python_pkg.bat`** from **`edk2-libc-jp-vsfix`**. The copy under pl
 set WORKSPACE=c:\Users\njayapra\github\edk2
 set EDK2_LIBC_PATH=c:\Users\njayapra\github\edk2-libc-jp-vsfix
 cd /d %EDK2_LIBC_PATH%\AppPkg\Applications\Python\Python-3.12.13
-create_python_pkg.bat VS2022 RELEASE X64 c:\Users\njayapra\github\edk2-libc-jp-vsfix\myUEFIPy312
+create_python_pkg.bat VS2022 NOOPT X64 c:\Users\njayapra\github\edk2-libc-jp-vsfix\myUEFIPy312
 ```
+
+The third-from-last argument is the **build flavor** and must match the **`build -b`** used
+above (**`NOOPT`** here, **`RELEASE`** if you built RELEASE).
 
 On success you should see **`Python 3.12 EFI package ready at …\EFI\`** (not the TODO line). Output layout:
 
@@ -320,6 +341,8 @@ Recommended smoke (MIN): runtime notes **§11** (`-h`, `-S -c`, REPL → **`exit
 
 | Issue | Action |
 |-------|--------|
+| **`ModuleNotFoundError`** for **`zlib`** / **`ctypes`** / **`ssl`** / **`_hashlib`** on target | MIN image was built. Add **`-D BUILD_PYTHON312_FULL=TRUE`** (§7) and repackage; check the module dir is **`Python312\`**, not **`Python312_MIN\`** |
+| Packaging can't find **`Python312.efi`**, or stages an old one | **`create_python_pkg.bat`** flavor differs from **`build -b`** (§7 Packaging) |
 | `Cannot find BaseTools Bin Win32` | Run `pip-requirements.txt` + `Edk2ToolsBuild.py -t VS2022` |
 | `No module named edk2toolext'` | `pip install -r edk2\pip-requirements.txt` |
 | NASM not found | Set `NASM_PREFIX` (e.g. `C:\NASM\`) before `edksetup` / `build` |

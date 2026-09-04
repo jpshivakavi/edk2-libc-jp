@@ -25,7 +25,7 @@
 | **`pyconfig` / integer widths** | LP64: `SIZEOF_LONG` 8 | LLP64: `SIZEOF_LONG` 4, **`UEFI_MSVC_64`** | Same Python semantics |
 | **Compiler flags / warnings** | `-Wno-error`, libffi `-I` on preprocessor | `/WX-`, `/Oi-`, many `/wd…`, **`LIBFFI_MSVC_*` `-I`** | N/A |
 | **Packaging script** | `create_python_pkg.sh GCC …` | `create_python_pkg.bat VS2022 …` | Same **`EFI/`** layout |
-| **Typical build flavor** | Often `NOOPT` on WSL | `RELEASE` on Windows | Size/optimize differ |
+| **Typical build flavor** | Often `NOOPT` on WSL | `NOOPT` (lab sign-off); `RELEASE` also builds | Size/optimize differ |
 | **UEFI firmware entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on default Shell stack only | **No** — see **§11** |
 | **Boot trace verbosity** | **`PY_UEFI_BOOT_TRACE`** not on GCC **`CC_FLAGS`** — short console (UefiMain, enter main) | **`PY_UEFI_BOOT_TRACE=1`** on MSFT — long ladder | N/A (debug only) |
 | **Interactive REPL (manufacturing)** | Post–**`59000200`**: **stub readline** policy in tree | **Stdio REPL** signed off; pyreadline **opt-in** only | **Observed** divergence — **§11** |
@@ -177,11 +177,16 @@ One-character string refs may also use **`_Py_SINGLETON(strings).ascii[N]`**, no
 
 | Step | GCC (WSL) | VS2022 (Windows) |
 |------|-----------|------------------|
-| Build | `build -t GCC -a X64 -b NOOPT … -D BUILD_PYTHON312` | `build -t VS2022 -a X64 -b RELEASE … -D BUILD_PYTHON312` |
+| Build | `build -t GCC -a X64 -b NOOPT … -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE` | `build -t VS2022 -a X64 -b NOOPT … -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE` |
 | **`WORKSPACE`** | `edk2` clone | `c:\Users\njayapra\github\edk2` |
 | **`EDK2_LIBC_PATH`** | fork path | `c:\Users\njayapra\github\edk2-libc-jp-vsfix` |
-| Package | `create_python_pkg.sh GCC NOOPT X64 out` | `create_python_pkg.bat VS2022 RELEASE X64 out` |
-| EFI output path | `Build/AppPkg/NOOPT_GCC/X64/…/Python312.efi` | `Build/AppPkg/RELEASE_VS2022/X64/…/Python312.efi` |
+| Package | `create_python_pkg.sh GCC NOOPT X64 out` | `create_python_pkg.bat VS2022 NOOPT X64 out` |
+| EFI output path | `Build/AppPkg/NOOPT_GCC/X64/…/Python312/…/Python312.efi` | `Build/AppPkg/NOOPT_VS2022/X64/…/Python312/…/Python312.efi` |
+
+**This table is FULL** (doc scope §0). **`BUILD_PYTHON312_FULL=TRUE`** is **required** on both
+toolchains — the DSC defaults it to **FALSE**, which builds **`Python312_MIN.inf`** instead
+(module dir **`Python312_MIN\`**). Flavor must match between **`build -b`** and the packaging
+script; **`RELEASE`** works on VS2022 but **`NOOPT`** is what both toolchains lab-signed-off.
 
 **Packaging:** use **`create_python_pkg.bat`** / **`.sh`** from **`edk2-libc-jp-vsfix`** (or any synced fork clone); plain **`edk2-libc`** may still ship a **Phase 6 stub** batch file.
 
