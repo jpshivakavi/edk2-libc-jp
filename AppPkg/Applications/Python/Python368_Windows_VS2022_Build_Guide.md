@@ -9,7 +9,7 @@ on a Windows host. Use this to validate VS2022 + NASM + AppPkg before porting
 | Doc | Role |
 |-----|------|
 | [`Py368ReadMe.txt`](./Python-3.6.8/Py368ReadMe.txt) | Original 3.6.8 UEFI overview (paths, install layout) |
-| [`.github/workflows/build-python-uefi-vs2022.yaml`](../../.github/workflows/build-python-uefi-vs2022.yaml) | CI reference (layout differs from sibling-clone setup below) |
+| [`.github/workflows/build-python-uefi-vs2022.yaml`](../../../.github/workflows/build-python-uefi-vs2022.yaml) | CI reference (layout differs from sibling-clone setup below) |
 | [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) | 3.12 host prep (patches, frozen — **not** required for 3.6.8) |
 | [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) | VS2022 port phase checklist |
 

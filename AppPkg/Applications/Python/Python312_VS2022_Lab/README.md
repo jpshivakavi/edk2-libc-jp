@@ -17,5 +17,6 @@ Ad-hoc **hardware/lab outcomes** and debug playbooks. Canonical build and archit
 | 2026-08-26 | [`2026-08-26_VS2022_FULL_ssl_Shell_exit.md`](./2026-08-26_VS2022_FULL_ssl_Shell_exit.md) — FULL **`import ssl`** Shell **`exit`** fix + manufacturing smoke |
 | 2026-08-27 | [`2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md`](./2026-08-27_VS2022_FULL_ssl_create_default_context_RNG.md) — **`create_default_context()`** + **`rand_rdrand.nasm`** win64 / **`LNK2001`** |
 | 2026-09-01 | [`2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./2026-09-01_GCC_FULL_vs2022_branch_regression.md) — **GCC FULL** on **`feature/python-3.12.13-vs2022`** @ **`dbc8416c`** (Phase 8 matrix + Shell **`exit`**) |
+| 2026-09-04 | [`2026-09-04_VS2022_FULL_post_pymod_smoke.md`](./2026-09-04_VS2022_FULL_post_pymod_smoke.md) — **VS2022 FULL** @ **`3afa03f5`**: first hardware run **after PyMod consolidation**; Phase 8 spot-check (**`ssl.create_default_context()`**) + Shell **`exit`** + relaunch |
 
 Add new dated `YYYY-MM-DD_*.md` files here after lab sessions; link them from this table.

@@ -12,7 +12,7 @@
 | [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) | UEFI hang, 368 entry, deepfreeze, deploy, **GCC vs VS2022 REPL (§10.1)** |
 | [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) | GCC build walkthrough |
 | [`Python-3.6.8/Python368.inf`](./Python-3.6.8/Python368.inf) | MSVC INF patterns (reference only) |
-| [`.github/workflows/build-python-uefi-vs2022.yaml`](../../.github/workflows/build-python-uefi-vs2022.yaml) | Python 3.6.8 VS2022 CI reference |
+| [`.github/workflows/build-python-uefi-vs2022.yaml`](../../../.github/workflows/build-python-uefi-vs2022.yaml) | Python 3.6.8 VS2022 CI reference |
 | [`Python368_Windows_VS2022_Build_Guide.md`](./Python368_Windows_VS2022_Build_Guide.md) | **BUILD_PYTHON368** on Windows (full walkthrough) |
 
 ---

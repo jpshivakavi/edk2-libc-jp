@@ -18,7 +18,7 @@
 **Libc clone / `EDK2_LIBC_PATH`:** `c:\Users\njayapra\github\edk2-libc-jp-vsfix` (active VS2022 workspace; branch **`feature/python-3.12.13-vs2022`**)  
 **WSL GCC regression:** **2026-09-01** — FULL on **`feature/python-3.12.13-vs2022`** @ **`dbc8416c`** (edk2-py312 layout); Phase 8 **`-S -c`** matrix + Shell **`exit`** — [`Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md`](./Python312_VS2022_Lab/2026-09-01_GCC_FULL_vs2022_branch_regression.md). Prior: **2026-07-20** MIN/prep only.  
 **MSVC reference INF:** [`Python-3.6.8/Python368.inf`](./Python-3.6.8/Python368.inf)  
-**3.6.8 VS2022 CI:** [`.github/workflows/build-python-uefi-vs2022.yaml`](../.github/workflows/build-python-uefi-vs2022.yaml) (`BUILD_PYTHON368` only today)
+**3.6.8 VS2022 CI:** [`.github/workflows/build-python-uefi-vs2022.yaml`](../../../.github/workflows/build-python-uefi-vs2022.yaml) (`BUILD_PYTHON368` only today)
 
 Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc fork — **not** `-p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc` alone.
 
@@ -51,6 +51,8 @@ Frozen / deepfreeze outputs live under **`PyMod-3.12.13/Python/`** (`frozen_modu
 |-----------|-----|-------------------|----------------------------------------|-----------------------------------------------------------------------------|
 | **VS2022 FULL** | 2026-08-26 / 27; REPL 2026-09-01 | **`4dec4edf`** (ssl/RNG), **`3568d02d`** (import ssl) | **Done** — [`Python312_VS2022_Lab/`](./Python312_VS2022_Lab/) | **Done** (2026-09-01) — no **`PY_UEFI_READLINE`** |
 | **GCC FULL** | 2026-09-01 | **`dbc8416c`** | **Done** — Phase 8 matrix + optional **pyreadline** (**§ UEFI REPL / pyreadline**) | **Done** (2026-09-01) — no **`PY_UEFI_READLINE`** |
+
+**Post-PyMod regression — VS2022 FULL, 2026-09-04 @ `3afa03f5`:** Phase 8 spot-check (**`sys.version`**; **`zlib, ctypes, hashlib`**; **`ssl.create_default_context()`**) + Shell **`exit`** + relaunch — **pass**. First VS2022 FULL hardware run **after** PyMod consolidation (**`9d465ec2`**), frozen-header relocation (**`55219522`**) and the deepfreeze helper path fix (**`0a674ac0`**), so the relocated frozen/deepfreeze artifacts are cleared on MSVC. Spot-check only — **`ctypes.sizeof(c_void_p)`** not asserted (LLP64 canary still unexercised) — [`Python312_VS2022_Lab/2026-09-04_VS2022_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_VS2022_FULL_post_pymod_smoke.md).
 
 **Single codebase validated:** **`feature/python-3.12.13-vs2022`** builds **GCC** and **VS2022** FULL; shared PyMod (ssl, OpenSSL, teardown) did not regress GCC on hardware.
 
@@ -442,6 +444,14 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 3. **Optional pyreadline (GCC only):** **`PY_UEFI_READLINE=1`**, **`import readline`**, history/Tab, teardown — **pass**; **§ UEFI REPL / pyreadline** + lab note.
 4. **Docs:** **`0b9fe05f`** (pyreadline); migration status lab build/smoke tables.
 5. **V6 close:** FULL stdio **`Python312.efi -S`** (no pyreadline) — **GCC** + **VS2022** hardware **pass** (trivial **`>>>`**, **`exit(0)`**, Shell **`exit`**).
+
+### 2026-09-04 — VS2022 FULL post-PyMod regression + smoke doc
+
+1. **Hardware (VS2022 FULL, `3afa03f5`, NOOPT):** **`sys.version`**; **`import zlib, ctypes, hashlib`**; **`import ssl; ssl.create_default_context()`** — each followed by Shell **`exit`** → firmware, plus relaunch without reboot — **pass**, no hang. Stdio REPL default (no **`PY_UEFI_READLINE`**).
+2. **Significance:** first VS2022 FULL hardware run after **`9d465ec2`** (PyMod consolidation), **`55219522`** (frozen headers under PyMod) and **`0a674ac0`** (deepfreeze helper path fix) — relocated frozen/deepfreeze artifacts confirmed good on MSVC.
+3. **Gap recorded:** **`ctypes.sizeof(c_void_p)`** not asserted (LLP64 / **`UEFI_MSVC_64`** canary), and **`zlib, ssl, ctypes, hashlib`** not imported in a single process. Two one-liners close both — see lab note.
+4. **Docs:** **`65b7326a`** added [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) — consolidated runnable MIN/FULL/REPL procedure for both toolchains, linked from both build guides, runtime notes §11 and the MIN doc.
+5. **Lab note:** [`Python312_VS2022_Lab/2026-09-04_VS2022_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_VS2022_FULL_post_pymod_smoke.md).
 
 ### 2026-07-23 — Session 10 (VS2022 REPL exit, Shell teardown, readline stub — **user-verified**, pushed)
 
