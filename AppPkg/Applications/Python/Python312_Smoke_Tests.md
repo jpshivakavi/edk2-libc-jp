@@ -155,12 +155,12 @@ Within each toolchain, go in this order. Each phase is a prerequisite for trusti
 | **2** | Non-interactive opt-in | §5.3 | Covers hook install **and** teardown with no keyboard interaction — cheapest canary |
 | **3** | Interactive: history + Tab | §5.4 | Only meaningful once phase 2 tears down cleanly |
 | **4** | Optional: confirm the documented non-bugs | §5.5, §5.6 | Turns "it didn't work" into a known cause |
-| **5** | **Clear the env**, re-confirm stub | §5.6 | Mandatory — otherwise later default-mode runs are invalid |
+| **5** | **Clear the env**, re-confirm stub | §5.6 | Mandatory — plain `set` is **non-volatile** and survives reboot |
 
 **If VS2022 hangs at phase 2 or 3:** that is the historical failure, not a new defect. Power-
 cycle, record the phase and the last line printed, and stop — do not carry on to phase 3 after
-a phase 2 hang. Leave VS2022 pyreadline marked unsigned-off and re-run phase 5 on the next
-boot so the env does not linger.
+a phase 2 hang. Leave VS2022 pyreadline marked unsigned-off, and check `set` on the next boot
+so the env does not linger (use **`set -v`** when enabling, so a power-cycle clears it — §5.6).
 
 #### 5.0.1 Pre-flight, per stick
 
@@ -231,9 +231,11 @@ This exercises the real pyreadline path, hook install and teardown **without** n
 keys, so it is the fastest way to test the risky path:
 
 ```text
-set PY_UEFI_READLINE 1
+set -v PY_UEFI_READLINE 1
 Python312.efi -S -c "import readline, sys; print(type(readline.rl).__name__, 'edk2console' in sys.modules)"
 ```
+
+**`-v` makes the variable volatile** so a forced power-cycle clears it — see §5.6.
 
 | Check | Expected |
 |-------|----------|
@@ -249,7 +251,7 @@ hang** — run it before the interactive test, not after.
 ### 5.4 Interactive opt-in — GCC signed off
 
 ```text
-set PY_UEFI_READLINE 1
+set -v PY_UEFI_READLINE 1
 Python312.efi -S
 ```
 
@@ -293,8 +295,26 @@ Python312.efi -S -c "import readline; print(type(readline.rl).__name__)"
 ```
 
 Confirm `set` no longer lists it **and** that you get **`_ReadlineStub`** again before trusting
-default-mode results. If the variable was created non-volatile (`set -v`), it survives reboot —
-check `set` on a fresh boot too.
+default-mode results.
+
+**`set` without `-v` creates a NON-volatile variable that survives reboot.** In `ShellPkg`,
+`Set.c` passes the `-v` flag straight through as the `Volatile` argument of
+`ShellSetEnvironmentVariable`, whose contract is *"non-volatile (FALSE) or volatile (TRUE)"*:
+
+| Command | Volatile | Survives reboot |
+|---------|----------|-----------------|
+| `set PY_UEFI_READLINE 1` | FALSE | **Yes** — written to NVRAM |
+| **`set -v PY_UEFI_READLINE 1`** | TRUE | **No** — cleared on reset |
+
+**Prefer `set -v` for these tests.** It self-clears on reset, which matters because a VS2022
+pyreadline hang forces a power-cycle — with `-v` the variable is gone on the next boot instead
+of silently persisting into later default-mode runs. Delete either kind with:
+
+```text
+set -d PY_UEFI_READLINE
+```
+
+If you used plain `set`, also re-check `set` after a reboot to confirm it really went.
 
 ### 5.7 Compile-time variant (development only)
 
