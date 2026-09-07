@@ -158,7 +158,7 @@ SyntaxError: invalid non-printable character U+001B
 | Default **`Python312.efi -S`** (stdio REPL) | **VS2022 MIN** (Session 10) | **Pass** |
 | **`PY_UEFI_READLINE=1`** + **`import readline`** + history/Tab + teardown | **GCC only** (2026-09-01 @ **`dbc8416c`**; re-run 2026-09-07 @ **`3afa03f5`**) | **Pass** |
 | pyreadline **phases 1–5** incl. stub-vs-real assertions, non-interactive opt-in, non-bugs, cleanup | **GCC** (2026-09-07 @ **`3afa03f5`**) | **Pass** — [`2026-09-07_GCC_FULL_pyreadline_phases.md`](./Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md) |
-| Same pyreadline opt-in on **VS2022** FULL | **Not re-smoked** on this branch after Session 10; §5.2/§5.3 **never run** | VS2022 historically hung Shell **`exit`** with pyreadline — see deviations **§11.3**, runtime notes **§10** |
+| Same pyreadline opt-in on **VS2022** FULL | **Run 2026-09-07** @ **`3afa03f5`** | **HANG reproduces** — phases 1/5 (stub) clean, phases 2/3 hang Shell **`exit`**. **Import alone is sufficient; no interactive REPL needed.** [`2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md) · deviations **§11.3**, runtime notes **§10** |
 
 **Takeaway:** **GCC** can use **optional pyreadline** with current teardown sources when env + **`import readline`** are used — now verified through the full **phase 1–5** procedure at the **pinned post-PyMod state** (**`3afa03f5`**, 2026-09-07), including assertions that the manufacturing default really loads the **stub** (`_ReadlineStub`, with neither `pyreadline` nor `edk2console` in `sys.modules`). **VS2022 manufacturing** stays **stdio default** (FULL **`-S`** signed off 2026-09-01); **VS2022 pyreadline** opt-in remains **not** re-lab’d, and §5.2/§5.3 have **never** been run there.
 
@@ -459,7 +459,9 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 4. **Traps confirmed on hardware** (both were source-derived): env value parsing is exact-match (**`True`** silently yields stub), and arrow keys before **`import readline`** give **`U+001B`**.
 5. **Docs:** **`e8977117`** corrected the shell env volatility guidance — plain **`set`** is **non-volatile**; prefer **`set -v`** for tests.
 6. **Lab note:** [`Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md`](./Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md).
-7. **Open:** **VS2022 pyreadline** — §5.2/§5.3 never run; §5.3 is the cheapest next step and the historical hang path.
+7. **VS2022 pyreadline (same day, same code state) — HANG reproduces.** Phases 1 and 5 (stub) clean on the same image; phases 2 and 3 both leave Shell **`exit`** hanging. **Phase 2 hung with no interactive REPL and no keystrokes**, so **`import readline`** alone is the trigger — earlier docs describing this as a REPL/line-editing issue understated it. Interpreter returns to **`Shell>`** normally; only the firmware handoff hangs. Not persisted across power-cycle. [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
+8. **Next diagnostic (no rebuild needed):** **`/DPY_UEFI_BOOT_TRACE=1`** is already on MSFT **`CC_FLAGS`**, so **`PY312_CONSOLE_TRACE`** lines (**`edk2_console_detach_readline enter/leave`**, **`stop_timer: …`**, **`handoff_to_shell`**) are live in the tested image — read them on a phase 2 re-run before typing **`exit`** to decide whether detach ran and completed. **Do not** try a ConIn `Reset`; **`edk2console.c`** records both directions already failing.
+9. **Policy unchanged:** VS2022 manufacturing stays **stdio**; this run is positive evidence for that decision.
 
 ### 2026-09-04 — unified FULL (VS2022 + GCC) post-PyMod regression + smoke doc
 

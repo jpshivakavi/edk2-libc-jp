@@ -137,8 +137,10 @@ record that separately from a Shell `exit` hang (runtime notes §7).
 
 ## 5. pyreadline / readline
 
-**Signed off on GCC only** (2026-09-01). VS2022 manufacturing stays stdio; VS2022 pyreadline
-historically hung Shell `exit` and the next launch, and has **not** been re-labbed.
+**GCC only.** GCC passes phases 1–5 at `3afa03f5` (2026-09-07). **VS2022 hangs Shell `exit` at
+phases 2 and 3 — confirmed 2026-09-07 at the same code state**, so VS2022 manufacturing stays
+stdio. Importing the real `readline` module is enough to trigger it; no interactive REPL is
+needed. Run §5 on VS2022 only when a power-cycle is acceptable.
 
 ### 5.0 Execution order — run this way
 
@@ -354,10 +356,10 @@ flags — its presence proves nothing about whether readline is wired.
 | **`ctypes.sizeof(c_void_p)`** == **`8`** (§3) | **Pass** (09-04) | **Pass** (09-04) | n/a |
 | Four modules, one process (§3 `phase8 ok`) | **Pass** (09-04) | **Pass** (09-04) | n/a |
 | Stdio **`-S`** REPL + teardown | **Pass** | **Pass** | **Pass** |
-| Stub default **asserted** (§5.2) | **Pass** (09-07) | Not run | Observed safe (Session 10) |
-| Non-interactive opt-in (§5.3) | **Pass** (09-07) | **Not run** | n/a |
-| Interactive pyreadline opt-in (§5.4) | **Pass** (09-07) | **Not re-smoked** | n/a |
-| Documented non-bugs (§5.5 / §5.6) | **Pass** (09-07) | n/a | n/a |
+| Stub default **asserted** (§5.2) | **Pass** (09-07) | **Pass** (09-07) | Observed safe (Session 10) |
+| Non-interactive opt-in (§5.3) | **Pass** (09-07) | **HANG** on Shell `exit` (09-07) | n/a |
+| Interactive pyreadline opt-in (§5.4) | **Pass** (09-07) | **HANG** on Shell `exit` (09-07) | n/a |
+| Env cleanup restores stub (§5.6) | **Pass** (09-07) | **Pass** (09-07) | n/a |
 
 **GCC ran §5.0 phases 1–5 in full on 2026-09-07 at `3afa03f5`** — the same code state as the
 `python312-unified-full-lab-2026-09-04` pin, so GCC pyreadline no longer rests on the pre-PyMod
@@ -365,8 +367,13 @@ flags — its presence proves nothing about whether readline is wired.
 toolchain**; earlier sign-offs showed nothing broke but never asserted which path had loaded.
 [`Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md`](./Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md).
 
-**VS2022 pyreadline remains entirely unrun.** §5.3 is the cheapest next step and is the path
-that historically hung Shell `exit`.
+**VS2022 pyreadline was run on 2026-09-07 and the hang reproduces at `3afa03f5`.** Phases 1 and
+5 (stub) are clean on the same image; phases 2 and 3 both leave Shell `exit` hanging. Critically,
+**phase 2 hung with no interactive REPL and no arrow keys** — importing the real `readline`
+module is by itself sufficient, so this is not a line-editing problem as previously described.
+Manufacturing stdio policy stands, and `PY_UEFI_BOOT_TRACE` is already compiled into the MSVC
+image for diagnosis —
+[`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.

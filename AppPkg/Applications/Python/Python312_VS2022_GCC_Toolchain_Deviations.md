@@ -251,10 +251,13 @@ GCC builds do **not** use the 368 entry workaround.
 | **Session 10 policy (source, both toolchains)** | **`main.c`**: skip auto **`readline`** unless **`PY_UEFI_PYREADLINE`** at **compile**; **`site.py`**: no **`enablerlcompleter`** on **`uefi`**; **`readline.py`**: stub unless shell **`PY_UEFI_READLINE=1`** | **User-verified** stdio REPL + Shell teardown; stub **`import readline`** safe |
 | **Manufacturing default UX** | Stdio **`>>>`** (like **3.6.8**) — **not** auto pyreadline | Same |
 | **GCC re-smoke 2026-09-01** | **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **pass** | **Not re-smoked** with pyreadline opt-in |
+| **Both toolchains 2026-09-07 @ `3afa03f5`** (smoke doc §5.0 phases 1–5) | **Pass** — incl. asserted stub default (**`_ReadlineStub`**, no **`pyreadline`**/**`edk2console`** loaded) and non-interactive opt-in | **HANG reproduces** — stub phases clean, but **`import readline`** (even non-interactively) leaves Shell **`exit`** hanging. [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md) |
 
 **Takeaway:** Do **not** claim “GCC and VS2022 behave the same” for **interactive REPL with pyreadline**. **VS2022 manufacturing** stays **stdio default**. **GCC** supports **optional** pyreadline when env + **`import readline`** are used — see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **§ UEFI REPL / pyreadline**.
 
 **`PY_UEFI_READLINE=1` alone does not enable line editing:** REPL still uses stdio until **`import readline`** (or compile **`PY_UEFI_PYREADLINE`**). Arrow keys without import → **`SyntaxError` … U+001B**.
+
+**Correction (2026-09-07): the VS2022 hang is not a line-editing or REPL problem.** A one-shot **`Python312.efi -S -c "import readline, …"`** — no interactive session, no keystrokes — is enough to leave Shell **`exit`** hanging. Hook install (**`console.install_readline`** → **`install_readline_hook`**) plus **`rl.read_history_file()`** at import time is sufficient. Earlier text in this section describing it as a REPL/**`exit()`** issue understates the trigger.
 
 **Optional pyreadline on VS2022 (development only):** shell env **`PY_UEFI_READLINE=1`** + **`import readline`** — **not** manufacturing-signed-off on VS2022. See [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10.
 

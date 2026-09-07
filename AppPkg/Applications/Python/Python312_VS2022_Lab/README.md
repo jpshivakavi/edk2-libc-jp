@@ -20,5 +20,6 @@ Ad-hoc **hardware/lab outcomes** and debug playbooks. Canonical build and archit
 | 2026-09-04 | [`2026-09-04_unified_FULL_post_pymod_smoke.md`](./2026-09-04_unified_FULL_post_pymod_smoke.md) — **VS2022 + GCC FULL** @ **`3afa03f5`** (same code state): first hardware run **after PyMod consolidation**; Phase 8 + **`ssl.create_default_context()`** + **`ctypes.sizeof(c_void_p)`==8** + **`phase8 ok`** + Shell **`exit`** + relaunch on both — all known-failure guards green |
 
 | 2026-09-07 | [`2026-09-07_GCC_FULL_pyreadline_phases.md`](./2026-09-07_GCC_FULL_pyreadline_phases.md) — **GCC FULL** @ **`3afa03f5`**: pyreadline **phases 1–5** all pass; first hardware run of the **stub-vs-real assertions** on any toolchain; moves GCC pyreadline sign-off onto the **post-PyMod pinned state** |
+| 2026-09-07 | [`2026-09-07_VS2022_FULL_pyreadline_hang.md`](./2026-09-07_VS2022_FULL_pyreadline_hang.md) — **VS2022 FULL** @ **`3afa03f5`**: pyreadline Shell **`exit`** hang **reproduces** (phases 2/3); stub phases 1/5 clean. **Narrowed: `import readline` alone triggers it — no REPL needed.** Boot-trace diagnostic already compiled in |
 
 Add new dated `YYYY-MM-DD_*.md` files here after lab sessions; link them from this table.
