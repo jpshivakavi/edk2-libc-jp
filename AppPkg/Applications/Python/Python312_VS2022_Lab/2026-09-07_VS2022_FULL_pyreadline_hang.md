@@ -55,6 +55,95 @@ state is corrupted is not persisted to NVRAM.
 
 ---
 
+## Trace result (captured 2026-09-07, phase 2, KVM console)
+
+**Full teardown ladder completed.** Transcribed from the console:
+
+```text
+Python312 boot: Py_RunMain after pymain_run_python
+Python312 boot: edk2_console_detach_readline enter          <-- call #2 (post-import)
+Python312 boot: stop_timer: already off
+Python312 boot: edk2_console_detach_readline leave
+Python312 boot: Py_RunMain after edk2_console_detach_readline
+Python312 boot: Py_FinalizeEx enter
+Python312 boot: Py_FinalizeEx after wait_for_thread_shutdown
+Python312 boot: Py_FinalizeEx after _PyAtExit_Call
+Python312 boot: Py_FinalizeEx after flush_std_files
+Python312 boot: finalize_modules enter
+Python312 boot: edk2_console_detach_readline enter          <-- call #3 (py_console_free)
+Python312 boot: stop_timer: already off
+Python312 boot: edk2_console_detach_readline leave
+Python312 boot: finalize_modules leave
+Python312 boot: Py_FinalizeEx after finalize_modules
+Python312 boot: Py_FinalizeEx before call_ll_exitfuncs
+Python312 boot: Py_FinalizeEx after call_ll_exitfuncs
+Python312 boot: Py_FinalizeEx leave
+Python312 boot: Py_RunMain after Py_FinalizeEx
+Python312 boot: after Py_BytesMain
+Python312 boot: after main()
+Python312 boot: after ShellCEntryLib
+Python312 boot: after edk2_free_environ
+Python312 boot: before return from UefiMain
+FS1:\EFI\bin\>
+```
+
+### What this eliminates
+
+| Ruled out | Evidence |
+|-----------|----------|
+| **Python-side teardown** | Every stage printed through **`before return from UefiMain`**, and the prompt returned. Nothing in Python or `UefiMain` hangs |
+| **The 1 ms periodic timer** | **`stop_timer: already off`** at *both* detach calls — the timer was **never created**. `py_console_install_readline_hook` deliberately does not start it, with a comment saying it "can hang the next Shell command or Shell exit". **That known cause is already mitigated, so this is a different one** |
+| **`detach_readline` itself** | `enter`/`leave` on all three calls; none hangs |
+| **`edk2_console_handoff_to_shell`** | **No trace lines** — it never ran. Its only two call sites are `py312_openssl_uefi.c:32` (gated on `py312_openssl_loaded`, and this run did not import `ssl`) and `edk2console.c:606` (Python-level `shutdown_interactive`) |
+| **ConInEx being left open** | `PY_UEFI_PYREADLINE` is **not** among the `Python312.inf` MSFT flags (only `PY_UEFI_BOOT_TRACE=1`, `PY_UEFI_MSVC_368_ENTRY=1`, `BUILD_PYTHON312_FULL=1`), so `UefiMain` never opened it. `edk2_console_ensure_input()` has exactly one call site — `py_console_getkeys` — which never ran in a non-interactive run. **Caveat:** inferred, not observed — see instrumentation gap below |
+| **ConOut being reconfigured** | `Console.__init__` only **reads** via `get_output_mode_ex()`; nothing wrote through `edk2console` in phase 2 |
+
+**Conclusion: the hang is entirely outside the Python image.** Python exits, `UefiMain`
+returns, the prompt comes back — and only the Shell's own `exit` to firmware hangs afterwards.
+Whatever is left behind survives image exit.
+
+### Code defects found while analysing (independent of the hang)
+
+| # | Finding |
+|---|---------|
+| 1 | **`edk2_console_restore_for_shell()` is never called from anywhere** — declared in both copies of `edk2console_api.h`, defined at `edk2console.c:178`, **zero call sites**. Dead API |
+| 2 | **No ConOut restore exists anywhere in the tree**, despite two API contracts promising it. The header says `restore_for_shell` is *"ConOut restore only"*, but it forwards to `edk2_console_restore_firmware_console()`, whose entire body is `edk2_console_drain_input()` — which touches **ConIn**, not ConOut. `edk2_console_handoff_to_shell` is documented *"restore ConIn/ConOut"* and likewise only detaches and drains |
+| 3 | `py_console_install_readline_hook` stores **`py_console_readline_hook = hook`** with **no `Py_INCREF`** — a borrowed reference held in a C global. Latent refcount bug; not this hang (cleared at detach) |
+
+Defect 2 matters most for **phase 3**, where pyreadline *does* write through `edk2console`
+(`set_output_attr`, `puts`, `set_cursor_pos`) and nothing puts ConOut back.
+
+### Instrumentation gap — one line would close it
+
+`edk2_console_detach_readline()` has **no trace inside** its
+`if (g_edk2_globals.console_in != NULL)` branch, so the ladder cannot prove whether
+`CloseProtocol` ran. Adding a `PY312_CONSOLE_TRACE` there (and an `else`) would settle whether
+ConInEx was ever open — currently inferred, not observed.
+
+### Next step — bisect what actually poisons Shell `exit`
+
+Phase 1 (stub) also imports `readline.py` from FS1 and exits cleanly, so the delta is narrow:
+the **pyreadline package import** (~38 files), **`rlcompleter`**, **`rl.read_history_file()`**,
+and **`install_readline_hook`**. These three runs separate them — each followed by Shell `exit`:
+
+```text
+Python312.efi -S -c "import edk2console; print('ok')"
+Python312.efi -S -c "import pyreadline.rlmain; print('ok')"
+Python312.efi -S -c "import edk2console; edk2console.install_readline_hook(lambda p: chr(10)); print('ok')"
+```
+
+| Run | If `exit` hangs | If `exit` is clean |
+|-----|-----------------|--------------------|
+| 1 — `edk2console` only | The C module's mere presence/init is enough | Module init is innocent |
+| 2 — full pyreadline tree, **no** hook | Cause is the **package import / FAT file I/O**, not the hook | File I/O is innocent → suspect the hook |
+| 3 — hook installed, **no** pyreadline | Cause is **`install_readline_hook`** | Hook is innocent → suspect import/history |
+
+Run 2 does **not** need `PY_UEFI_READLINE`, since it bypasses `readline.py`'s gate entirely.
+
+---
+
+## Original diagnostic instructions (superseded by the result above)
+
 ## Next diagnostic — instrumentation is already in the image
 
 **`/DPY_UEFI_BOOT_TRACE=1` is already on `MSFT:*_*_*_CC_FLAGS` in `Python312.inf`**, so

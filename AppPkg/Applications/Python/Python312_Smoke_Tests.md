@@ -344,7 +344,7 @@ flags — its presence proves nothing about whether readline is wired.
 | Arrow keys → `U+001B` | `import readline` not run | §5.5 |
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
-| Shell `exit` hangs only after a readline run | `edk2_console_detach_readline` teardown | §5.3 · runtime notes §10 |
+| Shell `exit` hangs only after a readline run | **Not** Python teardown — boot trace shows Python and `UefiMain` both return cleanly and the prompt comes back. Cause survives image exit | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
 
 ---
 
@@ -371,9 +371,16 @@ toolchain**; earlier sign-offs showed nothing broke but never asserted which pat
 5 (stub) are clean on the same image; phases 2 and 3 both leave Shell `exit` hanging. Critically,
 **phase 2 hung with no interactive REPL and no arrow keys** — importing the real `readline`
 module is by itself sufficient, so this is not a line-editing problem as previously described.
-Manufacturing stdio policy stands, and `PY_UEFI_BOOT_TRACE` is already compiled into the MSVC
-image for diagnosis —
-[`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
+Manufacturing stdio policy stands.
+
+**The boot trace was captured the same day and moves the fault out of Python entirely.** The
+ladder runs to completion — `Py_FinalizeEx`, `Py_BytesMain`, `main()`, `edk2_free_environ`,
+`before return from UefiMain` — and the Shell prompt returns; only the Shell's own `exit` to
+firmware hangs afterwards. `stop_timer: already off` on both detach calls proves the 1 ms
+periodic timer was **never created**, so that long-suspected cause is already mitigated and this
+is a different one. Do not spend further effort on Python-side teardown —
+[`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md)
+carries the transcribed ladder, the ruled-out list, and a three-run bisect for the next session.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
