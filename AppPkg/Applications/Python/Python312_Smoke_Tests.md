@@ -140,6 +140,48 @@ record that separately from a Shell `exit` hang (runtime notes §7).
 **Signed off on GCC only** (2026-09-01). VS2022 manufacturing stays stdio; VS2022 pyreadline
 historically hung Shell `exit` and the next launch, and has **not** been re-labbed.
 
+### 5.0 Execution order — run this way
+
+**Do GCC first, VS2022 second.** GCC is the signed-off path, so it validates the procedure
+itself; if a step misbehaves on GCC, the procedure or the stick is wrong, not the port. VS2022
+is the unproven path — **be ready to power-cycle**, and run it when a hard reset is acceptable.
+
+Within each toolchain, go in this order. Each phase is a prerequisite for trusting the next.
+
+| Phase | What | Section | Why this order |
+|------:|------|---------|----------------|
+| **0** | Pre-flight: FULL image, readline staged, env **unset** | §5.0.1 | A missing `readline.py` gives `ModuleNotFoundError`, not a stub — different failure |
+| **1** | Confirm **stub** is the default | §5.2 | Proves the env is genuinely clear before you enable anything |
+| **2** | Non-interactive opt-in | §5.3 | Covers hook install **and** teardown with no keyboard interaction — cheapest canary |
+| **3** | Interactive: history + Tab | §5.4 | Only meaningful once phase 2 tears down cleanly |
+| **4** | Optional: confirm the documented non-bugs | §5.5, §5.6 | Turns "it didn't work" into a known cause |
+| **5** | **Clear the env**, re-confirm stub | §5.6 | Mandatory — otherwise later default-mode runs are invalid |
+
+**If VS2022 hangs at phase 2 or 3:** that is the historical failure, not a new defect. Power-
+cycle, record the phase and the last line printed, and stop — do not carry on to phase 3 after
+a phase 2 hang. Leave VS2022 pyreadline marked unsigned-off and re-run phase 5 on the next
+boot so the env does not linger.
+
+#### 5.0.1 Pre-flight, per stick
+
+```text
+ls EFI\lib\python3.12\readline.py
+ls EFI\lib\python3.12\pyreadline
+set
+```
+
+| Check | Expected |
+|-------|----------|
+| `readline.py` | present — **without it `import readline` raises `ModuleNotFoundError`** |
+| `pyreadline\` | present (~38 files, incl. `console\edk2.py`) |
+| `set` output | **no `PY_UEFI_READLINE`** line |
+| Image | **FULL** — §0.1 |
+
+Both `create_python_pkg.bat` and `.sh` stage these from
+`PyMod-3.12.13/Modules/readline/`. If the directory was missing at package time the script
+prints **`Warning: … missing; import readline will fail`** — re-package rather than testing on
+a stick that only had the `.efi` refreshed (§0.2).
+
 ### 5.1 How the opt-in actually works — two independent switches
 
 Getting this wrong is the main source of confusing results, because the wrong combination
@@ -246,10 +288,13 @@ later stdio-default test, including §2–§4. Clear it when done:
 
 ```text
 set -d PY_UEFI_READLINE
+set
+Python312.efi -S -c "import readline; print(type(readline.rl).__name__)"
 ```
 
-Then re-run §5.2 and confirm you get **`_ReadlineStub`** again before trusting default-mode
-results.
+Confirm `set` no longer lists it **and** that you get **`_ReadlineStub`** again before trusting
+default-mode results. If the variable was created non-volatile (`set -v`), it survives reboot —
+check `set` on a fresh boot too.
 
 ### 5.7 Compile-time variant (development only)
 
