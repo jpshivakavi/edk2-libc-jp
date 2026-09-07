@@ -354,12 +354,19 @@ flags — its presence proves nothing about whether readline is wired.
 | **`ctypes.sizeof(c_void_p)`** == **`8`** (§3) | **Pass** (09-04) | **Pass** (09-04) | n/a |
 | Four modules, one process (§3 `phase8 ok`) | **Pass** (09-04) | **Pass** (09-04) | n/a |
 | Stdio **`-S`** REPL + teardown | **Pass** | **Pass** | **Pass** |
-| `import readline` stays stub, no env (§5.2) | Observed safe | Observed safe | **Pass** (Session 10) |
-| Interactive pyreadline opt-in (§5.4) | **Pass** | **Not re-smoked** | n/a |
+| Stub default **asserted** (§5.2) | **Pass** (09-07) | Not run | Observed safe (Session 10) |
+| Non-interactive opt-in (§5.3) | **Pass** (09-07) | **Not run** | n/a |
+| Interactive pyreadline opt-in (§5.4) | **Pass** (09-07) | **Not re-smoked** | n/a |
+| Documented non-bugs (§5.5 / §5.6) | **Pass** (09-07) | n/a | n/a |
 
-The **explicit `_ReadlineStub` / `sys.modules` assertions in §5.2 and the non-interactive
-opt-in check in §5.3 are new** — prior runs confirmed stub `import readline` did not break
-teardown, but never asserted which code path had loaded. Treat them as unrun.
+**GCC ran §5.0 phases 1–5 in full on 2026-09-07 at `3afa03f5`** — the same code state as the
+`python312-unified-full-lab-2026-09-04` pin, so GCC pyreadline no longer rests on the pre-PyMod
+2026-09-01 run. That was also the **first hardware run of the §5.2/§5.3 assertions on any
+toolchain**; earlier sign-offs showed nothing broke but never asserted which path had loaded.
+[`Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md`](./Python312_VS2022_Lab/2026-09-07_GCC_FULL_pyreadline_phases.md).
+
+**VS2022 pyreadline remains entirely unrun.** §5.3 is the cheapest next step and is the path
+that historically hung Shell `exit`.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
