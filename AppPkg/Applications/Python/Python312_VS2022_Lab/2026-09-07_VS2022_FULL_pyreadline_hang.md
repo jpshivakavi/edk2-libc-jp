@@ -58,29 +58,55 @@ state is corrupted is not persisted to NVRAM.
 ## Next diagnostic — instrumentation is already in the image
 
 **`/DPY_UEFI_BOOT_TRACE=1` is already on `MSFT:*_*_*_CC_FLAGS` in `Python312.inf`**, so
-`PY312_CONSOLE_TRACE` in `edk2console.c` is **live in the image already tested** — no rebuild
-needed. Re-run phase 2 and read the console before typing `exit`:
+`PY312_CONSOLE_TRACE` (`edk2console.c`) and `py312_boot_print_ascii` are **live in the image
+already tested** — no rebuild needed.
+
+### There are TWO `detach_readline` calls — check the second one
+
+This is the trap that makes a naive reading useless. `edk2_console_detach_readline()` runs at
+**startup** and again **after** user code:
+
+| # | Call site | When |
+|---|-----------|------|
+| **1** | `python.c` `main()`, before `Py_BytesMain` | Always, at startup — **harmless, always prints `enter`/`leave`** |
+| **2** | `main.c` `Py_RunMain()`, after `pymain_run_python()` | **The one that matters** — the only detach that runs *after* `import readline` installed the hook |
+
+So "`enter` and `leave` appeared" proves nothing on its own. Anchor on the line
+**`Py_RunMain after pymain_run_python`** and read only what follows it.
+
+### Expected ladder (phase 2, `-S -c "import readline …"`)
 
 ```text
-set -v PY_UEFI_READLINE 1
-Python312.efi -S -c "import readline, sys; print(type(readline.rl).__name__)"
+Python312 boot: main enter
+Python312 boot: after _PyMem_SetupAllocators
+Python312 boot: edk2_console_detach_readline enter        <-- call #1 (startup, ignore)
+Python312 boot: stop_timer: already off
+Python312 boot: edk2_console_detach_readline leave
+Python312: enter main
+Python312 boot: before Py_BytesMain
+Readline True                                             <-- script output
+Python312 boot: Py_RunMain after pymain_run_python         <-- ANCHOR: read from here down
+Python312 boot: edk2_console_detach_readline enter        <-- call #2 (post-import)
+Python312 boot: stop_timer: ...
+Python312 boot: edk2_console_detach_readline leave
+Python312 boot: Py_RunMain after Py_FinalizeEx
+Python312 boot: after Py_BytesMain
+Shell>
 ```
 
-Relevant lines all start **`Python312 boot:`**. Look for:
+### Decision table — applies to call #2 only
 
-```text
-stop_timer: TimerCancel   /  stop_timer: CloseEvent  /  stop_timer: done
-edk2_console_detach_readline enter
-edk2_console_detach_readline leave
-edk2_console_handoff_to_shell enter / leave
-```
+| After the anchor line | Interpretation | Where to look |
+|-----------------------|----------------|---------------|
+| `enter` **and** `leave` present | Detach completed. The leak is **after** it — handle/ConIn state left for the Shell, or an event never closed. **Most likely**, since Python reached `Shell>` | `CloseProtocol` semantics; whether the Shell's own ConInEx consumer is disturbed; `edk2_console_handoff_to_shell` is **not** on this path |
+| `enter` but **no** `leave` | Hang is **inside** detach — `edk2_console_drain_input()`'s `while (ReadKeyStrokeEx…)` loop, or `CloseProtocol`. Contradicts reaching `Shell>`, so would be a surprise worth reporting | `edk2console.c` lines 100–160 |
+| **Anchor line present, no `enter` at all** | Detach did **not** run post-import — the `#ifdef UEFI_C_SOURCE` block was compiled out or skipped | `main.c` ~730 |
+| **Anchor line absent** | `Py_RunMain` never reached that point | `pymain_run_python` |
+| `stop_timer: already off` at call #2 | The `getkeys` **timer was never created** — so the timer is **not** the culprit for a non-interactive hang | — |
+| `stop_timer: TimerCancel` / `CloseEvent` / `done` at call #2 | A periodic timer **was** live and got cancelled — compare with phase 3, where interactive use is more likely to have started it | `edk2_console_start_timer` |
 
-| Trace seen | Interpretation |
-|------------|----------------|
-| `detach_readline enter` **and** `leave` | Detach completed; the leak is **after** it — ConIn/handle state left for the Shell, or an uncancelled event. Look at `edk2_console_handoff_to_shell` and the timer path |
-| `enter` but **no** `leave` | Hang is **inside** detach — the `edk2_console_drain_input()` `while (ReadKeyStrokeEx…)` loop or `CloseProtocol`. But note Python *did* reach `Shell>`, so this is unlikely |
-| **neither** | Detach never ran on this path — the `-S -c` exit route misses the call sites in `python.c` / `main.c` |
-| `stop_timer` lines absent | The `getkeys` timer event was never created or never cancelled |
+**Comparing phase 1 with phase 2 is the highest-value signal.** Phase 1 exits cleanly, so any
+line present at call #2 in phase 2 but absent in phase 1 is the delta that breaks Shell `exit`.
 
 **Known dead end — do not retry blind:** `edk2console.c` documents that resetting ConIn does
 not help, and both directions were already tried:
@@ -88,8 +114,14 @@ not help, and both directions were already tried:
 > *"Do not Reset ConIn here; `Reset(TRUE)` hangs after REPL exit and `Reset(FALSE)` has hung the
 > next Shell launch on VS2022. Drain only."*
 
-So the fix is not a ConIn reset. The trace outcome above should decide the direction before any
-code change.
+So the fix is not a ConIn reset. Let the trace decide the direction before changing code.
+
+### Capture
+
+The trace lines are printed by `Print()` to **ConOut**, so shell `>` redirection is not
+dependable for them. They are, however, the **last lines before the `Shell>` prompt**, so they
+are on screen when the prompt returns — read them before typing `exit`. Serial / BMC console
+capture is best if available; photographing the screen is an acceptable fallback.
 
 ---
 
