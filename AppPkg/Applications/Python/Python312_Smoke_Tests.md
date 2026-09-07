@@ -345,7 +345,7 @@ flags — its presence proves nothing about whether readline is wired.
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
-| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. `import logging` **and** `import json` both hang; **`re`** is the perfectly correlated import. Python teardown, `edk2console`, hooks, timers, locks and `threading` are all **ruled out**. Open mechanisms: pool footprint, or leaked file handles per import | same lab note, "`import json` also hangs" |
+| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. `import logging` and `import json` hang, but `import re`, a 16 MB `bytearray`, and 50 `open`/`close` cycles are all **clean** — so `re`, raw heap footprint, file-handle leaks, teardown, `edk2console` and `_thread` are **all ruled out**. Open mechanisms: allocation count / pool fragmentation, a count-based limit, or C-stack depth | same lab note, "Mechanism runs" |
 
 ---
 
@@ -406,9 +406,14 @@ nor `threading`; what it shares is **`re`** (`json/decoder.py`, `encoder.py` and
 `import re`, as does `logging/__init__.py:26`). `re` is now perfectly correlated with the hang.
 This also explains why the phase 8 tests always looked clean — this port's `ssl/__init__.py` is
 the UEFI-minimal variant that imports only `os`, so **§3 barely exercises the pure-Python stdlib**.
-Two mechanisms remain open, pool footprint or a per-import file-handle leak, and the lab note
-carries three runs (`import re`, a bare 16 MB `bytearray`, and 50 `open`/`close` cycles) that
-separate them without importing anything.
+**All three mechanism runs then came back clean** — `import re`, a bare 16 MB `bytearray`, and 50
+`open`/`close` cycles. So `re` itself is not sufficient, **raw heap footprint is not the metric**
+(16 MB is far more than ~20 modules use), the file layer does not leak per open, and `_thread` is
+cleared empirically too, since `re` pulls `functools`, whose line 21 is `from _thread import
+RLock`. The margin is now razor thin: `import re` loads 15+ modules cleanly, while `import json`
+adds only about five and hangs. Remaining candidates are allocation count / pool fragmentation, a
+count-based limit, or C-stack depth in the import machinery. The lab note carries the measurement
+runs and an allocation-shape test.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.

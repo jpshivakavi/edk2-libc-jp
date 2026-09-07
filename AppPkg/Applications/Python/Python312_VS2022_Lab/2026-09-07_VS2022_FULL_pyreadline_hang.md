@@ -243,7 +243,72 @@ nothing but `os`, so the FULL smoke tests barely touch the pure-Python stdlib at
 But `re` being correlated does not yet distinguish *the module* from *the volume of imports* —
 ~20 modules is also simply ~20 more file opens and a few hundred KB more heap than any clean run.
 
-### Next step — three runs that separate the mechanism
+## Mechanism runs (2026-09-07) — all three CLEAN; raw bytes and file cycles both eliminated
+
+```text
+Python312.efi -S -c "import re; print('ok')"                                    -> clean
+Python312.efi -S -c "x = bytearray(16*1024*1024); print('ok')"                  -> clean
+Python312.efi -S -c "[open('Python312.efi','rb').close() for i in range(50)]"   -> clean
+```
+
+Three more mechanisms are now dead:
+
+| Eliminated | By |
+|------------|-----|
+| **`re` itself** | `import re` is clean, so `re` and its whole tree — `enum`, `functools`, `collections`, `abc`, `reprlib`, `types`, `operator`, `copyreg`, `_sre` — are **not** sufficient |
+| **Raw heap footprint** | A single **16 MB** `bytearray` is clean. That is far more memory than ~20 stdlib modules consume, so **total bytes is not the metric** |
+| **File open/close volume** | 50 `open`/`close` cycles are clean, so the StdLib/FAT file layer does **not** leak per open |
+| **`_thread` / locks (again, now empirically)** | `import re` pulls `functools`, whose line 21 is `from _thread import RLock` — so `_thread` **is** loaded in a **clean** run. This confirms the `dummy_pthread.c` reading with hardware evidence |
+
+### The remaining margin is razor thin, which points at a threshold
+
+`import re` already loads roughly 15+ modules and is clean. `import json` adds only about five on
+top — `json`, `json.decoder`, `json.encoder`, `json.scanner`, `_json` — and hangs. Something is
+being crossed in a very narrow band, and since raw bytes are ruled out, the candidates are:
+
+1. **Allocation count / pool fragmentation** — importing modules makes tens of thousands of
+   *small* long-lived objects, so Python's allocator requests many arenas from the EFI pool. One
+   16 MB block is a completely different allocation *shape* and does not test this at all.
+2. **A count-based limit** on modules, arenas, or some fixed-size table.
+3. **C-stack depth** — import machinery recurses through C, unlike the flat one-liners that pass.
+   Worth noting this port has a stack-switch entry path (`PY_UEFI_MSVC_368_ENTRY`), so stack
+   headroom is not the firmware default.
+
+### Next step — measure first, then test allocation shape
+
+**Measure the boundary instead of guessing it.** These four print the module count *and* show
+whether each hangs, in four boots:
+
+```text
+Python312.efi -S -c "import sys; print(len(sys.modules))"
+Python312.efi -S -c "import re, sys; print(len(sys.modules))"
+Python312.efi -S -c "import json, sys; print(len(sys.modules))"
+Python312.efi -S -c "import logging, sys; print(len(sys.modules))"
+```
+
+The first two are known-clean and the last two known-hanging, so the numbers bracket the
+threshold precisely.
+
+Then test **allocation shape** with no imports at all — this is the run that the 16 MB block
+failed to cover:
+
+```text
+Python312.efi -S -c "x = [bytes(64) for i in range(200000)]; print('ok')"
+Python312.efi -S -c "x = [{} for i in range(100000)]; print('ok')"
+```
+
+If either hangs, **allocation count / fragmentation is the mechanism**, not footprint — and the
+fix direction becomes the allocator's arena behaviour against `AllocatePool`, not any module.
+
+And a one-line C-stack probe (deep parser and `repr` recursion, no imports):
+
+```text
+Python312.efi -S -c "x = eval('['*200 + ']'*200); print(len(repr(x))); print('ok')"
+```
+
+If that hangs, stack depth is implicated and the import path's recursion is the likely trigger.
+
+### Superseded plan — the three mechanism runs above
 
 Priority order. Each is followed by Shell `exit`; no rebuild, no `PY_UEFI_READLINE`:
 
