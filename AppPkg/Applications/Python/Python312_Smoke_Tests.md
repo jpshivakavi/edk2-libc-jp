@@ -344,7 +344,7 @@ flags — its presence proves nothing about whether readline is wired.
 | Arrow keys → `U+001B` | `import readline` not run | §5.5 |
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
-| Shell `exit` hangs only after a readline run | **Not** Python teardown — boot trace shows Python and `UefiMain` both return cleanly and the prompt comes back. Cause survives image exit | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
+| Shell `exit` hangs only after a readline run | **Not** Python teardown, and **not `edk2console`** — boot trace shows Python and `UefiMain` return cleanly and the prompt comes back, and `import pyreadline.rlmain` hangs **without** constructing a `Console` or installing any hook. Trigger is pure-Python import work (likely stdlib `logging`) | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
 
 ---
 
@@ -380,7 +380,15 @@ firmware hangs afterwards. `stop_timer: already off` on both detach calls proves
 periodic timer was **never created**, so that long-suspected cause is already mitigated and this
 is a different one. Do not spend further effort on Python-side teardown —
 [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md)
-carries the transcribed ladder, the ruled-out list, and a three-run bisect for the next session.
+carries the transcribed ladder and the ruled-out list.
+
+**The bisect ran the same day and exonerates `edk2console` too.** `import edk2console` alone exits
+cleanly, but `import pyreadline.rlmain` hangs Shell `exit` — and that import provably constructs
+no `Console` and installs no hook, since `rl = Readline()` and `console.install_readline(...)` both
+live in `readline.py`, not in the package `__init__`. No `edk2console` C entry point is ever
+called. **This is therefore probably not a readline defect at all**, but something about importing
+enough pure Python (stdlib `logging` is the prime suspect). Stdlib control runs and a
+rebuild-free in-place bisect of `pyreadline/__init__.py` are written up in the lab note.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.

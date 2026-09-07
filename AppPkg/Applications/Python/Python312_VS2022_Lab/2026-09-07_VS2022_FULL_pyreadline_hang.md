@@ -120,7 +120,87 @@ Defect 2 matters most for **phase 3**, where pyreadline *does* write through `ed
 `CloseProtocol` ran. Adding a `PY312_CONSOLE_TRACE` there (and an `else`) would settle whether
 ConInEx was ever open — currently inferred, not observed.
 
-### Next step — bisect what actually poisons Shell `exit`
+## Bisect result (2026-09-07) — `edk2console` is exonerated; the trigger is pure-Python import
+
+| Run | Result |
+|-----|--------|
+| `import edk2console; print('ok')` | **`ok`, Shell `exit` reaches BIOS setup — clean** |
+| `import pyreadline.rlmain; print('ok')` | **`ok`, then Shell `exit` HANGS** |
+| `import edk2console; edk2console.install_readline_hook(...)` | not needed — see below |
+
+The third run is now **moot**, because run 2 hangs *without installing any hook*. Verified by
+reading the tree: **`rl = Readline()` and `console.install_readline(rl.readline)` are both in
+`readline.py` (lines 55 and 99)** — neither `pyreadline/__init__.py` nor `rlmain.py` has a
+module-level `Readline()` or `install_readline` call.
+
+So `import pyreadline.rlmain` provably did **none** of this:
+
+- did **not** construct `Readline()`, so no `Console()`, so **no `get_output_mode_ex()` call**
+- did **not** call `install_readline` → `install_readline_hook`, so `PyOS_ReadlineFunctionPointer`
+  and `py_console_readline_hook` were **never set**
+- did **not** call `read_history_file()`
+- did **not** call `getkeys`, so `edk2_console_ensure_input()` never ran
+
+**Every `edk2console` C entry point is ruled out.** The only C code that executed in *both* runs is
+`PyInit_edk2console` (a bare `PyModule_Create`) plus `py_console_free` at finalize — and run 1
+proves that pair is harmless. `py_console_get_output_mode_ex` is pure reads of `ConOut->Mode`
+fields with no side effects, and it was never called anyway.
+
+**What is left is only the module-level import work**, which for
+`pyreadline/__init__.py` is, in order:
+
+```python
+from . import unicode_helper
+from . import logger, lineeditor, modes, console
+from .rlmain import *
+from . import rlmain
+```
+
+`logger.py` pulls the **stdlib `logging` package** (which drags in `threading`, `weakref`,
+`atexit` registration, `collections.abc`, `string`, `re`); `console/edk2.py` pulls `traceback`,
+`re`, `keysyms`, and `console/ansi`. Roughly 38 `.py` files are read from the FAT volume.
+`logger.py` imports `socket` only **inside** `SocketStream.__init__`, which never runs — so the
+known `socket.py`/`selectors` teardown failure is **not** in play here.
+
+**This most likely is not a readline bug at all.** It now looks like "import enough pure Python —
+or specifically `logging` — and Shell `exit` hangs", which would affect any script, not just
+pyreadline.
+
+### Next step — stdlib controls first, then a rebuild-free bisect
+
+Run these and Shell `exit` after each. They need **no `PY_UEFI_READLINE`** and **no rebuild**:
+
+```text
+Python312.efi -S -c "import logging; print('ok')"
+Python312.efi -S -c "import re, traceback; print('ok')"
+Python312.efi -S -c "import logging, re, traceback; print('ok')"
+```
+
+| Outcome | Meaning |
+|---------|---------|
+| `logging` alone **hangs** | **pyreadline is a red herring.** The bug is in the `logging` import (its `atexit` registration, `threading`/`weakref` use) and is far broader than readline |
+| Only the combined run hangs | Cumulative import volume / pool pressure, not one module |
+| **All three clean** | The trigger is pyreadline-specific — proceed to the in-place bisect below |
+
+**The in-place bisect costs no rebuild**, because `pyreadline/` is pure Python staged on the
+volume at `EFI\lib\python3.12\pyreadline\`. Edit `__init__.py` **on the stick** and comment the
+import lines progressively, running `import pyreadline; print('ok')` + Shell `exit` each time:
+
+| Step | Leave uncommented | Isolates |
+|------|-------------------|----------|
+| A | `unicode_helper` only | baseline |
+| B | + `logger` | stdlib `logging` |
+| C | + `lineeditor` | history/lineobj |
+| D | + `modes` | keybinding tables |
+| E | + `console` | `edk2console` + `ansi` + `keysyms` |
+| F | + `rlmain` | full package (known-hanging state) |
+
+The first step that hangs names the culprit, in at most six boots.
+
+Note that dotted imports **cannot** bisect this — `import pyreadline.logger` executes the whole
+`pyreadline/__init__.py` first, which is why the file must be edited in place.
+
+### Superseded plan — original three-run bisect
 
 Phase 1 (stub) also imports `readline.py` from FS1 and exits cleanly, so the delta is narrow:
 the **pyreadline package import** (~38 files), **`rlcompleter`**, **`rl.read_history_file()`**,
