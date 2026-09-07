@@ -7,6 +7,14 @@
 **Result:** **pyreadline hang REPRODUCES on VS2022** — confirms the historical failure at the
 current pinned code state. Manufacturing stdio policy stands.
 
+> **SCOPE CHANGED — read this first.** The filename says "pyreadline", but the bisect in this note
+> proved that wrong. **`Python312.efi -S -c "import logging; print('ok')"` alone hangs Shell
+> `exit`.** There is no readline, no `edk2console`, and no console I/O in that command. Both
+> hanging cases share exactly one heavyweight import — **`logging`** (pyreadline reaches it via
+> `pyreadline/logger.py`). Treat this note as **"VS2022 FULL: pure-Python import hangs Shell
+> `exit`"**; pyreadline is just how it was first noticed. The filename is kept so existing
+> cross-references stay valid.
+
 ---
 
 ## Observed
@@ -166,7 +174,70 @@ known `socket.py`/`selectors` teardown failure is **not** in play here.
 or specifically `logging` — and Shell `exit` hangs", which would affect any script, not just
 pyreadline.
 
-### Next step — stdlib controls first, then a rebuild-free bisect
+## Stdlib control result (2026-09-07) — `import logging` alone hangs
+
+```text
+Python312.efi -S -c "import logging; print('ok')"      -> ok, then Shell exit HANGS
+```
+
+**pyreadline is entirely out of the picture.** No readline, no `edk2console`, no console I/O.
+And it explains the earlier runs: `pyreadline/logger.py` imports `logging`, so **both** hanging
+cases share exactly that one heavyweight import, while every clean case avoids it.
+
+| Command | `logging` imported? | Shell `exit` |
+|---------|---------------------|--------------|
+| `import edk2console` | no | **clean** |
+| `import zlib, ssl, ctypes, hashlib` (phase 8) | no | **clean** |
+| stub `import readline` (phase 1) | no | **clean** |
+| `import pyreadline.rlmain` | **yes** (via `logger.py`) | **HANG** |
+| `import logging` | **yes** | **HANG** |
+
+### Threading is ruled out by inspection — no rebuild needed to know this
+
+`import logging` does create a lock at import time — `logging/__init__.py:232` is
+`_lock = threading.RLock()` — and registers an exit hook at `:2280-2281`
+(`import atexit; atexit.register(shutdown)`). That made `_thread` the obvious suspect, but the
+build's pthread layer rules it out:
+
+- `pyconfig.h` sets **`_POSIX_THREADS 1`** and **`HAVE_PTHREAD_H 1`**, so `Python/thread.c`
+  selects `thread_pthread.h`
+- the pthread symbols come from **`PyMod-3.12.13/efi/src/dummy_pthread.c`**, which is
+  **pure static-array bookkeeping** — `mutexes[256]`, `conds[256]`, `keys[256]`, handing out
+  pointers into those arrays
+
+There is **no `gBS` call, no `CreateEvent`, no allocation and no firmware state anywhere** in
+`dummy_pthread.c`. A leftover Python lock therefore cannot influence the Shell. The `atexit` hook
+is also cleared, since the boot trace shows `Py_FinalizeEx after _PyAtExit_Call`.
+
+**With console I/O, hooks, timers, events and locks all eliminated, the only thing a cleanly
+exited image can still have left behind is heap/pool footprint.** Leading hypothesis: Shell
+`exit` returns to BDS, which needs to allocate to bring up the setup UI, and the memory the
+interpreter never returned makes that hang. This fits every data point above — the clean commands
+are all small or C-extension-only, and the hanging ones both pull the large pure-Python
+`logging` tree.
+
+### Next step — discriminate "logging-specific" from "memory pressure"
+
+Run each, then Shell `exit`. No rebuild, no `PY_UEFI_READLINE`:
+
+```text
+Python312.efi -S -c "import json; print('ok')"
+Python312.efi -S -c "import threading; print('ok')"
+Python312.efi -S -c "import re, traceback, warnings, weakref, collections.abc, string; print('ok')"
+Python312.efi -S -c "x = bytearray(16*1024*1024); print('ok')"
+```
+
+| Run | If it hangs | If it is clean |
+|-----|-------------|----------------|
+| `json` — bulky pure Python, **no** `logging`, **no** `threading` | **Generic import volume / memory**, not `logging`. This is the key discriminator | Something specific to `logging`'s own deps or body |
+| `threading` | Contradicts the `dummy_pthread.c` reading above — re-examine `_threadmodule.c` | Confirms threading is innocent |
+| `logging`'s line-26 deps, without `logging` or `threading` | Culprit is one of those six modules | Narrows it to `logging`'s own module body |
+| `bytearray(16 MB)` — allocation only, **zero** imports | **Confirms pool/heap pressure outright** — the cleanest possible proof, and it makes the bug about memory, not any module | Memory footprint alone is not sufficient |
+
+If `bytearray` succeeds but does not hang, retry at 32 MB and 64 MB to find a threshold; a
+`MemoryError` is itself a useful data point about how much pool the app can get.
+
+### Superseded plan — pyreadline in-place bisect
 
 Run these and Shell `exit` after each. They need **no `PY_UEFI_READLINE`** and **no rebuild**:
 

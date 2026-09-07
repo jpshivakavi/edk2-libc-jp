@@ -344,7 +344,8 @@ flags — its presence proves nothing about whether readline is wired.
 | Arrow keys → `U+001B` | `import readline` not run | §5.5 |
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
-| Shell `exit` hangs only after a readline run | **Not** Python teardown, and **not `edk2console`** — boot trace shows Python and `UefiMain` return cleanly and the prompt comes back, and `import pyreadline.rlmain` hangs **without** constructing a `Console` or installing any hook. Trigger is pure-Python import work (likely stdlib `logging`) | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
+| Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
+| Shell `exit` hangs after any `import logging` (VS2022) | Under investigation. Python teardown, `edk2console`, hooks, timers and locks are all **ruled out**; leading hypothesis is heap/pool footprint left for BDS | same lab note, "Stdlib control result" |
 
 ---
 
@@ -382,13 +383,23 @@ is a different one. Do not spend further effort on Python-side teardown —
 [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md)
 carries the transcribed ladder and the ruled-out list.
 
-**The bisect ran the same day and exonerates `edk2console` too.** `import edk2console` alone exits
-cleanly, but `import pyreadline.rlmain` hangs Shell `exit` — and that import provably constructs
-no `Console` and installs no hook, since `rl = Readline()` and `console.install_readline(...)` both
-live in `readline.py`, not in the package `__init__`. No `edk2console` C entry point is ever
-called. **This is therefore probably not a readline defect at all**, but something about importing
-enough pure Python (stdlib `logging` is the prime suspect). Stdlib control runs and a
-rebuild-free in-place bisect of `pyreadline/__init__.py` are written up in the lab note.
+**The bisect ran the same day and this turned out not to be a readline bug at all.**
+`import edk2console` alone exits cleanly; `import pyreadline.rlmain` hangs — yet that import
+constructs no `Console` and installs no hook, since `rl = Readline()` and
+`console.install_readline(...)` both live in `readline.py`, not in the package `__init__`.
+Then the decisive control:
+
+```text
+Python312.efi -S -c "import logging; print('ok')"     ->  ok, then Shell exit HANGS
+```
+
+**No readline, no `edk2console`, no console I/O.** Both hanging cases share exactly one
+heavyweight import — `logging`, which pyreadline reaches via `pyreadline/logger.py` — while every
+clean case (phase 8 C extensions, the phase 1 stub, `edk2console` alone) avoids it. Threading is
+ruled out by inspection too: the build's pthread layer is `dummy_pthread.c`, pure static-array
+bookkeeping with no `gBS` calls. **So §5's pyreadline rows below are not evidence against
+pyreadline** — they were the first symptom of a general "pure-Python import hangs Shell `exit`"
+defect on VS2022. Leading hypothesis and the next discriminating runs are in the lab note.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
