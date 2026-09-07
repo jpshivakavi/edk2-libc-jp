@@ -216,26 +216,57 @@ interpreter never returned makes that hang. This fits every data point above —
 are all small or C-extension-only, and the hanging ones both pull the large pure-Python
 `logging` tree.
 
-### Next step — discriminate "logging-specific" from "memory pressure"
-
-Run each, then Shell `exit`. No rebuild, no `PY_UEFI_READLINE`:
+## `import json` also hangs (2026-09-07) — `logging` is out too; `re` now correlates perfectly
 
 ```text
-Python312.efi -S -c "import json; print('ok')"
-Python312.efi -S -c "import threading; print('ok')"
-Python312.efi -S -c "import re, traceback, warnings, weakref, collections.abc, string; print('ok')"
-Python312.efi -S -c "x = bytearray(16*1024*1024); print('ok')"
+Python312.efi -S -c "import json; print('ok')"        -> ok, then Shell exit HANGS
 ```
 
-| Run | If it hangs | If it is clean |
-|-----|-------------|----------------|
-| `json` — bulky pure Python, **no** `logging`, **no** `threading` | **Generic import volume / memory**, not `logging`. This is the key discriminator | Something specific to `logging`'s own deps or body |
-| `threading` | Contradicts the `dummy_pthread.c` reading above — re-examine `_threadmodule.c` | Confirms threading is innocent |
-| `logging`'s line-26 deps, without `logging` or `threading` | Culprit is one of those six modules | Narrows it to `logging`'s own module body |
-| `bytearray(16 MB)` — allocation only, **zero** imports | **Confirms pool/heap pressure outright** — the cleanest possible proof, and it makes the bug about memory, not any module | Memory footprint alone is not sufficient |
+`json` imports neither `logging` nor `threading`, so **`logging` was never special either.**
+Verified by reading the tree: `json/decoder.py`, `json/encoder.py` and `json/scanner.py` all
+`import re` (line 3 of each), and `logging/__init__.py:26` imports `re` as well.
 
-If `bytearray` succeeds but does not hang, retry at 32 MB and 64 MB to find a threshold; a
-`MemoryError` is itself a useful data point about how much pool the app can get.
+| Command | pure-Python modules pulled | `re`? | Shell `exit` |
+|---------|---------------------------|-------|--------------|
+| `import edk2console` | none | no | **clean** |
+| `import zlib, ssl, ctypes, hashlib` (phase 8) | very few — the staged `Lib/ssl/__init__.py` imports **only `os`** | no | **clean** |
+| stub `import readline` (phase 1) | 1 | no | **clean** |
+| `import logging` | ~20 | **yes** | **HANG** |
+| `import json` | ~20 | **yes** | **HANG** |
+| `import pyreadline.rlmain` | ~38 | **yes** (via `logger.py` → `logging`) | **HANG** |
+
+**`re` is now perfectly correlated with the hang**, and it drags in `enum`, `functools`,
+`collections`, `types`, `operator`, `reprlib` and `copyreg`. Note this also explains why phase 8
+always looked clean: this port's `ssl` is the UEFI-minimal variant whose `__init__.py` imports
+nothing but `os`, so the FULL smoke tests barely touch the pure-Python stdlib at all.
+
+But `re` being correlated does not yet distinguish *the module* from *the volume of imports* —
+~20 modules is also simply ~20 more file opens and a few hundred KB more heap than any clean run.
+
+### Next step — three runs that separate the mechanism
+
+Priority order. Each is followed by Shell `exit`; no rebuild, no `PY_UEFI_READLINE`:
+
+```text
+Python312.efi -S -c "import re; print('ok')"
+Python312.efi -S -c "x = bytearray(16*1024*1024); print('ok')"
+Python312.efi -S -c "[open('Python312.efi','rb').close() for i in range(50)]; print('ok')"
+```
+
+| Run | What it isolates | If it hangs |
+|-----|------------------|-------------|
+| `import re` | the correlated module, minimally | Confirms `re`'s tree is sufficient — then bisect it with `import enum`, `import functools`, `import collections` |
+| `bytearray(16 MB)` | **memory only — zero file opens, zero stdlib imports** | **Pool/heap footprint is the mechanism.** The bug is about memory, not modules |
+| 50 × `open`/`close` | **file opens only — no imports, negligible heap** | **The StdLib/FAT file layer leaks per open even when closed.** Leaked `EFI_FILE_PROTOCOL` handles keep the volume's open count non-zero, which is exactly the kind of residue that survives image exit and stalls a volume teardown at Shell `exit` |
+
+Runs 2 and 3 are the important pair — between them they cover both remaining mechanisms with
+**no module imports at all**. If run 2 is clean and run 3 hangs, the fix is in file-handle
+cleanup, not memory. If both are clean, the trigger really is something `re`'s tree executes.
+
+The `open` target works because the Shell's cwd is `FS1:\EFI\bin\`, where `Python312.efi` lives;
+the list comprehension keeps it to a single `-c` line. If `bytearray` at 16 MB is clean, retry at
+32 MB and 64 MB to look for a threshold — and a `MemoryError` is itself useful, as it bounds how
+much pool the app can obtain.
 
 ### Superseded plan — pyreadline in-place bisect
 

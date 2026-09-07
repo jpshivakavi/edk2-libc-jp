@@ -345,7 +345,7 @@ flags — its presence proves nothing about whether readline is wired.
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
-| Shell `exit` hangs after any `import logging` (VS2022) | Under investigation. Python teardown, `edk2console`, hooks, timers and locks are all **ruled out**; leading hypothesis is heap/pool footprint left for BDS | same lab note, "Stdlib control result" |
+| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. `import logging` **and** `import json` both hang; **`re`** is the perfectly correlated import. Python teardown, `edk2console`, hooks, timers, locks and `threading` are all **ruled out**. Open mechanisms: pool footprint, or leaked file handles per import | same lab note, "`import json` also hangs" |
 
 ---
 
@@ -399,7 +399,16 @@ clean case (phase 8 C extensions, the phase 1 stub, `edk2console` alone) avoids 
 ruled out by inspection too: the build's pthread layer is `dummy_pthread.c`, pure static-array
 bookkeeping with no `gBS` calls. **So §5's pyreadline rows below are not evidence against
 pyreadline** — they were the first symptom of a general "pure-Python import hangs Shell `exit`"
-defect on VS2022. Leading hypothesis and the next discriminating runs are in the lab note.
+defect on VS2022.
+
+**`import json` then hung as well, which clears `logging` too.** `json` pulls neither `logging`
+nor `threading`; what it shares is **`re`** (`json/decoder.py`, `encoder.py` and `scanner.py` all
+`import re`, as does `logging/__init__.py:26`). `re` is now perfectly correlated with the hang.
+This also explains why the phase 8 tests always looked clean — this port's `ssl/__init__.py` is
+the UEFI-minimal variant that imports only `os`, so **§3 barely exercises the pure-Python stdlib**.
+Two mechanisms remain open, pool footprint or a per-import file-handle leak, and the lab note
+carries three runs (`import re`, a bare 16 MB `bytearray`, and 50 `open`/`close` cycles) that
+separate them without importing anything.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
