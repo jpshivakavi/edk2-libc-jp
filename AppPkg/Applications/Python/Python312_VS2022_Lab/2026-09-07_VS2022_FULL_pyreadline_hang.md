@@ -445,6 +445,57 @@ already compiled and linkable in the VS2022 image — **the assembly is not the 
    before the firmware stack is exhausted. Crude and approximate, since the limit counts Python
    frames rather than C frames.
 
+### Fix 2 implemented (2026-09-08) — `PyOS_CheckStack()` now has a real bound
+
+Chosen deliberately as the *safety* fix: it does **not** raise the ceiling, it converts silent
+firmware-memory corruption into a clean, catchable Python error. The 368 entry path is untouched,
+so no boot-path risk.
+
+| File | Change |
+|------|--------|
+| `PyMod-3.12.13/efi/Include/efi/edk2main.h` | New `uint64_t stack_limit` in `edk2_globals_t` — lowest safe `rsp`, margin already applied, `0` meaning "unknown" |
+| `PyMod-3.12.13/efi/Include/efi/edk2stack.h` | New `PY_UEFI_STACK_MARGIN` (8 KB) and `PY_UEFI_FIRMWARE_STACK_BUDGET` (96 KB), both `#ifndef`-guarded so they can be overridden from `CC_FLAGS` |
+| `PyMod-3.12.13/efi/src/edk2main.c` | **368 path:** derives `stack_limit` from `rsp` at entry, since no switch happens. **GCC path:** sets it from the `malloc`'d stack base plus the margin, and clears it to `0` after `edk2_revert_stack()` so a stale bound can never be compared against freed memory. **`PyOS_CheckStack()`** now returns `0` when `stack_limit` is `0` (unknown → old permissive behaviour) and otherwise `rsp <= stack_limit` |
+
+```c
+int
+PyOS_CheckStack(void)
+{
+   uint64_t limit = g_edk2_globals.stack_limit;
+
+   if(limit == 0)
+      return 0;
+
+   return edk2_read_rsp() <= limit;
+}
+```
+
+**Expected new behaviour on VS2022:** the deep-import cases should now raise
+`MemoryError: Stack overflow` — the string comes from `_Py_CheckRecursiveCall()` in
+`Python/ceval.c:263` — **instead of hanging the Shell**. That is the fix working, not a
+regression. `import re` should stay clean.
+
+**Verify the bound is actually set.** A new trace line prints under the existing
+`PY_UEFI_BOOT_TRACE=1`, so no flag change is needed:
+
+```text
+Python312 boot: firmware stack rsp=... limit=... budget=18000
+```
+
+A non-zero `limit` confirms the fix is live in the image.
+
+**Tuning the budget.** 96 KB is a guess at a safe fraction of the firmware stack, which UEFI does
+not expose to applications:
+
+| Symptom after this change | Meaning | Action |
+|---------------------------|---------|--------|
+| Shell `exit` **still hangs** | Budget too large — the overflow happens before the check trips | Lower it, e.g. `/DPY_UEFI_FIRMWARE_STACK_BUDGET=49152` |
+| `MemoryError` on scripts that should fit | Budget too small | Raise it |
+| Deep imports raise `MemoryError`, `exit` clean | **Working as intended** | Then pursue fix 1 to actually regain depth |
+
+**This does not make `json`/`logging` usable on VS2022** — that still needs fix 1 (the stack
+switch). It makes the failure *safe and diagnosable* rather than firmware-corrupting.
+
 ### Confirming test — depth versus count, no rebuild
 
 Stage tiny modules on the volume and compare:

@@ -49,6 +49,10 @@ typedef struct _edk2_globals {
    EFI_SYSTEM_TABLE *system_table;
    void *stack;
    uint64_t stack_size;
+   /* Lowest rsp PyOS_CheckStack() will treat as safe, margin already applied.
+    * Set on both entry paths, including PY_UEFI_MSVC_368_ENTRY where `stack`
+    * stays NULL because no switch happens. Zero means "unknown". */
+   uint64_t stack_limit;
    
    EFI_LOADED_IMAGE_PROTOCOL *loaded_image;
    EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL *console_in;

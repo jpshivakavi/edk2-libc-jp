@@ -262,6 +262,15 @@ EFI/stdlib/etc/
 > The cheapest candidate fix is to **switch the stack but skip `py_install_idt()`** on MSVC, since
 > the two are independent calls (`:228` and `:231`) that the existing comments blame as a pair.
 > Full analysis: [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
+>
+> **Partially fixed 2026-09-08 (safety, not capability).** `PyOS_CheckStack()` now derives a real
+> bound on the 368 path from `rsp` at `UefiMain` entry, using the new `PY_UEFI_FIRMWARE_STACK_BUDGET`
+> (96 KB default) and `PY_UEFI_STACK_MARGIN` (8 KB) in `edk2stack.h`, stored in a new
+> `g_edk2_globals.stack_limit`. Deep imports on VS2022 should now raise
+> **`MemoryError: Stack overflow`** instead of corrupting firmware memory. **The stack-size
+> deviation itself is unchanged** — VS2022 still runs on the firmware stack, so `json`/`logging`
+> remain unusable there until the stack switch is made to work under MSVC (candidate: switch the
+> stack but skip `py_install_idt()`).
 
 ### 11.2 MSFT-only compile-time defines (MIN today)
 

@@ -346,6 +346,7 @@ flags — its presence proves nothing about whether readline is wired.
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
 | Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. **ROOT CAUSE:** VS2022 sets `PY_UEFI_MSVC_368_ENTRY`, so `edk2main.c` returns before the stack switch and Python runs on the **~128 KB firmware stack**; GCC gets a **64 MB** stack. Deep import chains overflow it and corrupt memory outside the image, so teardown looks clean and only BDS hangs | same lab note, "ROOT CAUSE" |
+| `MemoryError: Stack overflow` on a deep import (VS2022) | **Expected after the 2026-09-08 `PyOS_CheckStack` fix** — the guard now has a real bound and trips before the firmware stack is breached. Preferable to the hang it replaces; tune `PY_UEFI_FIRMWARE_STACK_BUDGET` if it fires too early | same lab note, "Fix 2 implemented" |
 
 ---
 

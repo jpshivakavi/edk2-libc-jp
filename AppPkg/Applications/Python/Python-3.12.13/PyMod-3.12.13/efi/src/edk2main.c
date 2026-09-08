@@ -203,6 +203,23 @@ UefiMain (
    /* Python 3.6.8 AppPkg: ENTRY_POINT = ShellCEntryLib on the firmware stack
     * (no edk2_switch_stack / py_install_idt). VS2022 3.12 hang reproduces
     * inside ShellCEntryLib only after stack switch — try 368-style path. */
+   /* No stack switch on this path, so g_edk2_globals.stack stays NULL and
+    * PyOS_CheckStack() has no bound to compare against. Derive one from the
+    * current rsp instead, or deep recursion silently runs off the firmware
+    * stack and corrupts memory the Shell and BDS still need. */
+   {
+      uint64_t entry_rsp = edk2_read_rsp();
+
+      if (entry_rsp > PY_UEFI_FIRMWARE_STACK_BUDGET) {
+         g_edk2_globals.stack_limit = entry_rsp - PY_UEFI_FIRMWARE_STACK_BUDGET;
+      }
+#ifdef PY_UEFI_BOOT_TRACE
+      Print(L"Python312 boot: firmware stack rsp=%lx limit=%lx budget=%lx\n",
+            (UINT64)entry_rsp,
+            (UINT64)g_edk2_globals.stack_limit,
+            (UINT64)PY_UEFI_FIRMWARE_STACK_BUDGET);
+#endif
+   }
    PY312_BOOT_PRINT(L"ShellCEntryLib 368-style (no custom stack/IDT)");
    status = ShellCEntryLib(image, systab);
    PY312_BOOT_PRINT(L"after ShellCEntryLib");
@@ -227,6 +244,9 @@ UefiMain (
                             (((uint64_t)g_edk2_globals.stack) % 512);
    edk2_switch_stack(aligned_stack, g_edk2_globals.stack_size);
 
+   g_edk2_globals.stack_limit = (uint64_t)g_edk2_globals.stack +
+                                PY_UEFI_STACK_MARGIN;
+
    PY312_BOOT_PRINT(L"before py_install_idt");
    py_install_idt();
    PY312_BOOT_PRINT(L"before ShellCEntryLib");
@@ -235,6 +255,7 @@ UefiMain (
    py_restore_idt();
    
    edk2_revert_stack();
+   g_edk2_globals.stack_limit = 0;
 
    edk2_free_environ();
    PY312_BOOT_PRINT(L"after edk2_free_environ");
@@ -246,11 +267,15 @@ UefiMain (
    return status;
 }
 
+/* Nonzero means "overflow imminent": callers such as _Py_CheckRecursiveCall()
+ * turn that into MemoryError("Stack overflow"). */
 int
 PyOS_CheckStack(void)
 {
-   uint64_t rsp = edk2_read_rsp();
-   if(rsp > (uint64_t)g_edk2_globals.stack)
+   uint64_t limit = g_edk2_globals.stack_limit;
+
+   if(limit == 0)
       return 0;
-   return 1;
+
+   return edk2_read_rsp() <= limit;
 }
