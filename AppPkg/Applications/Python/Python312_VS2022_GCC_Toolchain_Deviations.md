@@ -502,10 +502,13 @@ reported — and usually reset on — and converts it into a silent hang, while 
 diagnostic that would justify the trade. It is the mirror image of #3: VS2022 gets the reporting
 decision, GCC gets the cost with none of the benefit and no way to opt out short of a rebuild.
 
-**Found by testing.** The §E fault one-liner
-(`ctypes.cast(0x800000000000, POINTER(c_int))[0]`) produced no message on GCC where VS2022 with
-`PY_UEFI_MSVC_IDT` printed `unhandled CPU exception 13`. The tell that the handler *did* run is a
-**silent hang with no firmware output** — a firmware-handled fault normally prints its own dump.
+**CONFIRMED on hardware 2026-09-08.** The §E fault one-liner
+(`ctypes.cast(0x800000000000, POINTER(c_int))[0]`) produced **no message and a silent hang** on GCC,
+where VS2022 with `PY_UEFI_MSVC_IDT` printed `unhandled CPU exception 13` on the identical test.
+Silent-hang-with-no-firmware-output is the positive signal: a firmware-handled fault prints its own
+dump, so the absence of *any* output means `py_handle_exception()` ran, caught the #GP, and had
+nothing to say before entering `while (exc_trap)`. Same input, same handler, same spin — the **only**
+difference between the two toolchains is whether the one `Print` was compiled in.
 
 **Options**, in increasing order of work: move that one `Print` out from behind
 `PY_UEFI_BOOT_TRACE` so both toolchains always report a fault; or define `PY_UEFI_BOOT_TRACE` for
