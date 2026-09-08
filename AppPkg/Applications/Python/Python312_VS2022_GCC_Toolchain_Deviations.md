@@ -455,9 +455,10 @@ NULL check on the `malloc` before the `memset`. Two deliberate choices:
   objects rather than retaining pointers. `edk2main.c` is the only caller of either function. A
   future caller that frees while something holds a pointer into the block would not be safe.
 
-**Needs a hardware re-test on both toolchains before the next tag.** This is `efi/src/environ.c`,
-compiled into GCC and MSVC alike — the **first shared-code change since both were signed off** — so
-per the rule at the top of this section it should not ride along with anything else.
+**GCC verified 2026-09-08** — swept clean both on its own and again at `3ec592e1` alongside the #4
+fix, including `import os; print(len(os.environ))` to confirm the surviving block still populates.
+**VS2022 still pending.** This is `efi/src/environ.c`, compiled into GCC and MSVC alike, so the
+sign-off is not complete until both have run.
 
 **#3 in detail — VERIFIED WORKING under MSVC, 2026-09-08.** Built VS2022 FULL with
 `/DPY_UEFI_MSVC_IDT=1` on the `MSFT:*_*_*_CC_FLAGS` line and ran the full sweep.
@@ -513,7 +514,11 @@ dump, so the absence of *any* output means `py_handle_exception()` ran, caught t
 nothing to say before entering `while (exc_trap)`. Same input, same handler, same spin — the **only**
 difference between the two toolchains is whether the one `Print` was compiled in.
 
-**FIXED 2026-09-08.** The `Print` is now unconditional — a fault report is not debug tracing, and
+**FIXED AND VERIFIED ON GCC 2026-09-08** at `3ec592e1`: the same one-liner that previously hung
+silently now prints `unhandled CPU exception 13` with `rip` and `cr2`, and the rest of the sweep is
+green. Confirmed on the toolchain the defect was actually hurting, not by inference from VS2022.
+
+The `Print` is now unconditional — a fault report is not debug tracing, and
 the spin below it never returns, so gating it on a trace macro is what turned the fault into a silent
 hang. Rejected alternatives: defining `PY_UEFI_BOOT_TRACE` for GCC too (drags in every other boot
 line), and letting the fault reach firmware when there is no `edk2_seh_*` handler (a bigger
