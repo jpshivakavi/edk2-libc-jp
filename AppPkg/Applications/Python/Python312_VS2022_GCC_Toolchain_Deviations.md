@@ -455,10 +455,10 @@ NULL check on the `malloc` before the `memset`. Two deliberate choices:
   objects rather than retaining pointers. `edk2main.c` is the only caller of either function. A
   future caller that frees while something holds a pointer into the block would not be safe.
 
-**GCC verified 2026-09-08** — swept clean both on its own and again at `3ec592e1` alongside the #4
-fix, including `import os; print(len(os.environ))` to confirm the surviving block still populates.
-**VS2022 still pending.** This is `efi/src/environ.c`, compiled into GCC and MSVC alike, so the
-sign-off is not complete until both have run.
+**VERIFIED ON BOTH TOOLCHAINS 2026-09-08** at `3ec592e1` — GCC swept clean twice (on its own, then
+again alongside the #4 fix) and VS2022 clean, including `import os; print(len(os.environ))` to
+confirm the surviving block still populates. `efi/src/environ.c` compiles into both, so both were
+required. Tag: `python312-both-toolchains-idt-fault-report-2026-09-08`.
 
 **#3 in detail — VERIFIED WORKING under MSVC, 2026-09-08.** Built VS2022 FULL with
 `/DPY_UEFI_MSVC_IDT=1` on the `MSFT:*_*_*_CC_FLAGS` line and ran the full sweep.
@@ -539,8 +539,10 @@ address for a page fault and stale for anything else, `#GP` included.
 definition of `PY_UEFI_BOOT_TRACE` has hidden something from GCC — the `switched stack` measurement
 was the first. Anything that is *evidence* rather than *tracing* does not belong behind it.
 
-**Status:** **#3** and **#4** are closed. **#2** is fixed and awaiting its re-test. **#1** is
-cosmetic and cannot fault, and is now the only one still open.
+**Status: #2, #3 and #4 are all closed and verified on both toolchains** (`3ec592e1`, tag
+`python312-both-toolchains-idt-fault-report-2026-09-08`). **#1 is the only one still open** —
+cosmetic, and proven unable to fault. Procedure for the fault check is now in
+[`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §5.8 rather than only in this prose.
 
 **Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
 `size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so

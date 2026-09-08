@@ -404,6 +404,45 @@ flags — its presence proves nothing about whether readline is wired.
 
 ---
 
+## 5.8 CPU fault reporting — deliberate fault injection
+
+**Destructive: the handler never returns. Run this last and expect to power-cycle.** Verified on
+both toolchains 2026-09-08.
+
+```text
+Python312.efi -S -c "import ctypes; ctypes.cast(0x800000000000, ctypes.POINTER(ctypes.c_int))[0]"
+```
+
+Expected on the console:
+
+```text
+Python312 boot: unhandled CPU exception 13 rip=<addr> cr2=<addr>
+```
+
+then the machine sits there. **The print is the entire deliverable**; the stop after it is
+`py_handle_exception()`'s own `while (exc_trap)` loop, not a crash. Faults are **reported, not
+survivable** — `edk2_seh_try()` / `edk2_seh_catch()` exist but have no callers, so there is nothing
+to recover into.
+
+**Why this address:** `0x800000000000` is non-canonical (bit 47 set, bits 63:48 clear), so it raises
+a **#GP (13)** deterministically, independent of how firmware mapped memory. For a **page fault
+(14)** instead, use a plainly unmapped canonical address such as `0xFFFF800000000000`.
+
+**Read `rip`, not `cr2`, for a #GP.** `cr2` only holds the faulting address on a page fault; on
+anything else it is whatever the last page fault left behind.
+
+| Result | Meaning |
+|--------|---------|
+| The line above, then a stop | **Pass.** IDT installed, vector routed, handler reached |
+| **Silent** stop, no output at all | Handler ran but could not report — the `Print` is gated again. This was the pre-2026-09-08 GCC behaviour (deviations §11.8 #4) |
+| Firmware's own exception dump, or a reset | The fault **bypassed** our handler — IDT not installed. On MSVC check `PY_UEFI_MSVC_IDT`; the boot trace must read `before py_install_idt`, not `skipping py_install_idt (MSVC)` |
+| A Python `ctypes` exception instead of a fault | The address got mapped. Pick a different one — the test proved nothing |
+
+To take the IDT back out on MSVC, drop `/DPY_UEFI_MSVC_IDT=1` from the `MSFT` `CC_FLAGS`; faults then
+go to firmware as they did before. GCC has no equivalent switch — it always installs the IDT.
+
+---
+
 ## 6. Failure signatures
 
 | Symptom | Likely cause | Where to look |
