@@ -38,7 +38,10 @@ def _uefi_pyreadline_enabled():
 
 
 if os.name == 'uefi' and not _uefi_pyreadline_enabled():
-    # Do not import pyreadline/edk2console (breaks Shell exit on VS2022).
+    # Opt-in by design: importing pyreadline opens ConInEx and installs a REPL
+    # input hook, which scripted and unattended runs must not get just because
+    # something in their import graph pulled in readline. Keep every public
+    # name a no-op until the caller asks for line editing.
     def dummy(completer=""):
         pass
     for funk in __all__:
