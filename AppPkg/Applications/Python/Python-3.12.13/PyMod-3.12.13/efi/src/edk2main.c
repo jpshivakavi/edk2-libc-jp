@@ -210,6 +210,7 @@ UefiMain (
    {
       uint64_t entry_rsp = edk2_read_rsp();
 
+      g_edk2_globals.stack_entry_rsp = entry_rsp;
       if (entry_rsp > PY_UEFI_FIRMWARE_STACK_BUDGET) {
          g_edk2_globals.stack_limit = entry_rsp - PY_UEFI_FIRMWARE_STACK_BUDGET;
       }
@@ -223,6 +224,19 @@ UefiMain (
    PY312_BOOT_PRINT(L"ShellCEntryLib 368-style (no custom stack/IDT)");
    status = ShellCEntryLib(image, systab);
    PY312_BOOT_PRINT(L"after ShellCEntryLib");
+#ifdef PY_UEFI_BOOT_TRACE
+   /* How deep execution actually got, so the budget can be sized from
+    * measurement instead of guesswork. `used` past `limit` is the excursion the
+    * sampled guard failed to stop; the firmware stack base sits between the
+    * min_rsp of a run that hangs and that of a run that exits cleanly. */
+   Print(L"Python312 boot: stack high-water min_rsp=%lx limit=%lx used=%lx\n",
+         (UINT64)g_edk2_globals.stack_min_rsp,
+         (UINT64)g_edk2_globals.stack_limit,
+         (UINT64)(g_edk2_globals.stack_min_rsp == 0
+                     ? 0
+                     : g_edk2_globals.stack_entry_rsp -
+                          g_edk2_globals.stack_min_rsp));
+#endif
    edk2_free_environ();
    PY312_BOOT_PRINT(L"after edk2_free_environ");
    PY312_BOOT_PRINT(L"before return from UefiMain");
@@ -274,9 +288,13 @@ int
 PyOS_CheckStack(void)
 {
    uint64_t limit = g_edk2_globals.stack_limit;
+   uint64_t rsp = edk2_read_rsp();
+
+   if(g_edk2_globals.stack_min_rsp == 0 || rsp < g_edk2_globals.stack_min_rsp)
+      g_edk2_globals.stack_min_rsp = rsp;
 
    if(limit == 0)
       return 0;
 
-   return edk2_read_rsp() <= limit;
+   return rsp <= limit;
 }

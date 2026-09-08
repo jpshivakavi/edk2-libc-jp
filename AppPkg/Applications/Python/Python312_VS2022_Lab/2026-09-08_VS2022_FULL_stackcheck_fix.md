@@ -4,8 +4,9 @@
 (*fix(python312): give PyOS_CheckStack a real bound on the MSVC 368 entry path* — the first
 code-bearing commit after **`0a674ac0`**)
 **Toolchain:** **VS2022 FULL**, `-b NOOPT`, `BUILD_PYTHON312_FULL=TRUE`, `PY_UEFI_MSVC_368_ENTRY`
-**Result:** **PASS.** The deep-import case that used to hang Shell **`exit`** now raises a clean
-`MemoryError` and **`exit` reaches BIOS setup with no hang.**
+**Result:** **PARTIAL.** The **non-interactive** deep-import case now raises a clean `MemoryError`
+and Shell **`exit`** is clean. **The interactive REPL case still hangs** — see
+*"Interactive REPL still hangs"* below. The mechanism is right; the 96 KB budget is too generous.
 
 **Root-cause analysis this fix comes from:**
 [`2026-09-07_VS2022_FULL_pyreadline_hang.md`](./2026-09-07_VS2022_FULL_pyreadline_hang.md).
@@ -91,10 +92,76 @@ The 96 KB budget therefore trips somewhere between **4 and 6 nested imports**, w
 band where the real firmware stack was already being breached. That is a good sign: the budget is
 approximately calibrated to the hardware rather than arbitrarily tight or loose.
 
+## Interactive REPL still hangs — the budget is too generous
+
+Reported the same day, same image:
+
+```text
+FS1:\EFI\bin\> Python312.efi          (interactive)
+>>> import json
+    ... MemoryError displayed ...
+>>> exit()                            -> returns to Shell fine
+Shell> exit                           -> HANG
+```
+
+| Path | `MemoryError` raised? | Shell `exit` |
+|------|----------------------|--------------|
+| `-S -c "import json"` | yes | **clean** |
+| interactive `>>> import json` | yes | **HANG** |
+
+**Why the guard is not sufficient on its own.** `PyOS_CheckStack()` is a **sampled** check — it
+only runs where CPython calls it (`Objects/object.c` `PyObject_Repr`/`Str`, and
+`_Py_CheckRecursiveCall`). Between two sample points, arbitrarily much C stack can be consumed
+without any check. So the distance from `stack_limit` down to the true firmware stack base has to
+absorb the worst-case *unchecked* excursion, plus whatever the `MemoryError` unwind and traceback
+formatting need.
+
+The REPL starts deeper — `PyRun_InteractiveLoop` → `PyRun_InteractiveOne` → parser → eval frames
+are all live when `import json` begins — and it formats and prints the traceback from inside that
+deeper context. With a 96 KB budget out of an assumed ~128 KB stack, only ~32 KB of residual is
+left for that, and the interactive path evidently exceeds it and reaches past the base. Note the
+REPL *appears* to recover (`exit()` returns to the Shell) precisely because the corruption lands
+in firmware memory Python never touches again — the same signature as the original bug.
+
+**This strengthens the case for the real fix (the stack switch).** A sampled guard against an
+*unknown* stack base is inherently fragile: any budget is a guess, and there is no value that is
+provably safe. Getting VS2022 onto the 64 MB switched stack removes the guesswork entirely.
+
+## Instrumentation added — size the budget from measurement, not guesswork
+
+Rather than guess a smaller number, the next build reports how deep execution actually got.
+Added to `edk2_globals_t`: `stack_entry_rsp` and `stack_min_rsp` (deepest rsp ever sampled by
+`PyOS_CheckStack`), printed after `ShellCEntryLib` returns under the existing
+`PY_UEFI_BOOT_TRACE=1`:
+
+```text
+Python312 boot: stack high-water min_rsp=... limit=... used=...
+```
+
+`used` is `stack_entry_rsp − stack_min_rsp`, i.e. total depth consumed.
+
+**How this locates the stack base.** `min_rsp` is sampled, so it under-reports the true peak — but
+it still **brackets** the base:
+
+- a `min_rsp` from a run that **exits cleanly** is **above** the base
+- a `min_rsp` from a run that **hangs** is at or **below** it
+
+So capturing `min_rsp` from the clean `-c` run and from the hanging interactive run pins the base
+between the two, and the budget can then be set with a real margin instead of an assumption.
+
+**Collection procedure** — read the `stack high-water` line after each, before typing `exit`:
+
+```text
+Python312.efi -S -c "import re; print('ok')"       (clean baseline)
+Python312.efi -S -c "import json; print('ok')"     (clean, guard fires)
+Python312.efi                                       then: import json / exit()   (hangs at Shell exit)
+```
+
 ## Scope — what this does and does not fix
 
-**Fixed:** the failure mode. Silent firmware-memory corruption became a catchable Python
-exception, and Shell `exit` is reliable again.
+**Fixed:** the failure mode **on the non-interactive path**. Silent firmware-memory corruption
+became a catchable Python exception and Shell `exit` is reliable there. **The interactive REPL path
+still hangs** at the current 96 KB budget.
 
 **Not fixed:** the capability. `json`, `logging` and pyreadline are still unusable on VS2022,
 because the underlying deviation is untouched — VS2022 still runs the interpreter on the firmware

@@ -53,6 +53,13 @@ typedef struct _edk2_globals {
     * Set on both entry paths, including PY_UEFI_MSVC_368_ENTRY where `stack`
     * stays NULL because no switch happens. Zero means "unknown". */
    uint64_t stack_limit;
+   /* rsp sampled at UefiMain entry, i.e. near the top of the firmware stack. */
+   uint64_t stack_entry_rsp;
+   /* Deepest (lowest) rsp PyOS_CheckStack() ever observed. Sampled, so it
+    * under-reports the true peak, but it brackets the firmware stack base:
+    * a value from a run that exits cleanly lies above the base, one from a run
+    * that corrupts the firmware lies below it. Zero means "never sampled". */
+   uint64_t stack_min_rsp;
    
    EFI_LOADED_IMAGE_PROTOCOL *loaded_image;
    EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL *console_in;
