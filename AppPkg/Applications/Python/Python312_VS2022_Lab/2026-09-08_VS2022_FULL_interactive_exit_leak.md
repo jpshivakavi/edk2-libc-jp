@@ -274,13 +274,84 @@ untested outside the REPL.
 | ~~T7~~ | ~~`Python312.efi -S` → `import json` → `raise SystemExit`~~ | **Done — HANGS.** `site`/`exit()`/`sys.stdin.close()` all eliminated |
 | **T8** | `Python312.efi -S` → `exec("try:\n import json\nexcept MemoryError:\n print('caught')")` → `raise SystemExit` | **Is the *uncaught* exception required?** A string literal carries the newlines, so this is one typed REPL line. Clean ⇒ traceback printing / retained `sys.last_*` frames matter, not the import |
 
-Both now run under **`-S`** to match the T7 repro. Together they finish the decomposition:
+### T6 result: CLEAN — the overflow *is* required
 
-| T6 | T8 | Conclusion |
-|----|----|------------|
-| hang | — | The overflow is irrelevant; it is REPL + big import. Much easier bug |
-| clean | hang | The deep import in a REPL is enough; catching the exception changes nothing |
-| clean | clean | The **uncaught** overflow plus continued execution is required |
+```text
+Python312.efi
+>>> import re
+>>> exit()
+Shell> exit          -> no hang
+```
+
+`re` is a big import (42 modules, ~90 KB of stack) but stays under the bound, so no `MemoryError`.
+In a REPL that exits clean. **So "REPL + big import" is not the trigger — the guard actually has to
+fire.**
+
+## Truth table: three conditions, all necessary
+
+| Overflow (`MemoryError`)? | **Uncaught** — printed and `sys.last_*` set? | Execution **continues** after? | Result | Evidence |
+|---|---|---|---|---|
+| no | — | yes | clean | T6 (REPL `import re`), T4 (`-c`) |
+| **yes** | **yes** | **no** — exits immediately | clean | `-c "import json"` |
+| **yes** | no — **caught** | **yes** | clean | T5 (staged `t.py`) |
+| **yes** | no — **caught**, in the REPL | **yes** | clean | **T8** |
+| **yes** | **yes** | **yes** | **HANG** | T7, and the original interactive report |
+
+T8 is the controlled counterpart of T7 — identical REPL, `-S`, import and continuation, differing
+**only** in whether the exception is caught — so the last row is isolated to a single variable.
+
+Every single-condition and two-condition combination is clean; only all three together fail. So the
+trigger is **an uncaught stack-overflow `MemoryError` whose traceback is printed and retained,
+followed by continued execution.**
+
+The mechanism this points at is the third row's difference from the fourth: `PyErr_Print()` sets
+`sys.last_type`/`last_value`/`last_traceback`, which **pins the frame objects from the overflow**
+instead of letting them be released — and then the interpreter keeps running with them held. In
+`-c` the process exits before that matters; when caught, they are never pinned at all.
+
+## Next tests — confirm the model and escape the REPL
+
+**T8 — CONFIRMED CLEAN.** Same REPL, same `-S`, same deep import, same continued execution as T7 —
+the *only* change is that the `MemoryError` is caught:
+
+```text
+Python312.efi -S
+>>> exec("try:\n import json\nexcept MemoryError:\n print('caught')")
+>>> raise SystemExit
+Shell> exit          -> no hang
+```
+
+This is the tightest pair in the whole investigation: **T7 and T8 differ in exactly one thing —
+whether the overflow exception is caught — and that flips hang to clean.** The truth table above is
+now confirmed on all four rows, and the trigger is pinned to what `PyErr_Print()` does that a
+`try`/`except` does not: display the traceback and store it in `sys.last_type`/`last_value`/
+`last_traceback`, pinning the overflow's frame objects while the interpreter keeps running.
+
+**T9 — reproduce without the REPL.** This reproduces the REPL's handling faithfully in a script:
+print the traceback *and* pin it via `sys.last_*`, then keep going. Stage as `t9.py`:
+
+```python
+import sys
+try:
+    import json
+except MemoryError:
+    sys.last_type, sys.last_value, sys.last_traceback = sys.exc_info()
+    sys.excepthook(sys.last_type, sys.last_value, sys.last_traceback)
+s = input('t: ')
+print('ok', s)
+```
+
+```text
+Python312.efi -S t9.py
+```
+
+A hang here **removes the REPL from the repro entirely** and confirms the model. That matters a
+lot: it turns this into a scripted, non-interactive test that can go in the smoke doc and be run
+unattended.
+
+If T9 hangs, split it to find which half is load-bearing — drop the `sys.excepthook(...)` line to
+test **retention alone**, or keep the `excepthook` call and `del sys.last_type, sys.last_value,
+sys.last_traceback` after it to test **printing alone**.
 
 ## Firmware-side evidence — worth collecting now
 
