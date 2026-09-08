@@ -274,7 +274,84 @@ being crossed in a very narrow band, and since raw bytes are ruled out, the cand
    Worth noting this port has a stack-switch entry path (`PY_UEFI_MSVC_368_ENTRY`), so stack
    headroom is not the firmware default.
 
-### Next step — measure first, then test allocation shape
+## Threshold measured (2026-09-08) — boundary is 43–48 modules
+
+| Command | `len(sys.modules)` | Shell `exit` |
+|---------|--------------------|--------------|
+| `import sys` (baseline, `-S`) | **23** | **clean** |
+| `import re, sys` | **42** | **clean** |
+| `import json, sys` | **48** | **HANG** |
+| `import logging, sys` | **65** | **HANG** |
+
+The boundary is **between 42 and 48 total modules**, i.e. between **19 and 25 modules newly
+imported** past the `-S` baseline. It is **not** a descriptor limit: `StdLib/Include/sys/syslimits.h:56`
+sets **`OPEN_MAX 255`** (and `FOPEN_MAX` follows it), so nothing runs out at 20-odd files.
+
+## The `.pyc` write path — a real gap in the earlier testing
+
+**The 50-cycle file test used `open(..., 'rb')` — read-only.** It never created, wrote, renamed or
+deleted anything, so it did **not** clear the write path. And this port writes on every import:
+
+- **`create_python_pkg.sh` deliberately excludes `__pycache__`** (lines 107, 117, 136), so the
+  staged volume ships with **no precompiled bytecode at all**
+- `importlib/_bootstrap_external.py:1141` gates on `not sys.dont_write_bytecode`, so writing is
+  **enabled** by default
+- `:1235` creates the `__pycache__` directory, then `:1245` calls `_write_atomic(path, data, _mode)`
+- `_write_atomic` (`:201`) writes a **`.tmp`** sibling and then calls **`_os.replace(path_tmp, path)`**;
+  on `OSError` it tries `_os.unlink(path_tmp)` and re-raises
+
+So each stdlib import performs a directory create, a temp-file create, a write, and a **rename**
+on the FAT volume through the firmware. Roughly 19 such writes happen in the clean `re` run and
+about 25 in the hanging `json` run — which straddles the measured boundary. Unflushed or
+half-completed FAT mutation is exactly the kind of residue that survives image exit and could
+stall a volume teardown when the Shell exits.
+
+If `_os.replace` is not properly supported on this port, the `.tmp` files may also be orphaned,
+adding directory churn.
+
+### Next step — one flag settles it
+
+**`-B` is supported in this build** (`PyMod-3.12.13/Python/sysmodule.c:3026` maps
+`dont_write_bytecode` to `-B`), so the hypothesis can be tested with **no rebuild and no
+restaging**:
+
+```text
+Python312.efi -B -S -c "import json; print('ok')"
+```
+
+| Result | Conclusion |
+|--------|------------|
+| **clean** | **Bytecode writing to FAT is the mechanism.** `json` itself is unchanged, so the only variable removed is the `__pycache__` write |
+| still **hangs** | Writing is innocent; go back to allocation shape (below) |
+
+A write-only control with **no imports** (note: avoid `%` in `-c`, the UEFI Shell treats it
+specially):
+
+```text
+Python312.efi -S -c "[open(str(i)+'.tmp','wb').close() for i in range(30)]; print('ok')"
+```
+
+**And a zero-boot observation available right now** — from the Shell, or by reading the stick on
+the host, check whether the writes actually landed:
+
+```text
+ls FS1:\EFI\lib\python3.12\json
+ls FS1:\EFI\lib\python3.12\json\__pycache__
+```
+
+`__pycache__` present with `.pyc` files proves writing happens; stray **`.tmp`** files would
+additionally show `_os.replace` failing on this port.
+
+### If writing is confirmed, the fix has two shapes
+
+1. **Pre-generate the bytecode at package time** — drop `--exclude '__pycache__/'` from
+   `create_python_pkg.sh` and `compileall` the tree so imports never write. **Caveat:** the `.pyc`
+   files must match the interpreter's marshal magic, so `compileall` has to run with the **same
+   3.12.13** build — this port has already been bitten by magic-number mismatches.
+2. **Ship with writing off** — `-B` on the command line, or `PYTHONDONTWRITEBYTECODE` in the
+   environment. Cheaper, but costs re-compilation on every launch.
+
+### Superseded plan — measure first, then test allocation shape
 
 **Measure the boundary instead of guessing it.** These four print the module count *and* show
 whether each hangs, in four boots:

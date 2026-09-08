@@ -345,7 +345,7 @@ flags — its presence proves nothing about whether readline is wired.
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
-| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. `import logging` and `import json` hang, but `import re`, a 16 MB `bytearray`, and 50 `open`/`close` cycles are all **clean** — so `re`, raw heap footprint, file-handle leaks, teardown, `edk2console` and `_thread` are **all ruled out**. Open mechanisms: allocation count / pool fragmentation, a count-based limit, or C-stack depth | same lab note, "Mechanism runs" |
+| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. Leading suspect: **`.pyc` writes to FAT** — the package excludes `__pycache__`, so every import does a `__pycache__` mkdir + temp write + rename. Test with **`-B`** | same lab note, "The `.pyc` write path" |
 
 ---
 
@@ -412,8 +412,15 @@ the UEFI-minimal variant that imports only `os`, so **§3 barely exercises the p
 cleared empirically too, since `re` pulls `functools`, whose line 21 is `from _thread import
 RLock`. The margin is now razor thin: `import re` loads 15+ modules cleanly, while `import json`
 adds only about five and hangs. Remaining candidates are allocation count / pool fragmentation, a
-count-based limit, or C-stack depth in the import machinery. The lab note carries the measurement
-runs and an allocation-shape test.
+count-based limit, or C-stack depth in the import machinery.
+
+**The threshold was then measured on 2026-09-08 at 43–48 modules** — `len(sys.modules)` is 23 at
+the `-S` baseline and 42 after `import re` (both clean), versus 48 after `import json` and 65
+after `import logging` (both hanging). Not a descriptor limit, since `OPEN_MAX` is 255. The
+leading suspect is now **`.pyc` writing**: `create_python_pkg.sh` excludes `__pycache__`, so the
+volume ships with no bytecode and **every stdlib import does a `__pycache__` mkdir, a temp-file
+write, and a rename on FAT**. The earlier 50-cycle file test used `'rb'` and so never exercised
+that path. One flag settles it — `Python312.efi -B -S -c "import json; print('ok')"`.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
