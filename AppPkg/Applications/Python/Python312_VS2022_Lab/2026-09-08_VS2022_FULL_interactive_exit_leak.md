@@ -181,6 +181,42 @@ through **`PyOS_Readline`**, the same read path the REPL uses.
 - **T1 hangs** ⇒ reading the console is sufficient on its own; depth is irrelevant too.
 - **T1 and T2 clean but T3 hangs** ⇒ something specific to the REPL loop rather than to reading.
 
+### Caveat: `min_rsp` cannot see firmware frames
+
+"Depth is ruled out" is narrower than it sounds. `stack_min_rsp` is updated **only inside
+`PyOS_CheckStack()`**, so it samples **Python's** rsp and nothing else. Firmware code called *from*
+Python — file I/O down the FAT and block-driver chains, console I/O, timer notifies at raised TPL —
+pushes frames **below** the sampled point and is invisible to the instrumentation. The two
+`import json` runs measuring 256 bytes apart therefore means only that **Python** reached the same
+depth in both, **not** that the hardware did.
+
+This gives T2 a concrete mechanism if it hangs: a **firmware console call made while Python is
+already ~107 KB deep** on a ~128 KB stack. That is stack pressure the measurement cannot observe,
+and it is specific to VS2022 because that image shares the firmware stack with the Shell while GCC
+runs on a private 64 MB `malloc`'d buffer.
+
+## Why this family of bugs is VS2022-only
+
+One divergence in `edk2main.c` explains all of it. VS2022 sets `PY_UEFI_MSVC_368_ENTRY`
+(`Python312.inf:1073`, `Python312_MIN.inf:327`) and returns **before** `edk2_switch_stack()` and
+`py_install_idt()`; GCC falls through to both. Two consequences follow:
+
+| | VS2022 | GCC |
+|---|---|---|
+| Stack | UEFI **firmware** stack, ~128 KB | private `malloc`'d **64 MB** (`edk2stack.h:5`) |
+| Headroom | `import re` lands within **6 KB** of the bound | never close |
+| An overrun damages | **live Shell/BDS state** — surfaces only at Shell `exit` | a buffer that is freed anyway |
+| `PyOS_CheckStack()` bound | was NULL until 2026-09-08 | always valid |
+
+The `-b NOOPT` flavour compounds the first row: MSVC without optimisation allocates every local up
+front with no inlining or frame reuse, so frames are much fatter than a release build's.
+
+**Why the divergence exists:** not by choice. `edk2main.c:203-205` and `Python312.inf:1070-1072`
+record that without the 368 path VS2022 **hung inside `ShellCEntryLib`** after the stack switch
+(boot stopped at `before ShellCEntryLib`), so a boot hang was traded for an exit hang. Note
+`edk2stack.nasm` and `edk2handler.nasm` are **not** toolchain-tagged (`Python312.inf:62,69`), so
+`edk2_switch_stack` is already compiled into the VS2022 image — the assembly is not the blocker.
+
 ## Still open after this
 
 The **capability** gap is untouched: VS2022 runs on the ~128 KB firmware stack, so `json`,
