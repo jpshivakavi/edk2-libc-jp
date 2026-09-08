@@ -207,7 +207,45 @@ then `import json` raised, so the `MemoryError` terminated the script and there 
 read after the overflow**. T2 is therefore a clean instance of *overflow with a prior console read*
 and it exits fine, which is exactly what makes the ordering theory the surviving explanation.
 
-### Next tests — the one uncovered cell
+### T4/T5 result: both CLEAN — the ordering theory is dead too
+
+| # | Run | `-S`? | console read | deep import | Shell `exit` |
+|---|-----|-------|--------------|-------------|--------------|
+| T4 | `-c "import re; input()"` | yes | **after** big import | no (no overflow) | clean |
+| T5 | `t.py`: caught `MemoryError`, then `input()` | yes | **after** overflow | yes (**caught**) | clean |
+
+T5 puts a console read *after* the overflow and still exits clean, so **"read after the overflow"
+is not the trigger either.** Every non-REPL shape now tested is clean, including this one.
+
+**What is left is narrow: the hang needs the REPL *and* a deep import.** T3 (REPL, shallow) is
+clean; `-c "import json"` (deep, no REPL) is clean; only the two together fail. Neither is
+sufficient alone.
+
+### Variables that differ between T5 and the hanging run
+
+Three, and they have been changing together:
+
+1. **`-S`.** Every `-c` test used **`-S`**; the interactive runs were launched as plain
+   `Python312.efi`, so **`site` was imported** — extra modules at baseline, and `exit`/`quit`
+   installed. This has been an uncontrolled variable in every comparison so far.
+2. **The exception was caught.** T5 wrapped the import in `try`/`except MemoryError`, so no
+   traceback was printed and `sys.last_value`/`sys.last_traceback` were never set. In the REPL the
+   `MemoryError` was **uncaught**, printed, and left a live traceback holding the overflow's frames.
+3. **`exit()` is not a bare `SystemExit`.** It is `site.Quitter.__call__`, which calls
+   **`sys.stdin.close()`** before raising. T3 also went through that and stayed clean, so it is not
+   sufficient on its own — but it has never been tested *in combination with* the deep import.
+
+### Next tests — decompose the REPL scenario
+
+| # | Steps | Isolates |
+|---|-------|----------|
+| **T6** | `Python312.efi` → `import re` → `exit()` | **Is the overflow required?** `re` is big but stays under the bound. Hang ⇒ overflow irrelevant, it is REPL + big import |
+| **T7** | `Python312.efi -S` → `import json` → `raise SystemExit` | **Is `site`/`exit()` required?** No `site`, so no `Quitter` and no `sys.stdin.close()`. Clean ⇒ one of those matters; hang ⇒ both are irrelevant |
+| **T8** | `Python312.efi` → `exec("try:\n import json\nexcept MemoryError:\n print('caught')")` → `exit()` | **Is the *uncaught* exception required?** A string literal carries the newlines, so this is one typed REPL line. Clean ⇒ traceback printing / `sys.last_*` matters |
+
+T7 is the cheapest and removes the longest-standing uncontrolled variable, so run it first.
+
+### Superseded tests — the one uncovered cell
 
 **T4 — console read after a large but non-overflowing import.** Quoting-free, and `import re`
 (42 modules, ~90 KB) is known to stay under the bound:
