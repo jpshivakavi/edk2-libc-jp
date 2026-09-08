@@ -214,6 +214,29 @@ Together they were the entire reason `PY_UEFI_MSVC_368_ENTRY` existed, and there
 VS2022 ran on the ~128 KB firmware stack. **The root enabler of the whole VS2022 bug family is
 fixed.**
 
+### The interactive REPL — the actual defect — is also fixed
+
+```text
+Python312.efi
+>>> import json          -> no MemoryError
+>>> exit()               -> back to Shell
+Shell> exit              -> clean
+```
+
+This is the sequence that hung on **every** prior attempt, and the one that survived ten rounds of
+Python-level bisection in
+[`2026-09-08_VS2022_FULL_interactive_exit_leak.md`](./2026-09-08_VS2022_FULL_interactive_exit_leak.md).
+That note's final model — *"the hang needs an uncaught stack-overflow `MemoryError`, a printed
+traceback retained in `sys.last_*`, continued execution, and structurally requires the REPL"* — was
+an accurate description of the **trigger** and a wrong theory of the **cause**. Every one of those
+conditions was just a way of reaching a stack depth the ~128 KB firmware stack could not hold. The
+REPL "requirement" was never about the REPL: it kept the process alive past the corruption, whereas
+`-c` and script routes exited before the damaged firmware memory was touched again.
+
+Note that `import json` no longer raises `MemoryError` at all here, which is the distinction between
+this fix and the earlier `PyOS_CheckStack` one. That fix made the overflow *visible and survivable*;
+this one means there is no overflow to detect.
+
 ### Added: high-water report for the switched path
 
 The `stack high-water` line only existed in the 368 branch. The switched path now prints, after
@@ -231,8 +254,8 @@ Python312 boot: switched stack min_rsp=... limit=... size=...
 | Test | Expected | Status |
 |------|----------|--------|
 | `-S -c "import json; print('ok')"` | `ok`, clean `exit` | **PASS** |
+| **REPL `import json`**, exit console, Shell `exit` | no `MemoryError`, no hang — **the original defect** | **PASS** |
 | `-S -c "import logging; print('ok')"` | `ok`, clean `exit` | pending |
-| **T7:** `-S`, `import json`, `raise SystemExit`, Shell `exit` | no hang — the original defect | pending |
 | Phase 8 sweep (smoke doc §3) | unchanged, all pass | pending |
 | §4 REPL and teardown, incl. **relaunch** | unchanged | pending |
 | pyreadline §5.3 / §5.4 | `Readline True`; interactive editing works | pending |

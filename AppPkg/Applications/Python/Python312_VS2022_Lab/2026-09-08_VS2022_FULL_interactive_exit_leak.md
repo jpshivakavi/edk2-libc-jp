@@ -1,5 +1,34 @@
 # Lab: VS2022 FULL — interactive `exit()` skips the console detach (2026-09-08)
 
+> ## CLOSED — cause was elsewhere. See [`2026-09-08_VS2022_nasm_abi_mismatch.md`](./2026-09-08_VS2022_nasm_abi_mismatch.md).
+>
+> The REPL sequence this note chased now runs clean, with **no `MemoryError` at all**:
+>
+> ```text
+> Python312.efi
+> >>> import json
+> >>> exit()
+> Shell> exit          -> clean
+> ```
+>
+> The real cause was two defects in the **stack-switch plumbing**, which had forced VS2022 onto the
+> ~128 KB firmware stack via `PY_UEFI_MSVC_368_ENTRY`: a **NASM calling-convention mismatch**
+> (`rdi`/`rsi` vs `rcx`/`rdx`) and **`rsp`-relative access to `UefiMain`'s frame across the switch**,
+> which GCC survived only because `-O0` keeps a frame pointer.
+>
+> **Read this note for the method, not the conclusions.** The ten-test bisection below (T1–T10) is
+> an accurate map of *when* the hang appeared, and its final model — uncaught overflow, printed
+> traceback, continued execution, REPL required — describes the **trigger** correctly. But every one
+> of those conditions was just a route to a stack depth the firmware stack could not hold, and the
+> REPL "requirement" was really "the process stayed alive long enough to touch the corrupted
+> firmware memory again", which `-c` and script routes did not.
+>
+> **The lesson worth keeping:** the Python-level search space was exhausted — T1 through T10 all
+> came back clean or hung exactly as predicted — while the cause sat one layer below, in assembly
+> that had *never been exercised on this toolchain*. The clue that should have redirected this
+> sooner was the user's early observation that **GCC never hung**, which pointed at the toolchain
+> divergence rather than at anything the interpreter was doing.
+
 **Branch:** `feature/python-3.12.13-vs2022` · **Code state:** **`4cf5698a`**
 (*fix(python312): track rsp high-water mark to size the firmware stack budget*)
 **Toolchain:** **VS2022 FULL**, `-b NOOPT`, `BUILD_PYTHON312_FULL=TRUE`, `PY_UEFI_MSVC_368_ENTRY`
