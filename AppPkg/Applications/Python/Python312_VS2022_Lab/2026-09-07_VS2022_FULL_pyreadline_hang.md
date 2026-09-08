@@ -7,7 +7,15 @@
 **Result:** **pyreadline hang REPRODUCES on VS2022** — confirms the historical failure at the
 current pinned code state. Manufacturing stdio policy stands.
 
-> **SCOPE CHANGED — read this first.** The filename says "pyreadline", but the bisect in this note
+> **ROOT CAUSE FOUND (2026-09-08) — see "ROOT CAUSE" below.** VS2022 images set
+> `PY_UEFI_MSVC_368_ENTRY`, which makes `edk2main.c` **return early before the stack switch**, so
+> the interpreter runs on the ~128 KB **firmware stack**; GCC takes the other branch and gets a
+> **64 MB** `malloc`'d stack. Deep import chains overflow the firmware stack, corrupting memory
+> *outside* the image — which is why Python's own teardown looks flawless and only the Shell's
+> `exit` into BDS hangs. `PyOS_CheckStack()` cannot catch it because `g_edk2_globals.stack` is
+> NULL on that path, so it always answers "stack is fine".
+>
+> **SCOPE CHANGED — read this too.** The filename says "pyreadline", but the bisect in this note
 > proved that wrong. **`Python312.efi -S -c "import logging; print('ok')"` alone hangs Shell
 > `exit`.** There is no readline, no `edk2console`, and no console I/O in that command. Both
 > hanging cases share exactly one heavyweight import — **`logging`** (pyreadline reaches it via
@@ -342,7 +350,115 @@ merely smaller — and BDS then needs a large contiguous allocation to bring up 
 Shell `exit`. That distinction explains why one 16 MB block is harmless while ~5 MB spread over
 many arenas is not.
 
-### Next step — get firmware-side evidence, then measure the allocator
+## ROOT CAUSE (2026-09-08) — VS2022 runs Python on the firmware stack; GCC gets 64 MB
+
+The user's observation that **GCC never shows this hang** is the key that cracks it. The two
+toolchains take **completely different entry paths**, in `PyMod-3.12.13/efi/src/edk2main.c`:
+
+```c
+#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_368_ENTRY)     /* :202 */
+   status = ShellCEntryLib(image, systab);                    /* firmware stack, no switch, no IDT */
+   ...
+   return status;                                             /* :212 early return */
+#endif
+
+   g_edk2_globals.stack_size = PY_UEFI_DEFAULT_STACK_SIZE;    /* :215  = 64 MB */
+   g_edk2_globals.stack = malloc(g_edk2_globals.stack_size + 1024);
+   ...
+   edk2_switch_stack(aligned_stack, g_edk2_globals.stack_size);  /* :228 */
+   py_install_idt();                                             /* :231 */
+   status = ShellCEntryLib(image, systab);
+```
+
+`PY_UEFI_DEFAULT_STACK_SIZE` is **`(64*1024*1024)`** — 64 MB (`efi/Include/efi/edk2stack.h:5`).
+And `PY_UEFI_MSVC_368_ENTRY=1` is on the MSFT `CC_FLAGS` of **both** `Python312.inf:1073` **and**
+`Python312_MIN.inf:327`.
+
+**So every VS2022 image runs the entire interpreter on the UEFI firmware stack — on the order of
+128 KB for a Shell application — while GCC runs it on a 64 MB switched stack. Roughly a 500×
+difference in stack headroom.**
+
+### Second defect: the guard that should have caught this is broken on exactly that path
+
+```c
+int                                          /* edk2main.c:249 */
+PyOS_CheckStack(void)
+{
+   uint64_t rsp = edk2_read_rsp();
+   if(rsp > (uint64_t)g_edk2_globals.stack)
+      return 0;                              /* "stack is fine" */
+   return 1;
+}
+```
+
+`g_edk2_globals.stack` is assigned at `:216` — **after** the 368 early return at `:212`. In a
+VS2022 image it is therefore **NULL**, `rsp > 0` is always true, and `PyOS_CheckStack()`
+**unconditionally reports that there is plenty of stack**. This is not dead code:
+`USE_STACKCHECK 1` is defined at `PyMod-3.12.13/efi/Include/pyconfig.h:1816`, and the function is
+called from `Objects/object.c`, `Python/ceval.c:260` and `Python/pythonrun.c:1913`. **The guard is
+wired up and actively lying**, so deep recursion runs off the bottom of the firmware stack
+silently instead of raising `RecursionError`.
+
+### Why this explains every single observation
+
+| Observation | Explanation |
+|-------------|-------------|
+| **GCC never hangs** | 64 MB switched stack — nowhere near overflow |
+| **Python's teardown trace is flawless** | The overflow corrupts memory *below the firmware stack*, outside the image. Python itself is undamaged, finalizes correctly, and `UefiMain` returns — precisely what the captured ladder shows |
+| **Hang only at Shell `exit`** | BDS regains control and touches the corrupted region to bring up the setup UI |
+| **`import re` (42) clean, `import json` (48) hangs** | `json` is a **package**, so its chain is deeper: `json/__init__` → `json.decoder` → `re` → `_compiler` → `_parser` → `_constants`, about two levels more than `import re`. **Peak C-stack depth is the real variable** |
+| **Sharp threshold** | A stack limit is a hard boundary, unlike gradual pressure |
+| **16 MB `bytearray` clean** | Heap, and shallow |
+| **50 `open`/`close` clean** | Shallow |
+| **`-B` made no difference** | Irrelevant to stack usage |
+
+**Correction to my earlier framing:** module count was only ever a proxy. The real variable is
+**peak C-stack depth**, which correlates with count merely because larger imports nest deeper. My
+earlier claim that "depth is not cumulative, so stack is unlikely" was wrong — it ignored that
+nested *packages* genuinely add frames.
+
+### Why the workaround exists — a boot hang was traded for an exit hang
+
+`edk2main.c:203-205`: *"Python 3.6.8 AppPkg: ENTRY_POINT = ShellCEntryLib on the firmware stack
+(no edk2_switch_stack / py_install_idt). VS2022 3.12 hang reproduces inside ShellCEntryLib only
+after stack switch — try 368-style path."*
+
+`Python312.inf:1070-1072`: *"FULL VS2022: keep PY_UEFI_MSVC_368_ENTRY — GCC stack+IDT hangs inside
+ShellCEntryLib (boot stops at 'before ShellCEntryLib')."*
+
+So the 368 path was adopted to cure a **boot** hang, and unknowingly traded it for this **exit**
+hang. Importantly, `edk2stack.nasm` and `edk2handler.nasm` are listed in `[Sources]` at
+`Python312.inf:62` and `:69` with **no `| MSFT` / `| GCC` restriction**, so `edk2_switch_stack` is
+already compiled and linkable in the VS2022 image — **the assembly is not the blocker.**
+
+### Fixes, cheapest first
+
+1. **Decouple the stack switch from the IDT install.** The comments blame "stack+IDT" as a pair,
+   but `edk2_switch_stack()` (`:228`) and `py_install_idt()` (`:231`) are independent calls. Build
+   a VS2022 image that switches the stack and **skips `py_install_idt()`**. If it boots, VS2022
+   gets the 64 MB stack and this bug disappears — this is the real fix.
+2. **Fix `PyOS_CheckStack` for the 368 path** regardless of the above: capture the firmware stack
+   base at entry and compare against that instead of a NULL `g_edk2_globals.stack`. This converts
+   silent firmware-memory corruption into a clean `RecursionError`. It does not raise the ceiling,
+   but a guard that always answers "fine" is a correctness bug on its own.
+3. **Stopgap without a rebuild:** lower `sys.setrecursionlimit()` so Python's own counter trips
+   before the firmware stack is exhausted. Crude and approximate, since the limit counts Python
+   frames rather than C frames.
+
+### Confirming test — depth versus count, no rebuild
+
+Stage tiny modules on the volume and compare:
+
+- **deep and few:** `t1.py` contains `import t2`, `t2.py` contains `import t3`, … `t10.py` is
+  `x = 1`. Then run `import t1` — **10 modules, depth 10**.
+- **shallow and many:** `u1.py` … `u30.py` each containing `x = 1`. Then run
+  `import u1, u2, ... u30` — **30 modules, depth 1**.
+
+If deep-and-few hangs while shallow-and-many stays clean, **depth is confirmed** as the variable
+and count is exonerated. This is the cleanest possible separation and needs only text files on
+the stick.
+
+### Superseded plan — allocator and `memmap` investigation
 
 **`memmap` is the highest-value run here, because it observes the firmware directly and the hang
 does not block it** — the prompt returns fine, so run `memmap` *before* typing `exit`:

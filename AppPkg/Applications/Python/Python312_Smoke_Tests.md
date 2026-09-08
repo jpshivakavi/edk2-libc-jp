@@ -345,7 +345,7 @@ flags — its presence proves nothing about whether readline is wired.
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
-| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. `.pyc` writing is **also ruled out** (`-B` still hangs). Leading suspect: **`obmalloc` arena count / EFI pool fragmentation**, the one mechanism that scales with module count and that no clean run tested | same lab note, "`-B` result" |
+| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. **ROOT CAUSE:** VS2022 sets `PY_UEFI_MSVC_368_ENTRY`, so `edk2main.c` returns before the stack switch and Python runs on the **~128 KB firmware stack**; GCC gets a **64 MB** stack. Deep import chains overflow it and corrupt memory outside the image, so teardown looks clean and only BDS hangs | same lab note, "ROOT CAUSE" |
 
 ---
 
@@ -423,12 +423,21 @@ write, and a rename on FAT**. The earlier 50-cycle file test used `'rb'` and so 
 that path.
 
 **`-B` then still hung, so bytecode writing is ruled out too** — along with `__pycache__` mkdir,
-`_write_atomic` and `_os.replace`. The remaining lead is **`obmalloc` arena count / EFI pool
-fragmentation**: big objects like the 16 MB `bytearray` bypass `obmalloc` and leave one hole,
-whereas ~48 modules create tens of thousands of small objects across many arenas, leaving the
-pool fragmented for BDS. The lab note carries `memmap` comparisons (runnable before `exit`, since
-the prompt returns normally), `sys.getallocatedblocks()` measurements, and an import-free
-allocation-shape test.
+`_write_atomic` and `_os.replace`.
+
+**ROOT CAUSE, found 2026-09-08 from the observation that GCC never hangs.** The toolchains take
+different entry paths in `PyMod-3.12.13/efi/src/edk2main.c`. VS2022 images set
+`PY_UEFI_MSVC_368_ENTRY` (on the MSFT `CC_FLAGS` of both `Python312.inf` and `Python312_MIN.inf`),
+which makes the function **return at `:212`, before the stack switch at `:228`** — so the whole
+interpreter runs on the **UEFI firmware stack**, on the order of 128 KB. GCC falls through and
+gets `PY_UEFI_DEFAULT_STACK_SIZE`, **64 MB** (`edk2stack.h:5`). Deep import chains overflow the
+firmware stack and corrupt memory *below* it, outside the image — which is exactly why Python's
+teardown ladder is flawless and only the Shell's `exit` into BDS hangs. `PyOS_CheckStack()`
+(`edk2main.c:249`) cannot catch it, because `g_edk2_globals.stack` is assigned at `:216` — after
+the early return — so it is NULL and the check always answers "stack is fine" despite
+`USE_STACKCHECK 1` being set. **Peak C-stack depth, not module count, is the real variable**;
+`json` hangs where `re` does not because a package nests about two levels deeper. Fixes and a
+depth-versus-count confirmation test are in the lab note.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.

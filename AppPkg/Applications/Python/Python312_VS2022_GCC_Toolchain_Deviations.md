@@ -234,6 +234,35 @@ EFI/stdlib/etc/
 
 **Implication:** deep recursion, fault handling, and stack limits may **differ** between GCC and VS2022 images even from the same git commit.
 
+> **CONFIRMED 2026-09-08 — this deviation is the root cause of the VS2022 Shell `exit` hang.**
+> The warning above turned out to be exactly right, and it went unconnected for months. Quantified:
+> the GCC branch allocates **`PY_UEFI_DEFAULT_STACK_SIZE` = `(64*1024*1024)`** (64 MB) at
+> [`edk2main.c:215-216`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) via `malloc`, while the
+> `PY_UEFI_MSVC_368_ENTRY` branch **returns at `:212`, before that code is ever reached** — so
+> VS2022 runs the whole interpreter on the **UEFI firmware stack** (order of 128 KB for a Shell
+> app). That is roughly a **500× difference in stack headroom** from the same commit.
+>
+> **Compounding defect — `PyOS_CheckStack()` is broken on precisely this path.**
+> [`edk2main.c:249-256`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) compares `rsp` against
+> `g_edk2_globals.stack`, which is **only assigned at `:216`** — after the 368 early return. In a
+> VS2022 image it is **NULL**, so `rsp > 0` is always true and the function **always reports that
+> the stack is fine**. `USE_STACKCHECK 1` is set (`PyMod-3.12.13/efi/Include/pyconfig.h:1816`) and
+> the function is called from `Objects/object.c`, `Python/ceval.c:260` and `Python/pythonrun.c:1913`,
+> so the guard is **wired up and actively lying** rather than merely absent.
+>
+> **Failure signature:** a deep import chain overflows the firmware stack and corrupts memory
+> *below* it — outside the image. Python is undamaged and finalizes perfectly (the
+> `PY_UEFI_BOOT_TRACE` ladder runs clean through `before return from UefiMain`, and the prompt
+> returns), then Shell **`exit`** hands control to BDS, which touches the corrupted region and
+> hangs. Measured boundary: `import re` (42 modules) is clean, `import json` (48, and a **package**
+> so ~2 frames deeper) hangs. **Peak C-stack depth is the variable, not module count.**
+>
+> **`edk2stack.nasm` / `edk2handler.nasm` are not toolchain-tagged** (`Python312.inf:62,69`), so
+> `edk2_switch_stack` is already compiled into the VS2022 image — the assembly is not the blocker.
+> The cheapest candidate fix is to **switch the stack but skip `py_install_idt()`** on MSVC, since
+> the two are independent calls (`:228` and `:231`) that the existing comments blame as a pair.
+> Full analysis: [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
+
 ### 11.2 MSFT-only compile-time defines (MIN today)
 
 Set on **`Python312_MIN.inf`** **`MSFT:*_*_*_CC_FLAGS`**, not on GCC:
