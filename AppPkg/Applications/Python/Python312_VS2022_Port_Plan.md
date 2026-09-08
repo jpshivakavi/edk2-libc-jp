@@ -341,7 +341,7 @@ See also:
 
 Same monolithic **`Python312.inf`** and same staged **`EFI/lib/python3.12/`** layout do **not** mean identical Shell behavior:
 
-1. **Entry:** GCC uses **custom stack + IDT**; VS2022 MIN uses **`PY_UEFI_MSVC_368_ENTRY`** (3.6.8-style **`ShellCEntryLib`** only). See runtime notes **§4** and deviations **§11**.
+1. **Entry:** converged 2026-09-08 — both use the **custom 64 MB stack**; only the **IDT** is still GCC-only. **`PY_UEFI_MSVC_368_ENTRY`** is removed. See runtime notes **§4** and deviations **§11.1**.
 2. **REPL:** GCC Phase 8 reference smoke used **pyreadline** + line editing; **VS2022 manufacturing** is signed off on **stdio REPL** with pyreadline **opt-in** only (Session 10). Shared source policy (`readline.py`, `site.py`, `main.c`) may change packaged **GCC** UX until WSL regression is recorded.
 3. **Deploy:** After Session 10, refresh **`Python312.efi`** **and** on-disk **`readline.py`** / **`site.py`** (or full **`create_python_pkg.*`**) — not binary-only for Lib changes.
 

@@ -199,56 +199,6 @@ UefiMain (
 
    edk2_alloc_environ();
 
-#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_368_ENTRY) && \
-    !defined(PY_UEFI_MSVC_STACK_SWITCH)
-   /* Python 3.6.8 AppPkg: ENTRY_POINT = ShellCEntryLib on the firmware stack
-    * (no edk2_switch_stack / py_install_idt). VS2022 3.12 hang reproduces
-    * inside ShellCEntryLib only after stack switch — try 368-style path. */
-   /* That hang is now explained: edk2stack.nasm read its arguments from rdi/rsi
-    * (System V) while MSVC passes them in rcx/rdx, so edk2_switch_stack set rsp
-    * from garbage. Fixed via PY_UEFI_MS_ABI in MSFT:*_*_*_NASM_FLAGS. Define
-    * PY_UEFI_MSVC_STACK_SWITCH to take the 64 MB stack path on MSVC instead of
-    * this one; it stays opt-in until validated on hardware. */
-   /* No stack switch on this path, so g_edk2_globals.stack stays NULL and
-    * PyOS_CheckStack() has no bound to compare against. Derive one from the
-    * current rsp instead, or deep recursion silently runs off the firmware
-    * stack and corrupts memory the Shell and BDS still need. */
-   {
-      uint64_t entry_rsp = edk2_read_rsp();
-
-      g_edk2_globals.stack_entry_rsp = entry_rsp;
-      if (entry_rsp > PY_UEFI_FIRMWARE_STACK_BUDGET) {
-         g_edk2_globals.stack_limit = entry_rsp - PY_UEFI_FIRMWARE_STACK_BUDGET;
-      }
-#ifdef PY_UEFI_BOOT_TRACE
-      Print(L"Python312 boot: firmware stack rsp=%lx limit=%lx budget=%lx\n",
-            (UINT64)entry_rsp,
-            (UINT64)g_edk2_globals.stack_limit,
-            (UINT64)PY_UEFI_FIRMWARE_STACK_BUDGET);
-#endif
-   }
-   PY312_BOOT_PRINT(L"ShellCEntryLib 368-style (no custom stack/IDT)");
-   status = ShellCEntryLib(image, systab);
-   PY312_BOOT_PRINT(L"after ShellCEntryLib");
-#ifdef PY_UEFI_BOOT_TRACE
-   /* How deep execution actually got, so the budget can be sized from
-    * measurement instead of guesswork. `used` past `limit` is the excursion the
-    * sampled guard failed to stop; the firmware stack base sits between the
-    * min_rsp of a run that hangs and that of a run that exits cleanly. */
-   Print(L"Python312 boot: stack high-water min_rsp=%lx limit=%lx used=%lx\n",
-         (UINT64)g_edk2_globals.stack_min_rsp,
-         (UINT64)g_edk2_globals.stack_limit,
-         (UINT64)(g_edk2_globals.stack_min_rsp == 0
-                     ? 0
-                     : g_edk2_globals.stack_entry_rsp -
-                          g_edk2_globals.stack_min_rsp));
-#endif
-   edk2_free_environ();
-   PY312_BOOT_PRINT(L"after edk2_free_environ");
-   PY312_BOOT_PRINT(L"before return from UefiMain");
-   return status;
-#endif
-
    g_edk2_globals.stack_size = PY_UEFI_DEFAULT_STACK_SIZE; 
    g_edk2_globals.stack = malloc(g_edk2_globals.stack_size + 1024);
    if(g_edk2_globals.stack == NULL) {
@@ -256,11 +206,14 @@ UefiMain (
       return EFI_OUT_OF_RESOURCES;
    }
 
+   /* Second call, and it predates the MSVC convergence: GCC has always run both.
+    * Do not dedupe without re-testing GCC — the signed-off images on both
+    * toolchains are built this way. */
    edk2_alloc_environ();
 
    PY312_BOOT_PRINT(L"before switch_stack");
 
-#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH)
+#ifdef _MSC_VER
    /* edk2_switch_stack() leaves rsp at base+size-0x200, so base+size must be
     * 16-byte aligned or MSVC's SSE spills (movaps) fault. Round the base *up*
     * to 512; the malloc above over-allocates by 1024, so this cannot overrun.
@@ -279,18 +232,18 @@ UefiMain (
    g_edk2_globals.stack_limit = (uint64_t)g_edk2_globals.stack +
                                 PY_UEFI_STACK_MARGIN;
 
-   /* The IDT is independent of the stack switch. Skip it on the MSVC opt-in
-    * path so the two can be brought up one at a time: the stack is what fixes
-    * the depth problem, the IDT only adds fault reporting. */
-#if !(defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH) && \
-      !defined(PY_UEFI_MSVC_IDT))
+   /* The IDT is independent of the stack switch, and only adds fault reporting.
+    * It is still skipped under MSVC: the full smoke sweep was signed off with
+    * it off, and the idtr helpers' ABI fix has never been exercised. Define
+    * PY_UEFI_MSVC_IDT to try it — a separate change with its own boot risk. */
+#if !defined(_MSC_VER) || defined(PY_UEFI_MSVC_IDT)
    PY312_BOOT_PRINT(L"before py_install_idt");
    py_install_idt();
 #else
-   PY312_BOOT_PRINT(L"skipping py_install_idt (MSVC stack-switch opt-in)");
+   PY312_BOOT_PRINT(L"skipping py_install_idt (MSVC)");
 #endif
    PY312_BOOT_PRINT(L"before ShellCEntryLib");
-#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH)
+#ifdef _MSC_VER
    /* edk2_switch_stack() moves rsp out from under a *running* function. GCC at
     * -O0 keeps a frame pointer, so UefiMain's locals stay reachable through rbp
     * into the old stack. MSVC x64 addresses locals and spilled parameters
@@ -307,23 +260,21 @@ UefiMain (
    status = ShellCEntryLib(image, systab);
 #endif
    PY312_BOOT_PRINT(L"after ShellCEntryLib");
-#if !(defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH) && \
-      !defined(PY_UEFI_MSVC_IDT))
+#if !defined(_MSC_VER) || defined(PY_UEFI_MSVC_IDT)
    py_restore_idt();
 #endif
    
    edk2_revert_stack();
    g_edk2_globals.stack_limit = 0;
-#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH)
+#ifdef _MSC_VER
    /* Frame is addressable again now that rsp is restored. */
    status = g_edk2_globals.switch_status;
 #endif
 #ifdef PY_UEFI_BOOT_TRACE
-   /* Same high-water report as the 368 path, so the two can be compared. On the
-    * switched stack `used` should be a small fraction of stack_size and
-    * `min_rsp` should stay well above `limit`; anything close to the limit here
-    * would mean 64 MB is not actually in play. Printed after the revert so
-    * UefiMain's frame is valid again under MSVC. */
+   /* min_rsp should stay well above limit, and the depth it implies should be a
+    * small fraction of size; anything close to limit would mean the 64 MB is
+    * not actually in play. Printed after the revert so UefiMain's frame is
+    * addressable again under MSVC. */
    Print(L"Python312 boot: switched stack min_rsp=%lx limit=%lx size=%lx\n",
          (UINT64)g_edk2_globals.stack_min_rsp,
          (UINT64)((uint64_t)g_edk2_globals.stack + PY_UEFI_STACK_MARGIN),

@@ -82,7 +82,20 @@ Optional **`PY_UEFI_BOOT_TRACE`** (see §7) prints **`Python312 boot: …`** via
 
 Hang occurred **after** **`edk2_switch_stack`** and **`py_install_idt`**, **inside** **`ShellCEntryLib`**, on the **switched** stack. **GCC** uses the same **`UefiMain`** path successfully; **MSVC** does not in that configuration.
 
-### Workaround: **`PY_UEFI_MSVC_368_ENTRY`**
+### Workaround: **`PY_UEFI_MSVC_368_ENTRY`** — **REMOVED 2026-09-08, see below**
+
+> **This workaround is gone from the tree.** The `ShellCEntryLib` hang it worked around was two
+> defects in the switch itself: `edk2stack.nasm` read its arguments from **`rdi`/`rsi`** (System V)
+> while MSVC passes them in **`rcx`/`rdx`**, so `rsp` came from garbage; and the switch moves `rsp`
+> out from under a running `UefiMain`, whose parameters MSVC addresses **`rsp`-relative with no
+> frame pointer** (GCC at `-O0` keeps `rbp`, which is why it never showed there). Fixed by
+> `PY_UEFI_MS_ABI` on `MSFT:*_*_*_NASM_FLAGS` and by reading the handles from `g_edk2_globals`.
+> **VS2022 now takes the same 64 MB stack path as GCC**, with `py_install_idt()` still skipped.
+> Keeping 368 was also actively harmful: it put the interpreter on the ~128 KB firmware stack,
+> which is what made deep imports corrupt firmware memory and hang Shell `exit`.
+> Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_nasm_abi_mismatch.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_nasm_abi_mismatch.md).
+
+Historical description follows.
 
 When **`PY_UEFI_MSVC_368_ENTRY`** is defined (**`Python312_MIN.inf`** MSFT **`CC_FLAGS`** today), **`UefiMain`** still sets **`g_edk2_globals`** and **`edk2_alloc_environ`**, then calls **`ShellCEntryLib`** on the **default Shell stack** — **no** switch, **no** custom IDT — matching **3.6.8** entry behavior while keeping **`edk2console`** globals.
 
@@ -211,7 +224,8 @@ Controlled from **`AppPkg.dsc`** when **`BUILD_PYTHON312`**:
 | Define | Purpose |
 |--------|---------|
 | **`PY_UEFI_BOOT_TRACE=1`** | **`Print()`** in **`edk2main.c`**, **`Main.c`**, **`python.c`** (`py312_boot_print_ascii`), unhandled fault line in **`edk2excep.c`** |
-| **`PY_UEFI_MSVC_368_ENTRY=1`** | MSVC: **`ShellCEntryLib`** without stack switch/IDT (§4) |
+| **`PY_UEFI_MS_ABI`** (on **`NASM_FLAGS`**, not `CC_FLAGS`) | MSVC: NASM helpers take arguments in **`rcx`/`rdx`**. **Required** — without it **`edk2_switch_stack`** sets **`rsp`** from garbage (§4) |
+| **`PY_UEFI_MSVC_IDT`** | MSVC: also install the custom IDT. **Untested opt-in**; skipped by default (§4) |
 
 Also set on **`Python312_MIN.inf`** / **`Python312.inf`** MSFT **`CC_FLAGS`** as needed. Remove or gate behind a single **`PY_UEFI_DEBUG`** when V6 smoke is done.
 
@@ -230,7 +244,7 @@ Also set on **`Python312_MIN.inf`** / **`Python312.inf`** MSFT **`CC_FLAGS`** as
 | Order | Message | Layer |
 |------:|---------|--------|
 | 1 | **`UefiMain enter`** | Firmware entry |
-| 2 | **`ShellCEntryLib 368-style …`** | Before Python |
+| 2 | **`before switch_stack`**, **`skipping py_install_idt (MSVC)`**, **`before ShellCEntryLib`** | Before Python |
 | 3 | **`main enter`** … **`after Py_BytesMain`** | **`python.c`** |
 | 4 | **`Py_RunMain after pymain_run_python`** | User **`-c`** finished |
 | 5 | **`Py_FinalizeEx enter`** … **`leave`** | See sub-table below |
@@ -306,7 +320,7 @@ Replacing only **`EFI\bin\Python312.efi`** is OK for **C-only** interpreter chan
 
 | | **GCC FULL (reference smoke)** | **VS2022 MIN (manufacturing, 2026-07-23)** |
 |--|--------------------------------|---------------------------------------------|
-| **Firmware entry** | Custom stack + IDT, then **`ShellCEntryLib`** | **`PY_UEFI_MSVC_368_ENTRY`**: **`ShellCEntryLib`** on Shell stack only |
+| **Firmware entry** | Custom stack + IDT, then **`ShellCEntryLib`** | *As of 2026-07-23:* **`PY_UEFI_MSVC_368_ENTRY`**, Shell stack only. *Now:* same custom stack, IDT skipped (§4) |
 | **REPL input (signed off)** | Historically **pyreadline** + **Tab** ([`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md) Phase 8.2) | **Stdio TTY** (`fgets` / **`PyOS_StdioReadline`**) — pyreadline **off** by default |
 | **Same git policy (Session 10)** | **`readline.py` stub**, **`site.py`** skip, **`main.c`** skip apply when **`UEFI_C_SOURCE`** / **`os.name == 'uefi'`** — **GCC stick not re-smoked** after **`3814cf9a`** | **User-verified** REPL + Shell **`exit`** + safe stub **`import readline`** |
 | **Docs** | [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) **§11** | This section |
@@ -388,7 +402,7 @@ Disabling **`/LTCG`** on link (**`/LTCG:OFF`** via module **`MSFT:*_*_*_DLINK_FL
 
 **Do not call `edk2_console_handoff_to_shell()` after `ShellCEntryLib`:** An experiment added post-**`UefiMain`** handoff + **`py312_uefi_openssl_disarm`**; lab trace reached **`before return from UefiMain`** but **Shell `exit`** hung even for **`import sys`**. Console detach stays in **`Programs/python.c`** / **`Modules/main.c`** before **`Py_FinalizeEx`** (§10). **`UefiMain`** matches 3.6.8: **`edk2_free_environ`** then return only.
 
-**Do not drop 368 on VS2022 FULL for ssl exit:** Removing **`/DPY_UEFI_MSVC_368_ENTRY=1`** from **`Python312.inf`** sends FULL through **malloc stack + `py_install_idt`**. On this hardware that **hangs inside `ShellCEntryLib`** (last boot line **`before ShellCEntryLib`**, never **`after ShellCEntryLib`**). **GCC FULL** uses that path successfully; **VS2022 FULL** still needs **368** to reach the interpreter. Fix Shell **`exit`** after **`import ssl`** with teardown/OpenSSL WIP, not by switching entry style.
+**~~Do not drop 368 on VS2022 FULL for ssl exit~~ — SUPERSEDED 2026-09-08.** This said that removing **`/DPY_UEFI_MSVC_368_ENTRY=1`** sends FULL through **malloc stack + `py_install_idt`** and **hangs inside `ShellCEntryLib`** (last line **`before ShellCEntryLib`**). The observation was right; the conclusion that VS2022 *needs* 368 was wrong. That hang was the NASM ABI mismatch plus `rsp`-relative frame access (§4 banner), and skipping `py_install_idt()`. With those fixed, **368 is removed and FULL reaches the interpreter on the 64 MB stack.**
 
 **VS2022 FULL fix (2026-08 — single-run `import ssl` Shell `exit` hang):**
 
@@ -405,7 +419,7 @@ Redeploy **both** **`Python312.efi`** and **`EFI\lib\python3.12\ssl.py`**.
 
 | Change | Role |
 |--------|------|
-| **`Python312.inf`**: keep **`/DPY_UEFI_MSVC_368_ENTRY=1`** | VS2022 FULL must boot (GCC-style entry hangs at **`ShellCEntryLib`**) |
+| ~~**`Python312.inf`**: keep **`/DPY_UEFI_MSVC_368_ENTRY=1`**~~ | *Superseded 2026-09-08 — the `ShellCEntryLib` hang was the NASM ABI mismatch, and 368 is now removed (§4)* |
 | Teardown above | MSVC **`import ssl`** parity with GCC sign-off goal |
 | **`OPENSSL_cleanup()`** no-op on **`OPENSSL_SYS_UEFI`** | Avoid stop handlers if anything calls cleanup after **`import ssl`** |
 
@@ -417,7 +431,7 @@ Python312.efi -S -c "import ssl; print('ok')"
 
 At **`Shell>`**, type **`exit`**. Must return to firmware without hang.
 
-If boot hangs **before** banner with the GCC-style entry, re-add **`/DPY_UEFI_MSVC_368_ENTRY=1`** to **`Python312.inf`** (required for VS2022 FULL boot today).
+If boot hangs at **`before ShellCEntryLib`**, check that **`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`** is present in the INF — without it **`edk2_switch_stack`** sets **`rsp`** from garbage. (Historically the advice here was to re-add **`/DPY_UEFI_MSVC_368_ENTRY=1`**; that flag no longer exists.)
 
 ---
 
@@ -425,7 +439,7 @@ If boot hangs **before** banner with the GCC-style entry, re-add **`/DPY_UEFI_MS
 
 > **Runnable procedure:** [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) consolidates MIN / FULL / REPL for **both** toolchains with expected values and failure signatures. This section remains the source for **ordering and rationale**.
 
-**Entry:** **MIN** and **FULL** use **`PY_UEFI_MSVC_368_ENTRY`** on VS2022. GCC-style stack + IDT is for **GCC FULL** only until MSVC entry parity is fixed.
+**Entry:** since 2026-09-08 **MIN** and **FULL** on VS2022 take the **same `edk2_switch_stack` path as GCC** (64 MB), with **`py_install_idt()` skipped** under MSVC. **FULL is signed off on hardware; MIN has not been re-tested on this path.**
 
 ### MIN (default DSC)
 
@@ -478,7 +492,7 @@ Confirm REPL teardown and relaunch again (no regression vs MIN).
 | [`Lib/site.py`](./Python-3.12.13/Lib/site.py) | UEFI: skip **`enablerlcompleter`** |
 | [`PyMod-3.12.13/efi/src/edk2console.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2console.c) | Detach readline; ConIn **`CloseProtocol`** |
 | [`Modules/main.c`](./Python-3.12.13/Modules/main.c) | UEFI: detach readline before **`Py_FinalizeEx`** |
-| [`PyMod-3.12.13/efi/src/edk2main.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) | **`UefiMain`**, 368-style MSVC path |
+| [`PyMod-3.12.13/efi/src/edk2main.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) | **`UefiMain`**, stack switch, **`PyOS_CheckStack`** |
 | [`PyMod-3.12.13/efi/src/msvc_chkstk.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/msvc_chkstk.c) | MIN **`__chkstk`** |
 | [`StdLib/LibC/Main/Main.c`](../../StdLib/LibC/Main/Main.c) | **`ShellAppMain`** boot **`Print`** |
 | [`PyMod-3.12.13/Tools/build/generate_global_objects.py`](./Python-3.12.13/PyMod-3.12.13/Tools/build/generate_global_objects.py) | Global **`_Py_ID`** / unicode init headers |

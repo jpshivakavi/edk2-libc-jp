@@ -31,8 +31,15 @@ EDK does **not** allow `!if $(BUILD_PYTHON312_FULL)` inside INF `[BuildOptions]`
 | Item | Why |
 |------|-----|
 | **`PyMod-3.12.13/efi/src/msvc_chkstk.c`** \| MSFT | **`__chkstk`** for libmpdec; FULL gets it from **`libffi_msvc/ffi.c`** |
-| **`/DPY_UEFI_MSVC_368_ENTRY=1`** | **`ShellCEntryLib`** on Shell stack (no **`edk2_switch_stack`** / IDT) — required for VS2022 runtime today |
 | **`/DPY_UEFI_BOOT_TRACE=1`** | Optional firmware **`Print()`** ladder; remove when V6 smoke is done |
+| **`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`** | **Required.** NASM helpers take arguments in **`rcx`/`rdx`** under MSVC, not **`rdi`/`rsi`**; without it **`edk2_switch_stack`** sets **`rsp`** from garbage and boot stops at **`before ShellCEntryLib`** |
+
+> **MIN has not been re-tested since VS2022 moved onto the 64 MB stack (2026-09-08).**
+> **`/DPY_UEFI_MSVC_368_ENTRY=1`** was removed from `Python312_MIN.inf` together with its branch in
+> `edk2main.c`, so MIN now takes the switched path too. **FULL is signed off on hardware; MIN is
+> not.** Re-run [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §2 and §4 on a MIN image —
+> including a deep import such as `import json` at the prompt, then `exit()`, then Shell `exit`.
+> Boot stopping at **`before ShellCEntryLib`** means the NASM flag above is missing.
 
 Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md).
 
@@ -85,7 +92,7 @@ Build\AppPkg\NOOPT_VS2022\X64\edk2-libc-jp-vsfix\...\Python312_MIN\DEBUG\Python3
 build -t VS2022 -a X64 -b NOOPT -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
 
-Add **`/DPY_UEFI_MSVC_368_ENTRY=1`** (and optional **`/DPY_UEFI_BOOT_TRACE=1`**) to **`Python312.inf`** MSFT flags — **same as MIN** (done in tree).
+Optional **`/DPY_UEFI_BOOT_TRACE=1`** is on **`Python312.inf`** MSFT flags — **same as MIN** (done in tree). **`/DPY_UEFI_MSVC_368_ENTRY=1`** used to be required here and was removed 2026-09-08.
 
 ---
 
@@ -132,4 +139,4 @@ FULL on GCC:
 build ... -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
 
-GCC keeps the **`UefiMain` + stack switch + IDT** path; **`PY_UEFI_MSVC_368_ENTRY`** is MSVC-only.
+Both toolchains now use the **`UefiMain` + stack switch** path; only the **custom IDT** remains GCC-only (**`PY_UEFI_MSVC_IDT`** opts MSVC in, untested).

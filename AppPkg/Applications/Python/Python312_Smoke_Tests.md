@@ -133,11 +133,12 @@ Python312.efi -S -I
 **`py312_uefi_reentry_cleanup enter`**, means the previous interpreter never finalized —
 record that separately from a Shell `exit` hang (runtime notes §7).
 
-> **VS2022: this section only covers SHALLOW sessions.** A REPL session that performs a **deep
-> import** hangs Shell `exit` — `Python312.efi -S`, then `import json`, then `raise SystemExit`
-> reproduces it in two typed lines. Keep the lines here trivial (`1+1`, `print('x')`) when signing
-> off §4, and treat deep imports at the prompt as an open defect, not a §4 failure.
-> Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_FULL_interactive_exit_leak.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_FULL_interactive_exit_leak.md).
+> **VS2022: deep imports at the prompt are now in scope.** They used to hang Shell `exit`, so this
+> section was restricted to trivial lines. Fixed 2026-09-08 by putting VS2022 on the same 64 MB
+> stack as GCC — **`import json` at `>>>` followed by `exit()` and Shell `exit` is signed off on
+> hardware**, with no `MemoryError`. Include a deep import when signing off §4; a hang here is now
+> a regression, not a known defect.
+> Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_nasm_abi_mismatch.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_nasm_abi_mismatch.md).
 
 ---
 
@@ -351,9 +352,9 @@ flags — its presence proves nothing about whether readline is wired.
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
-| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. **ROOT CAUSE:** VS2022 sets `PY_UEFI_MSVC_368_ENTRY`, so `edk2main.c` returns before the stack switch and Python runs on the **~128 KB firmware stack**; GCC gets a **64 MB** stack. Deep import chains overflow it and corrupt memory outside the image, so teardown looks clean and only BDS hangs | same lab note, "ROOT CAUSE" |
-| `MemoryError: stack overflow` on a deep import (VS2022) | **Expected and correct** since the 2026-09-08 `PyOS_CheckStack` fix (`c3819602`) — the guard has a real bound and trips before the firmware stack is breached, so Shell `exit` stays clean on `-S -c` runs. Message is lowercase, from `Objects/object.c` | lab `2026-09-08_VS2022_FULL_stackcheck_fix` |
-| Deep import in the **interactive REPL**, then Shell `exit` hangs (VS2022) | **Open. Minimal repro: `Python312.efi -S`, `import json`, `raise SystemExit`, Shell `exit`.** Needs all three of: the overflow actually firing, the `MemoryError` being **uncaught**, and execution **continuing** afterwards. Wrapping the same import in `try`/`except` makes it clean, and so does `-c` (exits immediately). Ruled out: stack depth, the `Py_Exit()` route, leaked ConInEx, `.pyc` writes, descriptor exhaustion, `site`/`exit()`/`sys.stdin.close()`, console reads before or after the overflow, and big-but-non-overflowing imports | lab `2026-09-08_VS2022_FULL_interactive_exit_leak` |
+| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | **FIXED 2026-09-08.** VS2022 ran on the **~128 KB firmware stack** because `PY_UEFI_MSVC_368_ENTRY` returned before the stack switch; deep imports overflowed it and corrupted memory outside the image, so Python's teardown looked clean and only BDS hung. That workaround existed because `edk2_switch_stack` hung under MSVC — a **NASM ABI mismatch** plus `rsp`-relative reads of `UefiMain`'s frame. Both fixed; VS2022 now gets the same **64 MB** stack as GCC. A hang here is a **regression** | lab `2026-09-08_VS2022_nasm_abi_mismatch` |
+| `MemoryError: stack overflow` on a deep import (VS2022) | **Now a regression, not expected.** It *was* correct between the `PyOS_CheckStack` fix (`c3819602`) and the stack-switch fix: the guard traded silent corruption for a catchable error on the small stack. With 64 MB there is no overflow to catch, and `import json` / `import logging` raise nothing. If you see it, the switch is not in effect — check the `switched stack` boot trace | labs `2026-09-08_VS2022_FULL_stackcheck_fix`, `..._nasm_abi_mismatch` |
+| Deep import in the **interactive REPL**, then Shell `exit` hangs (VS2022) | **FIXED 2026-09-08**, same root cause as the row above — it was never a second defect. The long bisection (uncaught `MemoryError`, printed traceback, continued execution, REPL required) described the **trigger**; each condition was just a route to a depth 128 KB could not hold, and the REPL merely kept the process alive to touch the corrupted memory again | lab `2026-09-08_VS2022_FULL_interactive_exit_leak` (closed) |
 | Interactive session's teardown trace is missing `after Py_BytesMain` / `after main()` | Normal and expected on the `Py_Exit()` route — it longjmps straight to `ShellCEntryLib`. Use their absence as the **marker that the `Py_Exit()` route was taken** | same lab note |
 | `SyntaxError: Non-UTF-8 code starting with '\xff'` running a staged `.py` | The file is **UTF-16 with a BOM** — `0xFF` is the first BOM byte. The UEFI Shell's `edit` saves that way, and `type` still displays it correctly so it looks fine. Re-stage the file as **ASCII/UTF-8 with no BOM**; a coding declaration cannot fix it | — |
 
@@ -457,9 +458,24 @@ through `Py_RunMain()`/`main()`. The detach now also runs from `Py_FinalizeEx()`
 hardening for `PY_UEFI_PYREADLINE` builds, but it is a **no-op** for a stdio REPL because
 `console_in` is NULL there, so it does not fix this.
 
-**Do not lower `PY_UEFI_FIRMWARE_STACK_BUDGET`.** The high-water measurement shows `import re`
-clears `limit` by only 6 240 bytes, so 96 KB is nearly too tight, not too generous. The `used`
-figures are large (~90 KB for `import re`) because these are `-b NOOPT` builds.
+**RESOLVED 2026-09-08 — VS2022 now runs on the 64 MB stack, and both hangs were one defect.**
+The `PY_UEFI_MSVC_368_ENTRY` workaround was itself the bug's enabler, and it existed only because
+`edk2_switch_stack()` hung under MSVC. Two causes, both in the switch plumbing: the NASM helpers
+read their arguments from **`rdi`/`rsi`** (System V) while MSVC passes them in **`rcx`/`rdx`**, so
+`rsp` was set from garbage; and the switch moves `rsp` out from under a *running* `UefiMain`, whose
+parameters MSVC addresses **`rsp`-relative with no frame pointer** — GCC survived that only because
+`-O0` keeps `rbp`. Fixed via `PY_UEFI_MS_ABI` on `MSFT:*_*_*_NASM_FLAGS` and by reading the handles
+from `g_edk2_globals`.
+
+**Signed off on hardware:** `import json` and `import logging` on `-c`, `import json` in the REPL
+followed by `exit()` and Shell `exit`, the full §3 Phase 8 sweep, and pyreadline §5.3 and §5.4 with
+working history and Tab completion — all clean, none raising `MemoryError`. The interactive case
+was never a second defect; the ten-round bisection in the exit-leak lab note mapped the trigger
+accurately but the cause sat one layer below, in assembly never exercised on this toolchain.
+`PY_UEFI_MSVC_368_ENTRY` and `PY_UEFI_FIRMWARE_STACK_BUDGET` are both gone.
+
+**Still pending: the same sweep on the MIN build.** MIN carried `PY_UEFI_MSVC_368_ENTRY` too and now
+takes the switched path unvalidated — see [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md).
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
@@ -475,8 +491,9 @@ hang, `socket.py`/`selectors` teardown, LLP64 pointer width, deepfreeze static s
 finalize/re-entry. Still open: §2 baseline rows, itemised §4 REPL rows, and all of §5 —
 [`Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md).
 
-**Build parity does not imply runtime parity.** VS2022 enters via
-**`PY_UEFI_MSVC_368_ENTRY`** on the Shell stack while GCC uses **`edk2_switch_stack`** plus a
-custom IDT, so stack limits, deep recursion and fault behaviour can differ between the two
-images built from the **same commit**. Re-run this document on **both** toolchains after any
-shared PyMod or INF change.
+**Build parity does not imply runtime parity — though the gap is now much narrower.** Since
+2026-09-08 both toolchains take the **same entry path**: `edk2_switch_stack` onto 64 MB. One
+difference is left, and it is deliberate: **the custom IDT is still installed only under GCC**
+(`PY_UEFI_MSVC_IDT` opts MSVC in), so **fault reporting** still differs even though stack limits
+and recursion depth no longer do. Re-run this document on **both** toolchains after any shared
+PyMod or INF change.

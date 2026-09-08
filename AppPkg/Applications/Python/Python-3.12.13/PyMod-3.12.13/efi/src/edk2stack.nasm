@@ -4,9 +4,9 @@
 ;; compiler's default calling convention: System V (rdi, rsi) under GCC,
 ;; Microsoft x64 (rcx, rdx) under MSVC. Without this, an MSVC build reads its
 ;; arguments out of whatever happens to be in rdi/rsi and edk2_switch_stack
-;; sets rsp to a garbage address -- which is exactly the "VS2022 hangs inside
-;; ShellCEntryLib after the stack switch" failure that PY_UEFI_MSVC_368_ENTRY
-;; was introduced to work around.
+;; sets rsp to a garbage address -- the "VS2022 hangs inside ShellCEntryLib
+;; after the stack switch" failure that kept MSVC off the 64 MB stack until
+;; 2026-09-08.
 ;; PY_UEFI_MS_ABI is set from MSFT:*_*_*_NASM_FLAGS in the INFs, so the GCC
 ;; path keeps its existing register use untouched.
 %ifdef PY_UEFI_MS_ABI

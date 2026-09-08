@@ -255,32 +255,47 @@ Python312 boot: switched stack min_rsp=... limit=... size=...
 |------|----------|--------|
 | `-S -c "import json; print('ok')"` | `ok`, clean `exit` | **PASS** |
 | **REPL `import json`**, exit console, Shell `exit` | no `MemoryError`, no hang — **the original defect** | **PASS** |
-| `-S -c "import logging; print('ok')"` | `ok`, clean `exit` | pending |
-| Phase 8 sweep (smoke doc §3) | unchanged, all pass | pending |
-| §4 REPL and teardown, incl. **relaunch** | unchanged | pending |
-| pyreadline §5.3 / §5.4 | `Readline True`; interactive editing works | pending |
-| `switched stack` trace line | `min_rsp` far above `limit`, `used` ≪ 64 MB | pending |
+| `-S -c "import logging; print('ok')"` | `ok`, clean `exit` | **PASS** |
+| Phase 8 sweep (smoke doc §3) | unchanged, all pass | **PASS** |
+| pyreadline §5.3 | `Readline True`, clean `exit` | **PASS** |
+| pyreadline §5.4 | up-arrow history, Tab completion, clean `exit` | **PASS** |
+| `switched stack` trace line | `min_rsp` far above `limit`, depth ≪ 64 MB | not yet read |
 
-## Once the sweep passes — retirement list
+**Sweep green — the switch is now the default for MSVC.** `PY_UEFI_MSVC_STACK_SWITCH` and
+`PY_UEFI_MSVC_368_ENTRY` are both gone; the MSVC-specific pieces are keyed on plain `_MSC_VER`.
 
-Make `PY_UEFI_MSVC_STACK_SWITCH` the default for X64 MSVC and then remove, in this order:
+The retired configuration is **bit-identical to what was signed off**: the old guard was
+`#if defined(PY_UEFI_MSVC_368_ENTRY) && !defined(PY_UEFI_MSVC_STACK_SWITCH)`, and the validated
+build defined *both*, so the 368 branch was already dead in the tested image. Removing it changes
+no generated code.
 
-1. `PY_UEFI_MSVC_368_ENTRY` from both INFs, and its branch in `edk2main.c`
-2. `PY_UEFI_FIRMWARE_STACK_BUDGET` — dead once `stack_limit` comes from the real allocated base
-   rather than a guessed budget measured down from entry `rsp`
-3. the *"`MemoryError: stack overflow` is expected"* rows in `Python312_Smoke_Tests.md` §6
-4. the §4 warning that the VS2022 REPL sign-off covers shallow sessions only
-5. the "VS2022 runs on the firmware stack / GCC gets 64 MB" deviation in
-   `Python312_VS2022_GCC_Toolchain_Deviations.md` §11.1 — both toolchains would finally share one
-   entry path, which also narrows "build parity does not imply runtime parity" considerably
+## Removed
 
-**Also worth revisiting separately:** `py_install_idt()` is still skipped on this path
-(`PY_UEFI_MSVC_IDT` re-enables it). Now that the `idtr` helpers have the right ABI it may work, and
-it would restore fault reporting on VS2022 — but it is a separate change with its own boot risk and
-should not ride along with this one.
+1. `PY_UEFI_MSVC_368_ENTRY` — both INFs and its branch in `edk2main.c`
+2. `PY_UEFI_MSVC_STACK_SWITCH` — the opt-in gate, now unconditional under `_MSC_VER`
+3. `PY_UEFI_FIRMWARE_STACK_BUDGET` — dead: `stack_limit` derives from the real allocated base
+   instead of a budget guessed down from entry `rsp`
+4. `g_edk2_globals.stack_entry_rsp` — only the 368 high-water print used it
+5. the *"`MemoryError: stack overflow` is expected"* rows, the §4 shallow-sessions-only warning,
+   and the firmware-stack deviation in `..._Toolchain_Deviations.md` §11.1
 
-And the GCC alignment expression, `stack + (stack % 512)`, is still wrong. It should become the
-same round-up the MSVC path uses, with a GCC re-test.
+## Still open
+
+**MIN is untested on this path.** It carried `PY_UEFI_MSVC_368_ENTRY` too, so removing the branch
+moved MIN onto the switched stack without a hardware run. Only FULL was swept. Flagged in
+`Python312_VS2022_MIN_Build.md`.
+
+**The IDT is still skipped under MSVC** (`PY_UEFI_MSVC_IDT` opts in). The `idtr` helpers now have
+the right ABI so it may work, and it would restore fault reporting — but the sweep was signed off
+with it off, and it carries its own boot risk. Separate change.
+
+**The GCC alignment expression is still wrong.** `stack + (stack % 512)` offsets by an arbitrary
+amount rather than aligning; it should become the same round-up the MSVC path uses, with a GCC
+re-test. Harmless today only because GCC has never faulted on it.
+
+**`edk2_alloc_environ()` is called twice**, at `:200` and `:209`. Pre-existing — GCC has always run
+both — but MSVC now does too, where the early return used to skip the second. Left alone
+deliberately: both signed-off images are built this way.
 
 ### Acceptance tests
 
