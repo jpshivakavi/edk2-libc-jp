@@ -55,6 +55,10 @@ typedef struct _edk2_globals {
    uint64_t stack_limit;
    /* rsp sampled at UefiMain entry, i.e. near the top of the firmware stack. */
    uint64_t stack_entry_rsp;
+   /* ShellCEntryLib's return value, parked here across the stack switch on the
+    * PY_UEFI_MSVC_STACK_SWITCH path because UefiMain's own locals are not
+    * addressable while rsp points at the switched stack under MSVC. */
+   EFI_STATUS switch_status;
    /* Deepest (lowest) rsp PyOS_CheckStack() ever observed. Sampled, so it
     * under-reports the true peak, but it brackets the firmware stack base:
     * a value from a run that exits cleanly lies above the base, one from a run

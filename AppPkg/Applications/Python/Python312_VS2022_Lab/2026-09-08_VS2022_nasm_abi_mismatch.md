@@ -139,6 +139,55 @@ Python312 boot: before ShellCEntryLib
 If boot stops at `before ShellCEntryLib`, the switch still fails and the ABI fix was not the whole
 story — revert the flag, no harm done.
 
+---
+
+## Attempt 1 on hardware: the ABI fix works, but `ShellCEntryLib` hangs
+
+```text
+Python312: UefiMain
+Python312 boot: UefiMain enter
+Python312 boot: before switch_stack
+Python312 boot: skipping py_install_idt (MSVC stack-switch opt-in)
+Python312 boot: before ShellCEntryLib
+<stuck>
+```
+
+**The ABI fix is confirmed good.** Two trace lines printed *after* `edk2_switch_stack()` returned,
+so the switch executed, `rsp` moved to a valid address, and ordinary C code kept running on the new
+stack. Before the fix this could not have happened — `rsp` would have been garbage and the `ret`
+inside `edk2_switch_stack` would have died immediately.
+
+**Second, independent defect: `edk2_switch_stack()` moves `rsp` out from under a *running*
+function.** `UefiMain` has already executed its prologue, so its locals and spilled parameters live
+in a frame on the *old* stack:
+
+- **GCC at `-O0` keeps a frame pointer**, so those accesses go through `rbp`, which still points
+  into the old stack. It keeps working, which is why this was never noticed.
+- **MSVC x64 uses a fixed frame with `rsp`-relative addressing and no frame pointer.** After the
+  switch, `image`, `systab` and `status` resolve to the *new* stack at the old offsets — garbage.
+
+The `PY312_BOOT_PRINT` lines still worked because they pass only string literals. The very next
+statement, `ShellCEntryLib(image, systab)`, reads two of those broken parameters and hands
+`ShellCEntryLib` garbage handles. Hanging there is expected.
+
+### Fix for attempt 2
+
+Read the handles from `g_edk2_globals` — already populated well before the switch — and park the
+return value in `g_edk2_globals.switch_status`. Globals are RIP-relative, so they are unaffected by
+`rsp`. `UefiMain`'s own frame becomes addressable again after `edk2_revert_stack()`, where `status`
+is recovered from the global.
+
+Nothing else in `UefiMain` touches its frame between the switch and the revert — the only
+statements there are `PY312_BOOT_PRINT` (literals), the skipped IDT calls, the `ShellCEntryLib`
+call, and `edk2_revert_stack()` (no arguments). So this is sufficient, not just a patch over one
+symptom.
+
+**If attempt 2 gets past `before ShellCEntryLib`, the diagnosis is confirmed.** If it still hangs
+there, the remaining suspect is `edk2_switch_stack`'s frame layout itself rather than the C frame,
+and the right move is to stop hand-rolling this: EDK2 `BaseLib` provides ABI-correct
+`SwitchStack()` plus `SetJump()`/`LongJump()`, which would let the interpreter run on the new stack
+via a trampoline and return without ever moving `rsp` under a live frame.
+
 ### Acceptance tests
 
 | Test | Expected if the switch works |

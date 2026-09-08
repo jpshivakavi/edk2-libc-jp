@@ -290,7 +290,22 @@ UefiMain (
    PY312_BOOT_PRINT(L"skipping py_install_idt (MSVC stack-switch opt-in)");
 #endif
    PY312_BOOT_PRINT(L"before ShellCEntryLib");
+#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH)
+   /* edk2_switch_stack() moves rsp out from under a *running* function. GCC at
+    * -O0 keeps a frame pointer, so UefiMain's locals stay reachable through rbp
+    * into the old stack. MSVC x64 addresses locals and spilled parameters
+    * rsp-relative with no frame pointer, so after the switch `image`, `systab`
+    * and `status` all resolve into the new stack at the old offsets — garbage.
+    * Passing garbage handles to ShellCEntryLib is what hangs it.
+    *
+    * Read the handles from globals instead (already populated above) and park
+    * the result in one too; both are RIP-relative and immune to the switch.
+    * UefiMain's own frame becomes valid again after edk2_revert_stack(). */
+   g_edk2_globals.switch_status = ShellCEntryLib(g_edk2_globals.image_handle,
+                                                g_edk2_globals.system_table);
+#else
    status = ShellCEntryLib(image, systab);
+#endif
    PY312_BOOT_PRINT(L"after ShellCEntryLib");
 #if !(defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH) && \
       !defined(PY_UEFI_MSVC_IDT))
@@ -299,6 +314,10 @@ UefiMain (
    
    edk2_revert_stack();
    g_edk2_globals.stack_limit = 0;
+#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH)
+   /* Frame is addressable again now that rsp is restored. */
+   status = g_edk2_globals.switch_status;
+#endif
 
    edk2_free_environ();
    PY312_BOOT_PRINT(L"after edk2_free_environ");
