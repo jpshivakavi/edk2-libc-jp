@@ -419,7 +419,7 @@ unrelated change.**
 |--:|--------|-------|-----------------|
 | 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | **Cannot fault, by arithmetic** — see below. It is a meaningless offset, not an alignment hazard, which makes this the **lowest-priority** of the three. Correcting it still changes the address GCC runs on, so it needs a re-test |
 | 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it is **not idempotent**, so the second call **leaks the first block**. See below. | `edk2main.c` `:200` and `:209`; `efi/src/environ.c:25` | Pre-existing: GCC has always run both. MSVC now does too — the old `PY_UEFI_MSVC_368_ENTRY` early return used to skip the second. **Both signed-off images are built this way**, so deduping is a behaviour change, not a cleanup. A code comment marks it |
-| 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | The `idtr` helpers' ABI is fixed so it may now work, and it would restore **fault reporting** on VS2022 — the last real runtime deviation (§11.1). But the 2026-09-08 sweep was signed off with it off, and enabling it carries its own boot risk |
+| 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | **The code question is closed — VERIFIED WORKING on hardware 2026-09-08, see below.** It remains off by **default** as a *policy* choice, not an unknown: it buys one diagnostic line at the cost of an unrecoverable hang on fault |
 
 **#1 in detail — why it cannot fault on GCC.** The earlier wording ("harmless *so far*", "`malloc`
 returns well-aligned memory in practice") understated it: the safety is arithmetic, not luck.
@@ -444,9 +444,39 @@ NULL check. **The fix is to make the function idempotent** (free-and-rebuild, or
 `environ` is already populated) rather than to delete one call site, since which call site matters
 differs by toolchain history.
 
-**Priority, given the above:** **#3** buys the most — it restores fault reporting on VS2022 and the
-`idtr` ABI fix means it may now simply work — then **#2** (a real if small leak), then **#1**
-(cosmetic).
+**#3 in detail — VERIFIED WORKING under MSVC, 2026-09-08.** Built VS2022 FULL with
+`/DPY_UEFI_MSVC_IDT=1` on the `MSFT:*_*_*_CC_FLAGS` line and ran the full sweep.
+
+- **Install works.** Trace read `before py_install_idt` → `before ShellCEntryLib` → normal boot to
+  `before Py_BytesMain`, so `sidt`, the 4 KB IDT copy and `lidt` all succeeded with the
+  `PY_UEFI_MS_ABI` register fix. This was the only genuinely untested piece.
+- **Restore works, and no regression.** The whole §3/§4/§5 sweep passed clean, reaching the
+  `switched stack` line and exiting to firmware — which is what exercises `py_restore_idt()`, since
+  the fault test itself never returns.
+- **Fault reporting works.** `ctypes.cast(0x800000000000, POINTER(c_int))[0]` — non-canonical, so a
+  #GP independent of how firmware mapped memory — printed
+  **`Python312 boot: unhandled CPU exception 13`**. That string is reachable *only* through a
+  trampoline written by `py_install_idt()`, and `13` is the predicted vector, so both the install and
+  the vector routing are confirmed rather than inferred.
+
+**Why the port was already MSVC-ready** (worth knowing before anyone "fixes" it): `edk2excep.h`
+carries a `#pragma pack(push, 1)` MSVC struct that is byte-for-byte equivalent to the GCC bitfield
+version (both 16 bytes, identical field offsets), and `py_install_idt()` **copies the firmware's live
+IDT and patches only the three offset fields**, so the type/DPL/present bits come from the firmware's
+own valid descriptors and the packed-vs-bitfield difference never has to produce them. The trampoline
+is hand-assembled machine bytes, so it is toolchain-neutral.
+
+**Why it is still off by default — a policy call, not a defect.** `edk2_seh_try()` /
+`edk2_seh_catch()` **have no callers anywhere in the tree**, so `g_context_index` is always `-1` and
+`py_handle_exception()` always takes the unhandled branch: print, `raise(signum)`, then
+`while (exc_trap)` **spins forever**. Enabling the IDT therefore converts a fault the firmware would
+report and usually reset into one named line plus a machine that hangs until power-cycled. For a
+manufacturing image that trade is arguable, so the default was left alone. **Re-enabling is one
+token** — add `/DPY_UEFI_MSVC_IDT=1` to the `MSFT` `CC_FLAGS` in `Python312.inf`. Making faults
+*survivable* means wiring up the dead `edk2_seh_*` path, which is a separate piece of work.
+
+**Priority for what remains:** **#2** (a real if small pool leak), then **#1** (cosmetic). #3 needs
+no further investigation — only a decision.
 
 **Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
 `size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so
