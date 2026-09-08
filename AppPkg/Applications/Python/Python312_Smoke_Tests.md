@@ -533,12 +533,15 @@ parameters MSVC addresses **`rsp`-relative with no frame pointer** — GCC survi
 `-O0` keeps `rbp`. Fixed via `PY_UEFI_MS_ABI` on `MSFT:*_*_*_NASM_FLAGS` and by reading the handles
 from `g_edk2_globals`.
 
-**Signed off on hardware:** `import json` and `import logging` on `-c`, `import json` in the REPL
-followed by `exit()` and Shell `exit`, the full §3 Phase 8 sweep, and pyreadline §5.3 and §5.4 with
-working history and Tab completion — all clean, none raising `MemoryError`. The interactive case
-was never a second defect; the ten-round bisection in the exit-leak lab note mapped the trigger
-accurately but the cause sat one layer below, in assembly never exercised on this toolchain.
-`PY_UEFI_MSVC_368_ENTRY` and `PY_UEFI_FIRMWARE_STACK_BUDGET` are both gone.
+**Signed off on hardware, and re-swept on the rebuilt image** — tag
+**`python312-vs2022-full-64mb-stack-2026-09-08`**, code state **`32c63ba1`**: `import json` and
+`import logging` on `-c`, the REPL deep-import repro with both `raise SystemExit` and `exit()`, the
+full §3 Phase 8 sweep, §4 REPL plus relaunch, and pyreadline §5.3 and §5.4 with working history and
+Tab completion — all clean, **none raising `MemoryError`**. Measured depth is **39.4 KB of 64 MB**
+(§1.1). The interactive case was never a second defect; the ten-round bisection in the exit-leak
+lab note mapped the trigger accurately but the cause sat one layer below, in assembly never
+exercised on this toolchain. `PY_UEFI_MSVC_368_ENTRY` and `PY_UEFI_FIRMWARE_STACK_BUDGET` are both
+gone.
 
 **Still pending: the same sweep on the MIN build.** MIN carried `PY_UEFI_MSVC_368_ENTRY` too and now
 takes the switched path unvalidated — see [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md).

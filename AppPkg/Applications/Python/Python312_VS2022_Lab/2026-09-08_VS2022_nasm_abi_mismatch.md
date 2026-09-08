@@ -288,6 +288,24 @@ confirms the retirement — searched as UTF-16 literals:
 
 `MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI` reached both NASM files.
 
+### Full sweep re-run on the rebuilt image — ALL PASS
+
+Every test in [`Python312_Smoke_Tests.md`](../Python312_Smoke_Tests.md) was re-run against the
+`32c63ba1` build (not the earlier opt-in image) and passed: `import json` and `import logging` on
+`-c`; the REPL deep-import repro with both `raise SystemExit` and `exit()`; the §3 Phase 8 sweep
+including `ctypes.sizeof(c_void_p)` → `8` and `ssl.create_default_context()`; §4 REPL plus
+relaunch; and pyreadline §5.3 and §5.4 with working history and Tab completion. **No `MemoryError`
+anywhere, and Shell `exit` reached firmware every time.**
+
+**Pinned as tag `python312-vs2022-full-64mb-stack-2026-09-08`.** Code state `32c63ba1`; later
+commits are docs plus the index-only removal of srcprep duplicates in `6ebb5321`, so HEAD builds
+the same image.
+
+One doc bug surfaced during the sweep and is **not** a firmware fault: §5.3's
+`'edk2console' in sys.modules` returned `False` while the module list showed it loaded and
+`disable_readline` was `False`. §5.2 and §5.3 now check `disable_readline` and use the list form
+instead — see the warning in §5.3.
+
 ### Hardware: the 64 MB is real, and it quantifies the old bug
 
 ```text
