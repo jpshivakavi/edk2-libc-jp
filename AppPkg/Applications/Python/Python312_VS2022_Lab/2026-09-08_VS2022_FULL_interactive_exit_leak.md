@@ -353,9 +353,51 @@ A hang here **removes the REPL from the repro entirely** and confirms the model.
 lot: it turns this into a scripted, non-interactive test that can go in the smoke doc and be run
 unattended.
 
-If T9 hangs, split it to find which half is load-bearing — drop the `sys.excepthook(...)` line to
-test **retention alone**, or keep the `excepthook` call and `del sys.last_type, sys.last_value,
-sys.last_traceback` after it to test **printing alone**.
+### T9 result: CLEAN — so "uncaught + continue" is not sufficient either
+
+The `-c` form ran and exited cleanly. That refutes the model in the truth table above: reproducing
+`PyErr_Print()`'s handling faithfully — traceback displayed *and* pinned in `sys.last_*` — then
+continuing to run, is **not enough** outside the REPL.
+
+## Full run matrix — one pattern survives
+
+| Run | read **before** overflow | overflow | **uncaught** + printed | read **after** | Result |
+|-----|:---:|:---:|:---:|:---:|---|
+| `-c "import json"` | – | yes | yes | – | clean |
+| T2 `-c "input(); import json"` | **yes** | yes | yes | – | clean |
+| T4 `-c "import re; input()"` | – | – | – | **yes** | clean |
+| T5 `t.py` caught, then `input()` | – | yes | – | **yes** | clean |
+| T3 REPL `1+1` → `exit()` | **yes** | – | – | **yes** | clean |
+| T6 REPL `import re` → `exit()` | **yes** | – | – | **yes** | clean |
+| T8 REPL caught → `raise SystemExit` | **yes** | yes | – | **yes** | clean |
+| T9 `-c` uncaught-emulated, then `input()` | – | yes | **yes** | **yes** | clean |
+| **T7 REPL `import json` → `raise SystemExit`** | **yes** | **yes** | **yes** | **yes** | **HANG** |
+
+**T7 is the only run with all four.** The pairwise comparisons are tight:
+
+- **T7 vs T8** differ only in *uncaught* → uncaught is necessary
+- **T7 vs T9** differ only in *read before the overflow* → that is necessary too
+- **T7 vs T2** differ only in *read after / continue* → also necessary
+
+So the candidate trigger is a console read **before** an uncaught, printed stack-overflow
+`MemoryError`, and another console read **after** it. T9 lacked only the first read.
+
+### T10 — the last cell, and a possible non-REPL repro
+
+T9 plus a leading `input()`. Everything else identical:
+
+```text
+Python312.efi -S -c "a=input('a = '); exec('import sys\ntry:\n import json\nexcept MemoryError:\n i=sys.exc_info()\n sys.last_type,sys.last_value,sys.last_traceback=i\n sys.excepthook(*i)\n'); b=input('b = '); print('ok')"
+```
+
+- **Hangs** ⇒ complete **non-REPL, non-interactive-loop repro**, and the trigger is fully
+  characterised: console I/O straddling an uncaught overflow.
+- **Clean** ⇒ the four conditions are still not sufficient and something structural to
+  `PyRun_InteractiveLoop` itself is involved, not just the sequence of operations.
+
+**Also needed: did T9 print a traceback?** The `sys.excepthook(*i)` call only runs if the
+`MemoryError` actually fired. If nothing was printed, `import json` *succeeded* inside `exec`, T9
+tested nothing, and its row is void.
 
 ## Firmware-side evidence — worth collecting now
 
