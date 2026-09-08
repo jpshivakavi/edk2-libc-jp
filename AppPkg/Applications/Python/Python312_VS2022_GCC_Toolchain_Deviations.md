@@ -417,9 +417,36 @@ unrelated change.**
 
 | # | Defect | Where | Why it was left |
 |--:|--------|-------|-----------------|
-| 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | Harmless *so far* only because GCC has not faulted on it, and `malloc` returns well-aligned memory in practice. Correcting it changes the address GCC actually runs on |
-| 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after. | `edk2main.c` | Pre-existing: GCC has always run both. MSVC now does too — the old `PY_UEFI_MSVC_368_ENTRY` early return used to skip the second. **Both signed-off images are built this way**, so deduping is a behaviour change, not a cleanup. A code comment marks it |
+| 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | **Cannot fault, by arithmetic** — see below. It is a meaningless offset, not an alignment hazard, which makes this the **lowest-priority** of the three. Correcting it still changes the address GCC runs on, so it needs a re-test |
+| 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it is **not idempotent**, so the second call **leaks the first block**. See below. | `edk2main.c` `:200` and `:209`; `efi/src/environ.c:25` | Pre-existing: GCC has always run both. MSVC now does too — the old `PY_UEFI_MSVC_368_ENTRY` early return used to skip the second. **Both signed-off images are built this way**, so deduping is a behaviour change, not a cleanup. A code comment marks it |
 | 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | The `idtr` helpers' ABI is fixed so it may now work, and it would restore **fault reporting** on VS2022 — the last real runtime deviation (§11.1). But the 2026-09-08 sweep was signed off with it off, and enabling it carries its own boot risk |
+
+**#1 in detail — why it cannot fault on GCC.** The earlier wording ("harmless *so far*", "`malloc`
+returns well-aligned memory in practice") understated it: the safety is arithmetic, not luck.
+`malloc` returns a **16-byte-aligned** base, and 512 is a multiple of 16, so `base % 512` is *also* a
+multiple of 16 and `base + (base % 512)` stays 16-aligned. `size` (64 MB) and the `0x200` that
+`edk2_switch_stack()` subtracts are both multiples of 16, so the resulting `rsp` is 16-aligned
+regardless of what the offset came out to. **No `movaps` fault is reachable from this expression on
+either toolchain.** What it actually does is move the stack base up by an unpredictable 0–511 bytes;
+the `malloc` over-allocates by 1024, so it cannot overrun either. Real cost: it is misleading, and
+the offset is not reproducible run to run. **Treat #1 as a correctness-of-intent cleanup, not a
+latent crash.**
+
+**#2 in detail — it is a per-run pool leak, not just a redundant call.** `edk2_alloc_environ()`
+(`environ.c:25`) unconditionally `malloc`s `environ_size + environ_values_size` and assigns
+`environ = (wchar_t**)env` with **no check for an existing `environ` and no free of the previous
+one**. The second call therefore overwrites the pointer and **the first block is leaked outright**;
+`edk2_free_environ()` frees only whichever block `environ` points at last. That block holds a copy of
+every Shell environment variable, so it is a few KB, and **EFI pool memory is not reclaimed when the
+image exits** — repeated `Python312.efi` invocations accumulate one leak each until reboot. Relevant
+where the Shell runs the interpreter many times per boot. `malloc`'s result is also `memset` with no
+NULL check. **The fix is to make the function idempotent** (free-and-rebuild, or return early when
+`environ` is already populated) rather than to delete one call site, since which call site matters
+differs by toolchain history.
+
+**Priority, given the above:** **#3** buys the most — it restores fault reporting on VS2022 and the
+`idtr` ABI fix means it may now simply work — then **#2** (a real if small leak), then **#1**
+(cosmetic).
 
 **Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
 `size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so
