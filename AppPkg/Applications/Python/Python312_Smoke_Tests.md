@@ -65,6 +65,31 @@ teardown hung, so a run that stops at `Shell>` has **not** been validated.
 **Record:** toolchain, MIN/FULL, commit, and pass/fail per row. Log confirmed runs to
 [`Python312_VS2022_Lab/`](./Python312_VS2022_Lab/) and update Phase V6 in the migration status.
 
+### 1.1 Read the stack boot trace once per build
+
+Any run of a `PY_UEFI_BOOT_TRACE` image prints this on the way out of `UefiMain`:
+
+```text
+Python312 boot: switched stack min_rsp=<hex> limit=<hex> size=<hex>
+```
+
+| Field | Expected | Meaning if wrong |
+|-------|----------|------------------|
+| `size` | **`4000000`** (64 MB) | Not on the dedicated stack |
+| `min_rsp` | **well above** `limit` | Close to `limit` means the run nearly overflowed and passing was luck |
+| `limit` | `stack` base + 8 KB margin | — |
+
+`min_rsp` is the deepest `rsp` **sampled by `PyOS_CheckStack()`**, so it under-reports the true
+peak — treat it as a floor on headroom, not a measurement. Depth used is roughly
+`(base + size - 0x200) - min_rsp`.
+
+**Boot stopping at `before ShellCEntryLib` on VS2022** means
+**`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`** is missing from the INF: `edk2_switch_stack` then
+sets `rsp` from whatever is in `rdi`/`rsi`. See deviations §11.1.
+
+**Not yet read on hardware** as of 2026-09-08 — the line was added with the stack fix, after the
+sweep was run. Record it on the next rebuild.
+
 ---
 
 ## 2. MIN smoke

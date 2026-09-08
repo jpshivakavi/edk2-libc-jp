@@ -365,6 +365,8 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 3. Default stdio **`Python312.efi -S`** (no pyreadline) + teardown — **GCC** + **VS2022** FULL **pass** 2026-09-01.
 4. Optional pyreadline: **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **GCC pass** 2026-09-01; document in migration **§ UEFI REPL / pyreadline**.
 5. Re-run after shared PyMod/INF edits.
+6. **Mandatory before touching either item in §11.8** — both are on the shared entry path that GCC
+   has been signed off with, so a "cleanup" there is a GCC regression risk, not a no-op.
 
 ### 11.6 FULL **`import ssl`** / Shell **`exit`** — GCC reference vs VS2022 hang
 
@@ -377,7 +379,7 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 **Takeaway:** Do not treat VS2022 ssl/Shell hangs as “OpenSSL on UEFI is broken.” **GCC FULL is the sign-off that Phase 8 + ssl can tear down.** VS2022 fix (2026-08): **`Lib/ssl/_uefi_min.py`** for **`os.name == 'uefi'`**, MSVC teardown aligned with GCC (drop skip-leak path), post-finalize OpenSSL/console handoff — see runtime notes §10.5.
 
-**Longer-term VS2022 goal:** Fix **`edk2_switch_stack`** / alignment for MSVC so FULL can use the **same entry path as GCC** (see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §4), then re-smoke **`import ssl`** without 368-only leaks.
+**~~Longer-term VS2022 goal~~ — DONE 2026-09-08.** Fix **`edk2_switch_stack`** / alignment for MSVC so FULL can use the **same entry path as GCC** (see [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §4), then re-smoke **`import ssl`** without 368-only leaks. Both done: the entry paths are converged (§11.1) and **`import ssl`** / **`create_default_context()`** pass in the 2026-09-08 Phase 8 sweep on the switched stack.
 
 ### 11.7 **`ssl.create_default_context()`** — GCC OK, VS2022 hang (OpenSSL RNG ABI)
 
@@ -407,6 +409,50 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 **Regression:** After changing NASM or **`rand_efi.c`**, re-smoke **VS2022** with **`import ssl; ssl.create_default_context(); print('ok')`** then Shell **`exit`**. **GCC** one-liner is cheap parity.
 
+### 11.8 Open latent defects on the shared entry path (as of 2026-09-08)
+
+Left deliberately unfixed when VS2022 moved onto the 64 MB stack. All three sit in code GCC has
+been signed off with, so **each needs a GCC re-test (§11.5) and none should ride along with an
+unrelated change.**
+
+| # | Defect | Where | Why it was left |
+|--:|--------|-------|-----------------|
+| 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | Harmless *so far* only because GCC has not faulted on it, and `malloc` returns well-aligned memory in practice. Correcting it changes the address GCC actually runs on |
+| 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after. | `edk2main.c` | Pre-existing: GCC has always run both. MSVC now does too — the old `PY_UEFI_MSVC_368_ENTRY` early return used to skip the second. **Both signed-off images are built this way**, so deduping is a behaviour change, not a cleanup. A code comment marks it |
+| 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | The `idtr` helpers' ABI is fixed so it may now work, and it would restore **fault reporting** on VS2022 — the last real runtime deviation (§11.1). But the 2026-09-08 sweep was signed off with it off, and enabling it carries its own boot risk |
+
+**Not yet verified:** the `switched stack min_rsp=… limit=… size=…` boot-trace line, added with the
+fix but **not read on hardware yet** — it needs a rebuild. `size` must read **`0x4000000`** (64 MB).
+If `min_rsp` sits close to `limit`, the sweep passed more narrowly than it looks and the depth
+question is still open. Procedure: [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §1.
+
+**Also unverified: the MIN build on this path.** It carried `PY_UEFI_MSVC_368_ENTRY` too, so it moved
+onto the switched stack without a hardware run — only FULL was swept.
+See [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md).
+
+#### NASM ABI audit — the same bug had already been found once and not generalised
+
+§11.7 fixed **exactly this defect class** in `rand_rdrand.nasm` on **2026-08-27**: assembly reading
+its arguments from `rdi`/`rsi` while MSVC passes them in `rcx`/`rdx`, producing an infinite stall.
+Three weeks later the identical mistake in `edk2stack.nasm` cost a ten-round bisection through
+Python-level behaviour (§11.1). **The lesson is to treat an ABI bug in one hand-written NASM file as
+a signal to audit them all**, since the symptom — a hang far from the assembly — gives no hint of
+where to look.
+
+Audit as of 2026-09-08, for hand-written NASM taking C arguments:
+
+| File | Built for | Status |
+|------|-----------|--------|
+| `PyMod-3.12.13/efi/src/edk2stack.nasm` | **both** (untagged in INF) | ABI-aware via `PY_UEFI_MS_ABI` |
+| `PyMod-3.12.13/efi/src/edk2handler.nasm` | **both** (untagged) | ABI-aware via `PY_UEFI_MS_ABI` |
+| `Modules/openssl/efi/src/rand_rdrand.nasm` | **both** | ABI-aware via `win64` (§11.7) |
+| `PyMod-3.12.13/Modules/cpu.nasm` | **MSFT only** — `cpu_gcc.s` serves GCC | Written for MS x64; no hazard |
+| `PyMod-3.12.13/Modules/cpu_ia32.nasm` | **MSFT only** — `cpu_ia32_gcc.s` serves GCC | IA32; no hazard |
+
+**Every shared NASM file is now ABI-aware.** A new one must either be split by toolchain tag, like
+`cpu.nasm`, or handle both conventions internally — anything else silently produces garbage
+arguments on one toolchain.
+
 ---
 
-*Last updated: 2026-09-01 (§1 boot trace GCC vs MSFT; GCC FULL lab on vs2022 branch).*
+*Last updated: 2026-09-08 (§11.1 entry paths converged; §11.8 open latent defects and NASM ABI audit).*
