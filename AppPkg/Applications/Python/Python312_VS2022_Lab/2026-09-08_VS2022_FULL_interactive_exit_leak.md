@@ -181,6 +181,62 @@ through **`PyOS_Readline`**, the same read path the REPL uses.
 - **T1 hangs** ⇒ reading the console is sufficient on its own; depth is irrelevant too.
 - **T1 and T2 clean but T3 hangs** ⇒ something specific to the REPL loop rather than to reading.
 
+### T1/T2/T3 result: all three CLEAN
+
+| # | Run | REPL | console read | deep import | exit route | Shell `exit` |
+|---|-----|------|--------------|-------------|-----------|--------------|
+| — | `-c "print(1+1)"` | no | no | no | normal | clean |
+| — | `-c "import sys; sys.exit(0)"` | no | no | no | `Py_Exit` | clean |
+| — | `-c "import json"` | no | no | **yes** | normal | clean |
+| T1 | `-c "s=input(...)"` | no | **before** | no | normal | clean |
+| T2 | `-c "s=input(...); import json"` | no | **before** | **yes** | normal | clean |
+| T3 | REPL `1+1` → `exit()` | **yes** | **before** | no | `Py_Exit` | clean |
+| — | REPL `import json` → `exit()` | **yes** | **before + after** | **yes** | `Py_Exit` | **HANG** |
+
+**T2 is the surprise.** It has the deep import *and* a console read *and* still exits clean, which
+eliminates "console read + deep import" as a sufficient pair. Comparing the last two rows, the
+hanging run is the only one with a **console read *after* the deep import**. Every clean run either
+read before the import or never read at all.
+
+So the current hypothesis is an **ordering** effect: whatever the deep import does to the stack (or
+to memory below it), the damage only becomes fatal once the console is driven **afterwards**.
+
+**One output still needed:** whether T2 printed `ok` or a `MemoryError` traceback. If it printed
+`ok`, `import json` *succeeded* there and T2 never exercised the deep case at all, which would
+invalidate that row and make the ordering theory premature.
+
+### Next tests — the one uncovered cell
+
+**T4 — console read after a large but non-overflowing import.** Quoting-free, and `import re`
+(42 modules, ~90 KB) is known to stay under the bound:
+
+```text
+Python312.efi -S -c "import re; s=input('t: '); print('ok', s)"
+```
+
+A hang here means the overflow is not needed at all — merely reading the console after a big
+import is enough, which would point at the firmware console path running on a stack already
+mostly consumed.
+
+**T5 — console read after the overflow.** This needs `try`/`except`, so use a staged script
+rather than fighting `-c` quoting in the Shell:
+
+```python
+try:
+    import json
+except MemoryError:
+    print('caught')
+s = input('t: ')
+print('ok', s)
+```
+
+```text
+Python312.efi -S t.py
+```
+
+This is the exact cell the matrix is missing — overflow, then a console read, on the **normal**
+exit route and outside the REPL. A hang isolates the trigger completely.
+
 ### Caveat: `min_rsp` cannot see firmware frames
 
 "Depth is ruled out" is narrower than it sounds. `stack_min_rsp` is updated **only inside
