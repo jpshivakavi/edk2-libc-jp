@@ -206,9 +206,10 @@ UefiMain (
       return EFI_OUT_OF_RESOURCES;
    }
 
-   /* Second call, and it predates the MSVC convergence: GCC has always run both.
-    * Do not dedupe without re-testing GCC — the signed-off images on both
-    * toolchains are built this way. */
+   /* Second call. Redundant — nothing between the two reads the environment —
+    * but retained because both signed-off images are built this way, so
+    * removing it is a behaviour change rather than a cleanup. It no longer
+    * leaks: edk2_alloc_environ() frees any previous block on entry. */
    edk2_alloc_environ();
 
    PY312_BOOT_PRINT(L"before switch_stack");

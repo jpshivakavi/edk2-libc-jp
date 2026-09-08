@@ -26,7 +26,15 @@ void edk2_alloc_environ()
 {
    if(g_edk2_globals.shell == NULL)
       return;
-   
+
+   /* Release any previous block first: the assignment to environ below is
+    * unconditional, so without this a second call strands the earlier
+    * allocation for the rest of the boot — EFI pool is not reclaimed when the
+    * image exits, so it would accumulate once per invocation. UefiMain calls
+    * this twice. Safe only because environ is read (posixmodule's
+    * convertenviron) long after the last call, and that copies the strings. */
+   edk2_free_environ();
+
    CONST CHAR16 *var_names = g_edk2_globals.shell->GetEnv(NULL);
    int num_vars = 0;
    size_t environ_size = 0, environ_values_size = 0;
@@ -51,6 +59,8 @@ void edk2_alloc_environ()
    
    environ_size = sizeof(wchar_t*) * num_vars;
    char *env = (char*)malloc(environ_size + environ_values_size);
+   if(env == NULL)
+      return;
    memset(env, 0, environ_size + environ_values_size);
    
    environ = (wchar_t**)env;

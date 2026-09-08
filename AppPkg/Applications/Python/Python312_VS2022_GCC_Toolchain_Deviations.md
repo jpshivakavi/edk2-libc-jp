@@ -418,7 +418,7 @@ unrelated change.**
 | # | Defect | Where | Why it was left |
 |--:|--------|-------|-----------------|
 | 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | **Cannot fault, by arithmetic** — see below. It is a meaningless offset, not an alignment hazard, which makes this the **lowest-priority** of the three. Correcting it still changes the address GCC runs on, so it needs a re-test |
-| 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it is **not idempotent**, so the second call **leaks the first block**. See below. | `edk2main.c` `:200` and `:209`; `efi/src/environ.c:25` | Pre-existing: GCC has always run both. MSVC now does too — the old `PY_UEFI_MSVC_368_ENTRY` early return used to skip the second. **Both signed-off images are built this way**, so deduping is a behaviour change, not a cleanup. A code comment marks it |
+| 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it was **not idempotent**, so the second call **leaked the first block**. | `edk2main.c` `:200` and `:212`; `efi/src/environ.c:25` | **FIXED 2026-09-08, awaiting a hardware re-test on both toolchains** — see below. The double call itself is retained deliberately |
 | 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | **The code question is closed — VERIFIED WORKING on hardware 2026-09-08, see below.** It remains off by **default** as a *policy* choice, not an unknown: it buys one diagnostic line at the cost of an unrecoverable hang on fault |
 
 **#1 in detail — why it cannot fault on GCC.** The earlier wording ("harmless *so far*", "`malloc`
@@ -435,14 +435,29 @@ latent crash.**
 **#2 in detail — it is a per-run pool leak, not just a redundant call.** `edk2_alloc_environ()`
 (`environ.c:25`) unconditionally `malloc`s `environ_size + environ_values_size` and assigns
 `environ = (wchar_t**)env` with **no check for an existing `environ` and no free of the previous
-one**. The second call therefore overwrites the pointer and **the first block is leaked outright**;
+one**. The second call therefore overwrote the pointer and **the first block was leaked outright**;
 `edk2_free_environ()` frees only whichever block `environ` points at last. That block holds a copy of
 every Shell environment variable, so it is a few KB, and **EFI pool memory is not reclaimed when the
 image exits** — repeated `Python312.efi` invocations accumulate one leak each until reboot. Relevant
 where the Shell runs the interpreter many times per boot. `malloc`'s result is also `memset` with no
-NULL check. **The fix is to make the function idempotent** (free-and-rebuild, or return early when
-`environ` is already populated) rather than to delete one call site, since which call site matters
-differs by toolchain history.
+NULL check.
+
+**Fix applied 2026-09-08 — `edk2_alloc_environ()` now calls `edk2_free_environ()` on entry**, plus a
+NULL check on the `malloc` before the `memset`. Two deliberate choices:
+
+- **Idempotent alloc, not a deleted call site.** This fixes the *class* — any future double call is
+  safe — instead of the one instance, and it preserves which block wins and when it is allocated, so
+  the final state matches the signed-off images minus the leak. Deleting the first call remains
+  available as a later cleanup; the double call is kept, with a comment, because both signed-off
+  images are built that way.
+- **Safe only because of read ordering.** `environ` is consumed by `posixmodule.c`'s
+  `convertenviron()`, which runs long after the second call and **copies** the strings into Python
+  objects rather than retaining pointers. `edk2main.c` is the only caller of either function. A
+  future caller that frees while something holds a pointer into the block would not be safe.
+
+**Needs a hardware re-test on both toolchains before the next tag.** This is `efi/src/environ.c`,
+compiled into GCC and MSVC alike — the **first shared-code change since both were signed off** — so
+per the rule at the top of this section it should not ride along with anything else.
 
 **#3 in detail — VERIFIED WORKING under MSVC, 2026-09-08.** Built VS2022 FULL with
 `/DPY_UEFI_MSVC_IDT=1` on the `MSFT:*_*_*_CC_FLAGS` line and ran the full sweep.
@@ -475,8 +490,9 @@ manufacturing image that trade is arguable, so the default was left alone. **Re-
 token** — add `/DPY_UEFI_MSVC_IDT=1` to the `MSFT` `CC_FLAGS` in `Python312.inf`. Making faults
 *survivable* means wiring up the dead `edk2_seh_*` path, which is a separate piece of work.
 
-**Priority for what remains:** **#2** (a real if small pool leak), then **#1** (cosmetic). #3 needs
-no further investigation — only a decision.
+**Status:** **#3** needs no further investigation, only a decision. **#2** is fixed and awaiting its
+re-test. **#1** is cosmetic and cannot fault, so it is the only one left that is genuinely open, and
+the least urgent.
 
 **Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
 `size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so
