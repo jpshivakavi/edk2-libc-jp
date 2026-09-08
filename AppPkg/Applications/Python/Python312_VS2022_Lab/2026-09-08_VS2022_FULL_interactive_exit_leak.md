@@ -3,10 +3,11 @@
 **Branch:** `feature/python-3.12.13-vs2022` · **Code state:** **`4cf5698a`**
 (*fix(python312): track rsp high-water mark to size the firmware stack budget*)
 **Toolchain:** **VS2022 FULL**, `-b NOOPT`, `BUILD_PYTHON312_FULL=TRUE`, `PY_UEFI_MSVC_368_ENTRY`
-**Result:** **Second, independent root cause found.** The interactive Shell-`exit` hang is **not**
-a stack overflow. `exit()` from the REPL routes through `Py_Exit()`, which never returns through
-`Py_RunMain()`, so **`edk2_console_detach_readline()` never runs** and the image exits with
-**ConInEx still open on `ConsoleInHandle`**.
+**Result:** **Confirmed:** the interactive Shell-`exit` hang is **not** a stack overflow, and the
+one measurable difference is the **exit route** — `exit()` from the REPL goes through `Py_Exit()`
+and never returns through `Py_RunMain()`.
+**Not confirmed:** *why* that matters. The first guess — a leaked ConInEx handle — is **ruled out
+by code inspection**; see *"Correction"* below. A decisive no-rebuild test is proposed at the end.
 
 **Predecessors:** [`2026-09-07_VS2022_FULL_pyreadline_hang.md`](./2026-09-07_VS2022_FULL_pyreadline_hang.md)
 (root cause of the *non-interactive* hang) ·
@@ -32,6 +33,9 @@ a stack overflow. `exit()` from the REPL routes through `Py_Exit()`, which never
 unwind), and `used` are all effectively identical. **Stack depth cannot be what distinguishes them**,
 so the previous conclusion — "the 96 KB budget is too generous" — was **wrong**.
 
+Both values also sit inside the **same 4 KB page** (`0x6A94E000`), so a page-aligned firmware stack
+base cannot lie between them. That closes the last way depth could have been the variable.
+
 ### Corollary: do not lower `PY_UEFI_FIRMWARE_STACK_BUDGET`
 
 `import re` runs clean but bottoms out only **6 240 bytes above `limit`**. The 96 KB budget is
@@ -43,7 +47,7 @@ Measuring first is what caught this.
 reuse means the import machinery's frames are far bigger than a release build's, so ~90 KB for
 `import re` is consistent rather than alarming.
 
-## Root cause: `Py_Exit()` bypasses the detach
+## Confirmed: `Py_Exit()` bypasses the `Py_RunMain()` tail
 
 Diffing the boot trace of the two `import json` runs is decisive. The non-interactive run prints:
 
@@ -83,61 +87,58 @@ detach call on the normal route lives there:
     edk2_console_detach_readline();
 ```
 
-So on the interactive route the image exits having **never called `CloseProtocol`** for
-`gEfiSimpleTextInputExProtocolGuid` on `SystemTable->ConsoleInHandle`, and never cancelled the
-getkeys timer. The open interface stays registered against an image handle that is about to
-disappear, and BDS trips over it when the Shell finally exits.
+## Correction — the leaked-ConInEx theory is dead
 
-## Why this matches every observation
+The first reading of this was "the skipped detach leaks ConInEx, and BDS trips over the stale
+interface". **Code inspection rules that out for the reported scenario.** There are only two places
+`console_in` is ever set, and neither runs here:
 
-| Observation | Explanation |
-|-------------|-------------|
-| `-S -c` clean, interactive hangs | `-c` never reads interactive input, so **ConInEx is never opened** — nothing to leak, detach or no detach |
-| REPL `exit()` returns to the Shell fine | The leak is a firmware protocol registration; Python itself is undamaged, exactly as with the stack bug |
-| Hang only at Shell `exit` into BDS | That is when the stale interface is finally touched |
-| Depths identical between clean and hanging runs | Correct — depth was never the variable on this path |
-| Teardown ladder looks flawless | `Py_FinalizeEx` really does complete; the missing work is *before* it and *after* it |
+| Site | Reached when |
+|------|--------------|
+| `edk2main.c:119` (`UefiMain`) | **Never** — the `OpenProtocol` is inside `#ifdef PY_UEFI_PYREADLINE`, and `PY_UEFI_PYREADLINE` is **not defined in any INF**; it appears only in `edk2main.c` and `Modules/main.c` |
+| `edk2console.c:128` (`edk2_console_ensure_input`) | Only from `edk2console.getkeys()` (`:227`), i.e. the **pyreadline** input hook |
 
-## Fix
+The reported session had `PY_UEFI_READLINE` **unset**, so `readline` was the stub, the REPL was
+**stdio**, `getkeys()` was never called, and `g_edk2_globals.console_in` stayed **NULL**. With
+`console_in == NULL`, `edk2_console_detach_readline()` skips `CloseProtocol` entirely and
+`drain_input` returns immediately — so **there was nothing to leak and the detach would have been a
+no-op.** It cannot be the cause.
 
-Detach from inside `Py_FinalizeEx()` instead of relying on the `Py_RunMain()` route, so every exit
-path is covered — normal return, `Py_Exit()`, and the re-entry cleanup in `Programs/python.c`.
-`edk2_console_detach_readline()` is idempotent (it guards on `console_in != NULL`, and
-`stop_timer` already reports *"already off"* when there is no timer), so the extra call on the
-normal route is harmless.
+The `pylifecycle.c` change is kept as **correct hardening** — it is genuinely needed for
+`PY_UEFI_PYREADLINE` development builds and for the pyreadline phases, where `console_in` *is*
+non-NULL and `Py_Exit()` really would leak it — but **it does not explain or fix this hang.**
 
-| File | Change |
-|------|--------|
-| `PyMod-3.12.13/Python/pylifecycle.c` | `#include "efi/edk2console_api.h"` under `UEFI_C_SOURCE`, and call `edk2_console_detach_readline()` at the `Py_FinalizeEx enter` trace point |
+## What is actually established, and what is not
 
-Both `Python312.inf:67` and `Python312_MIN.inf:67` already compile `efi/src/edk2console.c`, and
-`PyMod-3.12.13/efi/Include` is on the include path for **both** the MSFT (`:1073`) and GCC
-(`:1074`) `CC_FLAGS`, so no INF change is needed and the MIN build still links.
+**Established:** the hang tracks the **exit route**, not stack depth. `-S -c` returns normally
+through `Py_RunMain()` → `main()` → `ShellCEntryLib`; the REPL's `exit()` longjmps out of
+`Py_Exit()` straight to `ShellCEntryLib`, skipping the tails of `Py_RunMain()`, `Py_BytesMain()`
+and `main()`. `main()`'s tail is only a trace print and `return rc` (`Programs/python.c:39-40`), so
+the interesting difference is inside the C runtime's `exit()`, not in port code.
 
-## Verification
+**Not established:** whether the trigger is the `exit()`/longjmp route itself, or simply the fact
+that the session **read interactive stdin** (which the `-c` runs never do). Both changed at once in
+the reported test, so they are still confounded.
 
-Rebuild, then on hardware:
+## Decisive test — no rebuild, runs on the `4cf5698a` image
 
-```text
-Python312.efi                     -> >>> import json   (MemoryError expected)
-                                  -> >>> exit()
-                                  -> Shell> exit
-```
+`sys.exit()` inside `-c` takes the **same `Py_Exit()` route as the REPL**:
+`PyRun_SimpleStringFlags` (`Python/pythonrun.c:508`) calls `PyErr_Print()` on any exception,
+`_PyErr_PrintEx` calls `handle_system_exit` (`:773`), and that calls **`Py_Exit(exitcode)`**
+(`:777`). So the route can be exercised **shallow and non-interactively**, unconfounding it:
 
-Expected in the trace, which was **absent** before the fix:
+| | normal return | `Py_Exit()` route |
+|---|---|---|
+| **shallow** | `-c "print(1+1)"` — known clean | **`-c "import sys; sys.exit(0)"`** ← the test |
+| **deep** | `-c "import json"` — known clean | interactive `import json` — known HANG |
 
-```text
-Py_FinalizeEx enter
-edk2_console_detach_readline enter
-stop_timer: ...
-edk2_console_detach_readline leave
-```
+- **Hangs** ⇒ the `exit()`/longjmp route alone is sufficient. Depth and interactive stdin are both
+  irrelevant, and the fix belongs in what `exit()` skips versus a normal return.
+- **Clean** ⇒ the route alone is not enough; the variable is **interactive stdin use**, and the
+  next step is a shallow interactive session (`1+1`, then `exit()`) to confirm.
 
-and **Shell `exit` reaches BIOS setup with no hang**.
-
-Then re-check the routes that already worked, to prove the extra call is harmless — `import re`,
-the Phase 8 sweep, and pyreadline phases 2/3 (which should raise `MemoryError`, since
-`pyreadline/logger.py` pulls `logging`).
+Absence of `after Py_BytesMain` / `after main()` in the trace is the marker that the `Py_Exit()`
+route was actually taken, so the test is self-verifying.
 
 ## Still open after this
 

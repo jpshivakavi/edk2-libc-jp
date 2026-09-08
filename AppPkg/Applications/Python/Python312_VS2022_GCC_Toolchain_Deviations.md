@@ -268,9 +268,10 @@ EFI/stdlib/etc/
 > BIOS setup with no hang**; boot trace confirms the bound is live
 > (`rsp=6A969618 limit=6A951618 budget=18000`). The interactive REPL kept hanging, but
 > `stack_min_rsp` high-water instrumentation showed the clean and hanging runs bottom out **256
-> bytes apart** — so that was a **separate bug, not a budget problem**: REPL `exit()` routes through
-> `Py_Exit()`, skips `Py_RunMain()`, and so skipped `edk2_console_detach_readline()`, leaving
-> ConInEx open. Fixed by detaching from `Py_FinalizeEx()`. **Do not lower
+> bytes apart** — so that is a **separate bug, not a budget problem**. It tracks the **exit route**:
+> REPL `exit()` goes through `Py_Exit()` and never returns through `Py_RunMain()`/`main()`.
+> **Still open** — the leaked-ConInEx explanation was ruled out, since `PY_UEFI_PYREADLINE` is
+> undefined in every INF and `console_in` is NULL for a stdio REPL. **Do not lower
 > `PY_UEFI_FIRMWARE_STACK_BUDGET`** — `import re` clears `limit` by only 6 240 B under `-b NOOPT`,
 > so 96 KB is nearly too tight.
 > Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_FULL_stackcheck_fix.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_FULL_stackcheck_fix.md).
