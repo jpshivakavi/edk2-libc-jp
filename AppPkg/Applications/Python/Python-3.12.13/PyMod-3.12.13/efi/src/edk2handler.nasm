@@ -22,6 +22,17 @@
 extern ASM_PFX(py_error_code_flag)    ; Error code flags for exceptions
 extern ASM_PFX(py_handle_exception)
 
+;; edk2_get_idtr / edk2_set_idtr are plain C functions, not EFIAPI, so their
+;; pointer argument arrives in rdi under GCC but rcx under MSVC. See the same
+;; block in edk2stack.nasm. PY_UEFI_MS_ABI comes from MSFT:*_*_*_NASM_FLAGS.
+;; (py_common_interrupt_entry below is already MS-x64-aware where it calls
+;; py_handle_exception, per the EDK2 x64 convention.)
+%ifdef PY_UEFI_MS_ABI
+  %define ARG1 rcx
+%else
+  %define ARG1 rdi
+%endif
+
 SECTION .data
 
 DEFAULT REL
@@ -317,7 +328,7 @@ DoReturn:
 global ASM_PFX(edk2_get_idtr)
 
 ASM_PFX(edk2_get_idtr):
-        sidt [rdi+6]
+        sidt [ARG1+6]
         ret
 
 global ASM_PFX(edk2_set_idtr)
@@ -325,6 +336,6 @@ global ASM_PFX(edk2_set_idtr)
 ASM_PFX(edk2_set_idtr):
         pushf
         cli
-        lidt [rdi+6]
+        lidt [ARG1+6]
         popf
         ret

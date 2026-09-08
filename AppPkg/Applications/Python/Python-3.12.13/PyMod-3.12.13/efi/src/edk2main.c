@@ -199,10 +199,16 @@ UefiMain (
 
    edk2_alloc_environ();
 
-#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_368_ENTRY)
+#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_368_ENTRY) && \
+    !defined(PY_UEFI_MSVC_STACK_SWITCH)
    /* Python 3.6.8 AppPkg: ENTRY_POINT = ShellCEntryLib on the firmware stack
     * (no edk2_switch_stack / py_install_idt). VS2022 3.12 hang reproduces
     * inside ShellCEntryLib only after stack switch — try 368-style path. */
+   /* That hang is now explained: edk2stack.nasm read its arguments from rdi/rsi
+    * (System V) while MSVC passes them in rcx/rdx, so edk2_switch_stack set rsp
+    * from garbage. Fixed via PY_UEFI_MS_ABI in MSFT:*_*_*_NASM_FLAGS. Define
+    * PY_UEFI_MSVC_STACK_SWITCH to take the 64 MB stack path on MSVC instead of
+    * this one; it stays opt-in until validated on hardware. */
    /* No stack switch on this path, so g_edk2_globals.stack stays NULL and
     * PyOS_CheckStack() has no bound to compare against. Derive one from the
     * current rsp instead, or deep recursion silently runs off the firmware
@@ -254,19 +260,42 @@ UefiMain (
 
    PY312_BOOT_PRINT(L"before switch_stack");
 
+#if defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH)
+   /* edk2_switch_stack() leaves rsp at base+size-0x200, so base+size must be
+    * 16-byte aligned or MSVC's SSE spills (movaps) fault. Round the base *up*
+    * to 512; the malloc above over-allocates by 1024, so this cannot overrun.
+    *
+    * The GCC expression below adds (base % 512) instead, which does not align
+    * anything — it just offsets by an arbitrary amount. It is left untouched
+    * because GCC is the signed-off toolchain and changing it would invalidate
+    * that sign-off; it should be corrected separately, with a GCC re-test. */
+   uint64_t aligned_stack = ((uint64_t)g_edk2_globals.stack + 511) & ~(uint64_t)511;
+#else
    uint64_t aligned_stack = (uint64_t)g_edk2_globals.stack +
                             (((uint64_t)g_edk2_globals.stack) % 512);
+#endif
    edk2_switch_stack(aligned_stack, g_edk2_globals.stack_size);
 
    g_edk2_globals.stack_limit = (uint64_t)g_edk2_globals.stack +
                                 PY_UEFI_STACK_MARGIN;
 
+   /* The IDT is independent of the stack switch. Skip it on the MSVC opt-in
+    * path so the two can be brought up one at a time: the stack is what fixes
+    * the depth problem, the IDT only adds fault reporting. */
+#if !(defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH) && \
+      !defined(PY_UEFI_MSVC_IDT))
    PY312_BOOT_PRINT(L"before py_install_idt");
    py_install_idt();
+#else
+   PY312_BOOT_PRINT(L"skipping py_install_idt (MSVC stack-switch opt-in)");
+#endif
    PY312_BOOT_PRINT(L"before ShellCEntryLib");
    status = ShellCEntryLib(image, systab);
    PY312_BOOT_PRINT(L"after ShellCEntryLib");
+#if !(defined(_MSC_VER) && defined(PY_UEFI_MSVC_STACK_SWITCH) && \
+      !defined(PY_UEFI_MSVC_IDT))
    py_restore_idt();
+#endif
    
    edk2_revert_stack();
    g_edk2_globals.stack_limit = 0;

@@ -259,8 +259,14 @@ EFI/stdlib/etc/
 >
 > **`edk2stack.nasm` / `edk2handler.nasm` are not toolchain-tagged** (`Python312.inf:62,69`), so
 > `edk2_switch_stack` is already compiled into the VS2022 image — the assembly is not the blocker.
-> The cheapest candidate fix is to **switch the stack but skip `py_install_idt()`** on MSVC, since
-> the two are independent calls (`:228` and `:231`) that the existing comments blame as a pair.
+> **ROOT ENABLER, 2026-09-08: the VS2022 stack switch never worked because the NASM uses the
+> System V ABI.** `edk2_switch_stack`, `edk2_get_idtr` and `edk2_set_idtr` read their arguments
+> from `rdi`/`rsi`, but their C prototypes are plain (non-`EFIAPI`) functions, so **MSVC passes
+> them in `rcx`/`rdx`** — the switch set `rsp` from garbage. That is the "hangs inside
+> `ShellCEntryLib`" failure, and it explains why the switch and the IDT seemed to fail *as a pair*:
+> one root cause. Fixed with ABI-aware NASM behind `MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`
+> (**GCC codegen unchanged**); the 64 MB path is opt-in via `PY_UEFI_MSVC_STACK_SWITCH`.
+> Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_nasm_abi_mismatch.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_nasm_abi_mismatch.md).
 > Full analysis: [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
 >
 > **Partially fixed 2026-09-08 (safety, not capability) — hardware result mixed @ `c3819602`.**
