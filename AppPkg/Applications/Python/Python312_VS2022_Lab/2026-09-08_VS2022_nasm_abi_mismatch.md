@@ -259,7 +259,7 @@ Python312 boot: switched stack min_rsp=... limit=... size=...
 | Phase 8 sweep (smoke doc §3) | unchanged, all pass | **PASS** |
 | pyreadline §5.3 | `Readline True`, clean `exit` | **PASS** |
 | pyreadline §5.4 | up-arrow history, Tab completion, clean `exit` | **PASS** |
-| `switched stack` trace line | `min_rsp` far above `limit`, depth ≪ 64 MB | not yet read |
+| `switched stack` trace line | `min_rsp` far above `limit`, depth ≪ 64 MB | **PASS — 39.4 KB of 64 MB (0.06 %)** |
 
 **Sweep green — the switch is now the default for MSVC.** `PY_UEFI_MSVC_STACK_SWITCH` and
 `PY_UEFI_MSVC_368_ENTRY` are both gone; the MSVC-specific pieces are keyed on plain `_MSC_VER`.
@@ -286,8 +286,29 @@ confirms the retirement — searched as UTF-16 literals:
 | `368-style` | **no** | 368 branch gone |
 | `firmware stack rsp` | **no** | firmware-budget trace gone |
 
-`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI` reached both NASM files. **Hardware sweep of this exact
-image is still pending** — the sign-off above was on the previous build.
+`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI` reached both NASM files.
+
+### Hardware: the 64 MB is real, and it quantifies the old bug
+
+```text
+Python312.efi -S -c "import sys; print(sys.version)"      -> clean, Shell exit clean
+Python312 boot: switched stack min_rsp=6486B0A8 limit=60877038 size=4000000
+```
+
+Depth used is **`0x9D90` = 40 336 B ≈ 39.4 KB**, i.e. **0.06 % of 64 MB**, with 63.95 MB of
+headroom above `limit`. Derivation and the independent confirmation that `size` really is 64 MB are
+in [`Python312_Smoke_Tests.md`](../Python312_Smoke_Tests.md) §1.1.
+
+**`import sys` — the shallowest useful run — needs 41 % of the retired 96 KB firmware budget on its
+own.** With `import re` previously measured at ~90 KB, clearing `limit` by 6 240 B, a deeper import
+on the firmware stack was arithmetically doomed. This closes the loop: the earlier note that 96 KB
+was *nearly too tight rather than too generous* was correct, and no budget tuning could have fixed
+it — only the switch could.
+
+The teardown ladder is complete and clean through `before return from UefiMain`.
+**`edk2_console_detach_readline` runs twice**, from `Modules/main.c` and again from
+`Py_FinalizeEx()` (`abab8acc`); both report `stop_timer: already off`, so it is idempotent and
+harmless, but it is redundant now that the underlying bug is understood.
 
 **Run `srcprep.py` before building.** The `efi/Include/` copies of `edk2main.h` and `edk2stack.h`
 are generated from `PyMod-3.12.13`, and a stale copy silently rebuilds against the old

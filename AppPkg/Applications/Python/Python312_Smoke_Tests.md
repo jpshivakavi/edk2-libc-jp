@@ -87,8 +87,32 @@ peak — treat it as a floor on headroom, not a measurement. Depth used is rough
 **`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`** is missing from the INF: `edk2_switch_stack` then
 sets `rsp` from whatever is in `rdi`/`rsi`. See deviations §11.1.
 
-**Not yet read on hardware** as of 2026-09-08 — the line was added with the stack fix, after the
-sweep was run. Record it on the next rebuild.
+**Reference measurement — VS2022 FULL `-b NOOPT`, `32c63ba1`, 2026-09-08:**
+
+```text
+Python312.efi -S -c "import sys; print(sys.version)"
+Python312 boot: switched stack min_rsp=6486B0A8 limit=60877038 size=4000000
+```
+
+| Derived | Value |
+|---------|-------|
+| Stack base / top | `0x60875038` / `0x64875038` |
+| `rsp` after switch (`top - 0x200`) | `0x64874E38` |
+| **Depth used** | **`0x9D90` = 40 336 B ≈ 39.4 KB** |
+| Headroom above `limit` | 63.95 MB |
+| Fraction of 64 MB used | **0.06 %** |
+
+**`size` is confirmed independently**, not just read off the line: `min_rsp` lies 63.95 MB above
+`limit`, and `min_rsp` is a real observed `rsp` on the switched stack, so the allocation must be
+~64 MB regardless of what the (screen-truncated) `size` field showed.
+
+**This is also the quantitative proof of the old root cause.** `import sys` is the *shallowest*
+useful run and it still needs **39.4 KB — 41 % of the retired 96 KB firmware budget**. Earlier
+high-water work measured `import re` at ~90 KB, clearing `limit` by only 6 240 B. So on the
+firmware stack a deeper import had no chance, and the old "do not lower
+`PY_UEFI_FIRMWARE_STACK_BUDGET`, 96 KB is nearly too tight" note was right.
+
+Depths are large because these are `-b NOOPT` builds; expect less under `RELEASE`.
 
 ---
 
