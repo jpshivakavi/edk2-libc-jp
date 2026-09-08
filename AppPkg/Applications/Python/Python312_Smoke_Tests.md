@@ -345,7 +345,7 @@ flags — its presence proves nothing about whether readline is wired.
 | `readline.rl` is `Readline` when testing defaults | `PY_UEFI_READLINE` left set from an earlier run | §5.6 — `set -d PY_UEFI_READLINE` |
 | Env set but still no line editing | Value not exact-match (`True` ≠ `true`) | §5.6 |
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
-| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. Leading suspect: **`.pyc` writes to FAT** — the package excludes `__pycache__`, so every import does a `__pycache__` mkdir + temp write + rename. Test with **`-B`** | same lab note, "The `.pyc` write path" |
+| Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. `.pyc` writing is **also ruled out** (`-B` still hangs). Leading suspect: **`obmalloc` arena count / EFI pool fragmentation**, the one mechanism that scales with module count and that no clean run tested | same lab note, "`-B` result" |
 
 ---
 
@@ -420,7 +420,15 @@ after `import logging` (both hanging). Not a descriptor limit, since `OPEN_MAX` 
 leading suspect is now **`.pyc` writing**: `create_python_pkg.sh` excludes `__pycache__`, so the
 volume ships with no bytecode and **every stdlib import does a `__pycache__` mkdir, a temp-file
 write, and a rename on FAT**. The earlier 50-cycle file test used `'rb'` and so never exercised
-that path. One flag settles it — `Python312.efi -B -S -c "import json; print('ok')"`.
+that path.
+
+**`-B` then still hung, so bytecode writing is ruled out too** — along with `__pycache__` mkdir,
+`_write_atomic` and `_os.replace`. The remaining lead is **`obmalloc` arena count / EFI pool
+fragmentation**: big objects like the 16 MB `bytearray` bypass `obmalloc` and leave one hole,
+whereas ~48 modules create tens of thousands of small objects across many arenas, leaving the
+pool fragmented for BDS. The lab note carries `memmap` comparisons (runnable before `exit`, since
+the prompt returns normally), `sys.getallocatedblocks()` measurements, and an import-free
+allocation-shape test.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.

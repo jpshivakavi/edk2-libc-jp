@@ -309,7 +309,81 @@ stall a volume teardown when the Shell exits.
 If `_os.replace` is not properly supported on this port, the `.tmp` files may also be orphaned,
 adding directory churn.
 
-### Next step — one flag settles it
+## `-B` result (2026-09-08) — bytecode writing is NOT the mechanism
+
+```text
+Python312.efi -B -S -c "import json; print('ok')"     -> ok, then Shell exit HANGS
+```
+
+`json` is unchanged and the only removed variable was the `__pycache__` write, so **`.pyc`
+writing, `__pycache__` mkdir, `_write_atomic` and `_os.replace` are all cleared.** One boot,
+hypothesis dead. (The packaging observation still stands on its own — the volume ships without
+bytecode, so every launch pays full compilation — but it is a performance note, not this bug.)
+
+### Stack depth is now unlikely, by reasoning
+
+Import nesting does **not** grow with module *count*: `json` → `json.decoder` → `re` → `enum` is
+about as deep as `re` → `enum` alone. A threshold that trips between 42 and 48 modules is a
+**cumulative** effect, and C-stack depth is not cumulative across sibling imports. Keep the probe
+in the list, but expect it to be clean.
+
+### Leading hypothesis: allocation count / pool fragmentation
+
+This is the one mechanism that scales cumulatively with module count and that **none** of the
+clean runs tested:
+
+- the 16 MB `bytearray` is a **single** large `malloc` — big objects bypass `obmalloc` entirely,
+  so it created **no arenas** and left **one** hole in the EFI pool
+- ~48 modules create **tens of thousands of small long-lived objects**, so `obmalloc` requests
+  **many separate arenas** via `AllocatePool`, scattered across the pool
+
+If the image exits without returning them, the firmware pool is left **fragmented** rather than
+merely smaller — and BDS then needs a large contiguous allocation to bring up the setup UI after
+Shell `exit`. That distinction explains why one 16 MB block is harmless while ~5 MB spread over
+many arenas is not.
+
+### Next step — get firmware-side evidence, then measure the allocator
+
+**`memmap` is the highest-value run here, because it observes the firmware directly and the hang
+does not block it** — the prompt returns fine, so run `memmap` *before* typing `exit`:
+
+```text
+memmap
+Python312.efi -S -c "import re; print('ok')"
+memmap
+Python312.efi -S -c "import json; print('ok')"
+memmap
+```
+
+Compare free-page totals and descriptor counts across the three. A clean run and a hanging run
+that differ in **fragmentation** (many more, smaller free regions) rather than in total free
+memory would confirm the hypothesis from the firmware's own accounting. `memmap` ships in the
+Debug1 profile; if this Shell lacks it, `dh` or `smbiosview` are not substitutes — skip to the
+allocator measurements below.
+
+**Quantify the allocation delta at the boundary** — the small-object analogue of the
+`len(sys.modules)` measurement, which bracketed so well:
+
+```text
+Python312.efi -S -c "import sys; print(sys.getallocatedblocks())"
+Python312.efi -S -c "import re, sys; print(sys.getallocatedblocks())"
+Python312.efi -S -c "import json, sys; print(sys.getallocatedblocks())"
+```
+
+**Then the allocation-shape test that the `bytearray` run failed to cover** — many small
+long-lived objects, zero imports:
+
+```text
+Python312.efi -S -c "x = [bytes(64) for i in range(100000)]; print('ok')"
+Python312.efi -S -c "x = [{} for i in range(100000)]; print('ok')"
+```
+
+| Result | Conclusion |
+|--------|------------|
+| either **hangs** | **Allocation count / fragmentation confirmed**, with no module involved. Fix direction becomes `obmalloc` arena behaviour against `AllocatePool` — e.g. arena size, or freeing arenas at exit |
+| both **clean** | Allocation count is **not** sufficient either, which would be a strong negative — it would mean something specific to *loading modules* (code objects, `sys.modules` growth, or the import machinery's own C state) rather than raw allocation |
+
+### Superseded plan — the `-B` test
 
 **`-B` is supported in this build** (`PyMod-3.12.13/Python/sysmodule.c:3026` maps
 `dont_write_bytecode` to `-B`), so the hypothesis can be tested with **no rebuild and no
