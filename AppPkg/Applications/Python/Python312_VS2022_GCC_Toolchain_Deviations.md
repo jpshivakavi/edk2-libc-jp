@@ -421,10 +421,25 @@ unrelated change.**
 | 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after. | `edk2main.c` | Pre-existing: GCC has always run both. MSVC now does too — the old `PY_UEFI_MSVC_368_ENTRY` early return used to skip the second. **Both signed-off images are built this way**, so deduping is a behaviour change, not a cleanup. A code comment marks it |
 | 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | The `idtr` helpers' ABI is fixed so it may now work, and it would restore **fault reporting** on VS2022 — the last real runtime deviation (§11.1). But the 2026-09-08 sweep was signed off with it off, and enabling it carries its own boot risk |
 
-**Not yet verified:** the `switched stack min_rsp=… limit=… size=…` boot-trace line, added with the
-fix but **not read on hardware yet** — it needs a rebuild. `size` must read **`0x4000000`** (64 MB).
-If `min_rsp` sits close to `limit`, the sweep passed more narrowly than it looks and the depth
-question is still open. Procedure: [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §1.
+**Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
+`size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so
+`import sys` uses **~39.4 KB, 0.06 %** of the stack. The sweep did not pass narrowly. Procedure:
+[`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §1.
+
+**GCC parity verified 2026-09-08** at `9db93ae1`, clean-tree FULL rebuild, full §3/§4/§5 sweep plus
+the `json` / `logging` deep imports and the 23/42/48/65 `sys.modules` counts — all matching VS2022,
+no `MemoryError`, every Shell `exit` clean. **The shared entry path is now signed off on both
+toolchains.** Three GCC-visible deltas were under test: the rewritten `PyOS_CheckStack()` (now trips
+at `base + PY_UEFI_STACK_MARGIN` rather than at `base`, so GCC's guard fires 8 KB earlier), a
+non-zero `stack_limit` while Python runs, and the `edk2_globals_t` layout change — the last of which
+makes a **clean rebuild mandatory**, since stale objects would read moved field offsets.
+
+**No GCC depth number exists.** `PY_UEFI_BOOT_TRACE` is defined only on the `MSFT:` flags line, so a
+stock GCC image prints no trace at all and the measurement above is VS2022-only. Getting the GCC
+equivalent means adding `-DPY_UEFI_BOOT_TRACE=1` to `GCC:*_*_*_CC_FLAGS` for a throwaway build.
+Note this also means **defect 1 below is not exonerated** by the GCC sweep: GCC passing proves only
+that `malloc` happened to return a base the mis-derived offset left usable, which is what has always
+been true.
 
 **Also unverified: the MIN build on this path.** It carried `PY_UEFI_MSVC_368_ENTRY` too, so it moved
 onto the switched stack without a hardware run — only FULL was swept.
@@ -455,4 +470,4 @@ arguments on one toolchain.
 
 ---
 
-*Last updated: 2026-09-08 (§11.1 entry paths converged; §11.8 open latent defects and NASM ABI audit).*
+*Last updated: 2026-09-08 (§11.1 entry paths converged; §11.8 open latent defects, NASM ABI audit, and GCC parity sign-off on the shared entry path).*

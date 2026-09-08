@@ -490,6 +490,43 @@ Each one-liner must be followed by Shell **`exit`** reaching firmware — that t
 
 ---
 
+## 11. Parity rebuild after a change to shared entry-path code
+
+`PyMod-3.12.13/efi/src/edk2main.c`, `edk2stack.nasm`, `edk2handler.nasm` and the `efi/Include/efi/*.h`
+headers are **compiled into both toolchains**. A change made for VS2022 can alter GCC behaviour, so
+after any commit touching them, rebuild GCC and re-sweep before trusting the GCC sign-off.
+
+**Delete the output tree first — this is the step that bites:**
+
+```bash
+rm -rf $HOME/src/edk2-py312/edk2/Build/AppPkg/NOOPT_GCC
+```
+
+`edk2_globals_t` fields have been added and removed. An incremental build that reuses one stale
+object compiled against the old header reads **moved field offsets**, which presents as random stack
+corruption at runtime rather than as a build error.
+
+Then §7 (`build`), §9 (`create_python_pkg.sh`) and the full sweep in
+[`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §3–§5. Compare against the VS2022 numbers —
+`ctypes.sizeof(c_void_p)` → `8` and `sys.modules` counts **23 / 42 / 48 / 65** for
+`-S` / `re` / `json` / `logging` are the cheapest assertions that both images import the same stdlib
+set. Any `MemoryError` is a fail: `PyOS_CheckStack()` trips at `base + PY_UEFI_STACK_MARGIN` (8 KB),
+which on a 64 MB stack with ~40 KB of measured use should be unreachable.
+
+**There is no boot trace on GCC.** `UEFI_C_SOURCE` and `PY_UEFI_BOOT_TRACE` are defined only on the
+`MSFT:*_*_*_CC_FLAGS` line, so a stock GCC image prints no `Python312 boot:` lines and no
+`switched stack min_rsp=…` measurement — do not treat their absence as a failure. To measure GCC
+stack depth, add `-DPY_UEFI_BOOT_TRACE=1` to `GCC:*_*_*_CC_FLAGS` in `Python312.inf` for a throwaway
+build and revert it before committing; `py312boot.h` is included unconditionally by `edk2main.c`, so
+this works without `UEFI_C_SOURCE`.
+
+**Signed off:** 2026-09-08 at `9db93ae1`, tag `python312-gcc-full-parity-2026-09-08` — full sweep
+green, matching VS2022. Details:
+[`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) item 25 and
+[`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) §11.8.
+
+---
+
 ## Common path mistakes
 
 1. Building with only `edk2` on `PACKAGES_PATH` (AppPkg/StdLib not found).
