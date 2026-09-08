@@ -596,12 +596,20 @@ relocated frozen/deepfreeze artifacts on **both** entry paths.
 
 **Every check guarding a known historical failure is green at this code state** — OpenSSL RNG
 hang, `socket.py`/`selectors` teardown, LLP64 pointer width, deepfreeze static strings, and
-finalize/re-entry. Still open: §2 baseline rows, itemised §4 REPL rows, and all of §5 —
+finalize/re-entry. **§5 has since been swept on both toolchains** (2026-09-08 — §5.3 and §5.4 pass
+with working history and Tab, §5.8 fault reporting confirmed on each). Still open: §2 baseline rows
+and itemised §4 REPL rows, neither of which guards a known failure —
 [`Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md`](./Python312_VS2022_Lab/2026-09-04_unified_FULL_post_pymod_smoke.md).
 
-**Build parity does not imply runtime parity — though the gap is now much narrower.** Since
-2026-09-08 both toolchains take the **same entry path**: `edk2_switch_stack` onto 64 MB. One
-difference is left, and it is deliberate: **the custom IDT is still installed only under GCC**
-(`PY_UEFI_MSVC_IDT` opts MSVC in), so **fault reporting** still differs even though stack limits
-and recursion depth no longer do. Re-run this document on **both** toolchains after any shared
-PyMod or INF change.
+**Runtime parity as of 2026-09-08 — entry path *and* fault behaviour now match.** Both toolchains
+take `edk2_switch_stack` onto 64 MB, both install the custom IDT (`PY_UEFI_MSVC_IDT` is set in both
+INFs), and both report a CPU fault as `unhandled CPU exception N rip=… cr2=…` and then spin (§5.8).
+Stack limits, recursion depth and fault reporting no longer differ.
+
+**What still differs is diagnostics, not behaviour.** `UEFI_C_SOURCE` and `PY_UEFI_BOOT_TRACE` are
+defined only on the `MSFT:` flags line, so a GCC image prints **no `Python312 boot:` ladder and no
+`switched stack` measurement**, and the `Py_FinalizeEx()` detach is not compiled into it. Do not read
+a missing trace line on GCC as a failure — see §1.1. The one remaining code difference is the GCC
+stack-alignment expression (deviations §11.8 #1), which is cosmetic and cannot fault.
+
+Re-run this document on **both** toolchains after any shared PyMod or INF change.

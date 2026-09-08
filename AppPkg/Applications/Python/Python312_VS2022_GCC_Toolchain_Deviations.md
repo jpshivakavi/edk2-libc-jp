@@ -336,10 +336,22 @@ with its branch in `edk2main.c` — see the RESOLVED banner in §11.1.
 | **Historical apppkg lab** | **`import readline`** → **pyreadline**; REPL **Tab** / line editing | Same **package layout** on stick; **VS2022** with pyreadline caused **REPL `exit()` hang**, **Shell `exit` hang**, **second launch** failures |
 | **Session 10 policy (source, both toolchains)** | **`main.c`**: skip auto **`readline`** unless **`PY_UEFI_PYREADLINE`** at **compile**; **`site.py`**: no **`enablerlcompleter`** on **`uefi`**; **`readline.py`**: stub unless shell **`PY_UEFI_READLINE=1`** | **User-verified** stdio REPL + Shell teardown; stub **`import readline`** safe |
 | **Manufacturing default UX** | Stdio **`>>>`** (like **3.6.8**) — **not** auto pyreadline | Same |
-| **GCC re-smoke 2026-09-01** | **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **pass** | **Not re-smoked** with pyreadline opt-in |
+| **GCC re-smoke 2026-09-01** | **`set PY_UEFI_READLINE 1`**, **`-S`**, **`import readline`**, history/Tab, teardown — **pass** | *(Superseded — VS2022 was un-smoked then; see the 2026-09-08 row)* |
 | **Both toolchains 2026-09-07 @ `3afa03f5`** (smoke doc §5.0 phases 1–5) | **Pass** — incl. asserted stub default (**`_ReadlineStub`**, no **`pyreadline`**/**`edk2console`** loaded) and non-interactive opt-in | **HANG reproduces** — stub phases clean, but **`import readline`** (even non-interactively) leaves Shell **`exit`** hanging. [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md) |
 
-**Takeaway:** Do **not** claim “GCC and VS2022 behave the same” for **interactive REPL with pyreadline**. **VS2022 manufacturing** stays **stdio default**. **GCC** supports **optional** pyreadline when env + **`import readline`** are used — see [`Python312_VS2022_Migration_Status.md`](./Python312_VS2022_Migration_Status.md) **§ UEFI REPL / pyreadline**.
+| **Both toolchains 2026-09-08** @ `3ec592e1` (smoke §5.3 / §5.4) | **Pass** | **PASS — the hang is gone.** Opt-in pyreadline works non-interactively and interactively, with up-arrow history and Tab completion, and Shell **`exit`** reaches firmware |
+
+**Takeaway (rewritten 2026-09-08):** the rows above are a **chronology, not a live warning**. The
+VS2022 pyreadline hang recorded on 2026-09-07 **was never a readline defect** — it was the
+System V / MS x64 NASM ABI mismatch keeping MSVC off the 64 MB stack (§11.1), and `pyreadline` was
+merely a deep enough import to hit it. With that fixed, **both toolchains now behave the same for
+interactive REPL with pyreadline**, so the old "do not claim parity here" instruction no longer
+holds.
+
+**Unchanged and unrelated to the hang:** **manufacturing default on both toolchains stays stdio.**
+`import readline` is a no-op stub unless the shell sets `PY_UEFI_READLINE=1` — that is a deliberate
+policy so a scripted run cannot inherit the console (§11.3 rows above, smoke §5.1–§5.2), not a
+workaround for a defect.
 
 **`PY_UEFI_READLINE=1` alone does not enable line editing:** REPL still uses stdio until **`import readline`** (or compile **`PY_UEFI_PYREADLINE`**). Arrow keys without import → **`SyntaxError` … U+001B**.
 

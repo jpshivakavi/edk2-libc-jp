@@ -328,7 +328,7 @@ See also:
 |-----------|--------|
 | V1–V5 workspace, pyconfig, INF MSFT flags, FULL link, Windows packaging | **Done** |
 | V6 **MIN** UEFI smoke (VS2022) | **Done** — REPL, **`exit(0)`**, Shell **`exit`**, stub **`import readline`** |
-| V6 **FULL** UEFI smoke | **Open** |
+| V6 **FULL** UEFI smoke | **Done** — 2026-09-08, **both toolchains** at `3ec592e1`: Phase 8, deep imports, REPL, pyreadline, fault reporting. Tag `python312-both-toolchains-idt-fault-report-2026-09-08`. **MIN on the switched stack is the gap that remains** |
 | V8 vendored sources on VS2022 link | **Done** (Session 6) |
 | V7 CI + Py312ReadMe VS2022 | **Partial** |
 

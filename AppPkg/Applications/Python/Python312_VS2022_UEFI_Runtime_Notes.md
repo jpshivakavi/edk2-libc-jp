@@ -320,12 +320,17 @@ Replacing only **`EFI\bin\Python312.efi`** is OK for **C-only** interpreter chan
 
 | | **GCC FULL (reference smoke)** | **VS2022 MIN (manufacturing, 2026-07-23)** |
 |--|--------------------------------|---------------------------------------------|
-| **Firmware entry** | Custom stack + IDT, then **`ShellCEntryLib`** | *As of 2026-07-23:* **`PY_UEFI_MSVC_368_ENTRY`**, Shell stack only. *Now:* same custom stack, IDT skipped (§4) |
+| **Firmware entry** | Custom stack + IDT, then **`ShellCEntryLib`** | *As of 2026-07-23:* **`PY_UEFI_MSVC_368_ENTRY`**, Shell stack only. ***Now (2026-09-08):* identical to GCC** — same 64 MB custom stack **and** the custom IDT (`PY_UEFI_MSVC_IDT` in both INFs) |
 | **REPL input (signed off)** | Historically **pyreadline** + **Tab** ([`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md) Phase 8.2) | **Stdio TTY** (`fgets` / **`PyOS_StdioReadline`**) — pyreadline **off** by default |
-| **Same git policy (Session 10)** | **`readline.py` stub**, **`site.py`** skip, **`main.c`** skip apply when **`UEFI_C_SOURCE`** / **`os.name == 'uefi'`** — **GCC stick not re-smoked** after **`3814cf9a`** | **User-verified** REPL + Shell **`exit`** + safe stub **`import readline`** |
+| **Same git policy (Session 10)** | **`readline.py` stub**, **`site.py`** skip, **`main.c`** skip apply when **`UEFI_C_SOURCE`** / **`os.name == 'uefi'`** — **re-smoked repeatedly since**, most recently 2026-09-08 @ `3ec592e1` | **User-verified** REPL + Shell **`exit`** + safe stub **`import readline`** |
 | **Docs** | [`Python312_VS2022_GCC_Toolchain_Deviations.md`](./Python312_VS2022_GCC_Toolchain_Deviations.md) **§11** | This section |
 
-**Build parity ≠ runtime parity.** VS2022 **requires** the 368 entry path and (for manufacturing) the stdio REPL / readline stub policy. Do not assume a green **GCC** pyreadline test implies **VS2022** can ship the same default without Shell teardown work.
+**Superseded 2026-09-08.** VS2022 no longer requires the 368 entry path — that flag is gone, both
+toolchains share the 64 MB stack and the custom IDT, and **VS2022 pyreadline passes** (§11.3 of the
+deviations doc), so the old warning that a green GCC pyreadline test says nothing about VS2022 no
+longer applies. The **stdio default and the `readline.py` stub stay** on both toolchains, but as
+deliberate policy — a scripted run must not inherit the console — not because VS2022 cannot handle
+the alternative.
 
 ### Default policy (production — **2026-07-23**, user-verified)
 
