@@ -269,19 +269,23 @@ console. Run with **`PY_UEFI_READLINE` unset**.
 
 ```text
 Python312.efi -S -c "import readline; print(type(readline.rl).__name__)"
-Python312.efi -S -c "import readline, sys; print('pyreadline' in sys.modules, 'edk2console' in sys.modules)"
+Python312.efi -S -c "import readline, sys; print([m for m in sys.modules if 'edk2' in m or 'pyreadline' in m])"
 Python312.efi -S -c "import readline; print(readline.rl.disable_readline, readline.get_line_buffer())"
 ```
 
 | Check | Expected (stub) |
 |-------|-----------------|
 | `type(readline.rl).__name__` | **`_ReadlineStub`** |
-| modules loaded | **`False False`** — neither `pyreadline` nor `edk2console` imported |
+| modules loaded | **`[]`** — neither `pyreadline` nor `edk2console` imported |
 | `disable_readline`, `get_line_buffer()` | **`True None`** — every API is a no-op `dummy` |
 | `hasattr(readline, 'GetOutputFile')` | **`False`** (only defined on the real path) |
 
 **`_ReadlineStub` is the pass condition.** Seeing `Readline` here means the env var leaked in
 (see §5.6) and your "default" runs are not testing the default.
+
+**The module check deliberately uses the list form, not `'x' in sys.modules`.** Here the expected
+answer *is* negative, so a boolean that can wrongly report `False` would turn a real failure into
+a silent pass — the worst direction for a safety check. See the warning in §5.3.
 
 ### 5.3 Non-interactive opt-in check — cheapest VS2022 canary
 
@@ -290,16 +294,29 @@ keys, so it is the fastest way to test the risky path:
 
 ```text
 set -v PY_UEFI_READLINE 1
-Python312.efi -S -c "import readline, sys; print(type(readline.rl).__name__, 'edk2console' in sys.modules)"
+Python312.efi -S -c "import readline; print(type(readline.rl).__name__, readline.rl.disable_readline)"
 ```
 
 **`-v` makes the variable volatile** so a forced power-cycle clears it — see §5.6.
 
 | Check | Expected |
 |-------|----------|
-| Output | **`Readline True`** |
+| Output | **`Readline False`** |
 | Shell **`exit`** afterwards | **No hang** |
 | Relaunch | Banner normal |
+
+**`disable_readline` is the value that matters, and `False` is the pass.** `readline.py` only
+reaches `import pyreadline.console.edk2` and `console.install_readline(rl.readline)` on the
+`disable_readline == False` branch, so this single boolean covers the whole real path. A
+`Readline` object with `disable_readline == True` means `Readline.__init__` fell back to
+`MockConsole` and every API is a no-op — the failure this check exists to catch.
+
+> **Do not use `'edk2console' in sys.modules` here.** It reads naturally but proved unreliable
+> from the UEFI Shell on 2026-09-08: the boolean form returned **`False`** while
+> `print([m for m in sys.modules if 'edk2' in m])` in the *same* interpreter state listed both
+> **`edk2console`** and **`pyreadline.console.edk2`**, and `disable_readline` was `False`. Root
+> cause of the disagreement is unconfirmed — likely the nested single quotes inside the `-c`
+> string. If you need the module list, use the comprehension form, which has no inner quotes.
 
 Importing real `readline` runs `console.install_readline(rl.readline)` and
 `rl.read_history_file()`, so this single command covers hook install plus the
