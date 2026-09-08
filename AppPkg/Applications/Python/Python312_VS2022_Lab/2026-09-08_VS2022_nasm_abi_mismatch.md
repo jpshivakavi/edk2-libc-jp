@@ -264,10 +264,34 @@ Python312 boot: switched stack min_rsp=... limit=... size=...
 **Sweep green — the switch is now the default for MSVC.** `PY_UEFI_MSVC_STACK_SWITCH` and
 `PY_UEFI_MSVC_368_ENTRY` are both gone; the MSVC-specific pieces are keyed on plain `_MSC_VER`.
 
-The retired configuration is **bit-identical to what was signed off**: the old guard was
-`#if defined(PY_UEFI_MSVC_368_ENTRY) && !defined(PY_UEFI_MSVC_STACK_SWITCH)`, and the validated
-build defined *both*, so the 368 branch was already dead in the tested image. Removing it changes
-no generated code.
+**The executed path is unchanged from what was signed off**, which is the claim that matters: the
+old guard was `#if defined(PY_UEFI_MSVC_368_ENTRY) && !defined(PY_UEFI_MSVC_STACK_SWITCH)`, and the
+validated build defined *both*, so the 368 branch was already `#if`-ed out of the tested image.
+
+**The binary is not identical, though.** Rebuilt at `32c63ba1` it comes out **2 560 bytes smaller**
+than the swept image — removing `stack_entry_rsp` shrinks `edk2_globals_t`, the new `switched stack`
+trace string is added, and `/ALIGN:4096` shifts section padding. So this is "same code path", not
+"same bytes", and the rebuild below is what actually validates it rather than the argument.
+
+### Rebuild at `32c63ba1` — VS2022 FULL, `-b NOOPT`
+
+Clean: **0 MSVC errors**, 2 min 40 s, `Python312.efi` **13 587 456 bytes**. The image itself
+confirms the retirement — searched as UTF-16 literals:
+
+| String | Present | Meaning |
+|--------|:-------:|---------|
+| `switched stack` | yes | new high-water trace is compiled in |
+| `skipping py_install_idt` | yes | IDT deliberately skipped under MSVC |
+| `before switch_stack` | yes | the switch is on the live path |
+| `368-style` | **no** | 368 branch gone |
+| `firmware stack rsp` | **no** | firmware-budget trace gone |
+
+`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI` reached both NASM files. **Hardware sweep of this exact
+image is still pending** — the sign-off above was on the previous build.
+
+**Run `srcprep.py` before building.** The `efi/Include/` copies of `edk2main.h` and `edk2stack.h`
+are generated from `PyMod-3.12.13`, and a stale copy silently rebuilds against the old
+`edk2_globals_t` layout and the deleted `PY_UEFI_FIRMWARE_STACK_BUDGET`.
 
 ## Removed
 
