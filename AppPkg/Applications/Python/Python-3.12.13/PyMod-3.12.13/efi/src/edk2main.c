@@ -267,8 +267,9 @@ UefiMain (
    return status;
 }
 
-/* Nonzero means "overflow imminent": callers such as _Py_CheckRecursiveCall()
- * turn that into MemoryError("Stack overflow"). */
+/* Nonzero means "overflow imminent". Callers turn that into a MemoryError:
+ * Objects/object.c raises "stack overflow" (PyObject_Repr/Str paths) and
+ * ceval.c:263 _Py_CheckRecursiveCall() raises "Stack overflow". */
 int
 PyOS_CheckStack(void)
 {

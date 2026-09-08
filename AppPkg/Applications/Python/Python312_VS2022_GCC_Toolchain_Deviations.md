@@ -263,7 +263,11 @@ EFI/stdlib/etc/
 > the two are independent calls (`:228` and `:231`) that the existing comments blame as a pair.
 > Full analysis: [`Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md`](./Python312_VS2022_Lab/2026-09-07_VS2022_FULL_pyreadline_hang.md).
 >
-> **Partially fixed 2026-09-08 (safety, not capability).** `PyOS_CheckStack()` now derives a real
+> **Partially fixed 2026-09-08 (safety, not capability) — VALIDATED ON HARDWARE @ `c3819602`.**
+> `import json` now raises `MemoryError: stack overflow` and **Shell `exit` reaches BIOS setup with
+> no hang**; boot trace confirms the bound is live (`rsp=6A969618 limit=6A951618 budget=18000`).
+> Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_FULL_stackcheck_fix.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_FULL_stackcheck_fix.md).
+> `PyOS_CheckStack()` now derives a real
 > bound on the 368 path from `rsp` at `UefiMain` entry, using the new `PY_UEFI_FIRMWARE_STACK_BUDGET`
 > (96 KB default) and `PY_UEFI_STACK_MARGIN` (8 KB) in `edk2stack.h`, stored in a new
 > `g_edk2_globals.stack_limit`. Deep imports on VS2022 should now raise
