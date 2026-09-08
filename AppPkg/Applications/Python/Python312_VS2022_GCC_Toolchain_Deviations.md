@@ -266,11 +266,13 @@ EFI/stdlib/etc/
 > **Partially fixed 2026-09-08 (safety, not capability) — hardware result mixed @ `c3819602`.**
 > Non-interactive `import json` now raises `MemoryError: stack overflow` and **Shell `exit` reaches
 > BIOS setup with no hang**; boot trace confirms the bound is live
-> (`rsp=6A969618 limit=6A951618 budget=18000`). **But the interactive REPL still hangs:**
-> `PyOS_CheckStack()` is a **sampled** guard, so the residual below `stack_limit` has to absorb the
-> worst-case unchecked excursion plus the traceback formatting, and the REPL starts deeper than
-> `-S -c` does. At a 96 KB budget on a ~128 KB stack that residual is too thin. `stack_min_rsp`
-> high-water instrumentation was added to size the budget from measurement instead of guesswork.
+> (`rsp=6A969618 limit=6A951618 budget=18000`). The interactive REPL kept hanging, but
+> `stack_min_rsp` high-water instrumentation showed the clean and hanging runs bottom out **256
+> bytes apart** — so that was a **separate bug, not a budget problem**: REPL `exit()` routes through
+> `Py_Exit()`, skips `Py_RunMain()`, and so skipped `edk2_console_detach_readline()`, leaving
+> ConInEx open. Fixed by detaching from `Py_FinalizeEx()`. **Do not lower
+> `PY_UEFI_FIRMWARE_STACK_BUDGET`** — `import re` clears `limit` by only 6 240 B under `-b NOOPT`,
+> so 96 KB is nearly too tight.
 > Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_FULL_stackcheck_fix.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_FULL_stackcheck_fix.md).
 > `PyOS_CheckStack()` now derives a real
 > bound on the 368 path from `rsp` at `UefiMain` entry, using the new `PY_UEFI_FIRMWARE_STACK_BUDGET`

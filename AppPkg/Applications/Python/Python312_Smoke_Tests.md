@@ -347,7 +347,8 @@ flags — its presence proves nothing about whether readline is wired.
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
 | Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. **ROOT CAUSE:** VS2022 sets `PY_UEFI_MSVC_368_ENTRY`, so `edk2main.c` returns before the stack switch and Python runs on the **~128 KB firmware stack**; GCC gets a **64 MB** stack. Deep import chains overflow it and corrupt memory outside the image, so teardown looks clean and only BDS hangs | same lab note, "ROOT CAUSE" |
 | `MemoryError: stack overflow` on a deep import (VS2022) | **Expected and correct** since the 2026-09-08 `PyOS_CheckStack` fix (`c3819602`) — the guard has a real bound and trips before the firmware stack is breached, so Shell `exit` stays clean on `-S -c` runs. Message is lowercase, from `Objects/object.c` | lab `2026-09-08_VS2022_FULL_stackcheck_fix` |
-| Deep import in the **interactive REPL**, then Shell `exit` hangs (VS2022) | **Known, still open** at the 96 KB budget. `PyOS_CheckStack()` is a **sampled** guard, and the REPL starts deeper and formats the traceback from that deeper context, so it overruns the residual below `limit`. Non-interactive `-S -c` is unaffected | same lab note, "Interactive REPL still hangs" |
+| Deep import in the **interactive REPL**, then Shell `exit` hangs (VS2022) | **Separate bug, fixed 2026-09-08 — not a stack overflow.** REPL `exit()` raises `SystemExit`, which routes `PyErr_Print()` → `_Py_HandleSystemExit()` → `Py_Exit()` and **never returns through `Py_RunMain()`**, so `edk2_console_detach_readline()` was skipped and the image exited with **ConInEx still open**. `-S -c` was unaffected because it never opens ConInEx. Detach now runs from `Py_FinalizeEx()` | lab `2026-09-08_VS2022_FULL_interactive_exit_leak` |
+| Interactive session's teardown trace is missing `edk2_console_detach_readline enter/leave` | The `Py_Exit()` route above. After the fix these lines appear **inside** the `Py_FinalizeEx` block; their absence means the fix is not in the image | same lab note |
 
 ---
 
@@ -441,9 +442,14 @@ the early return — so it is NULL and the check always answers "stack is fine" 
 `json` hangs where `re` does not because a package nests about two levels deeper. Fixes and a
 depth-versus-count confirmation test are in the lab note.
 
-The 2026-09-08 fix gives `PyOS_CheckStack()` a real bound and **clears the non-interactive case**,
-but it is a **sampled** guard, so it does not remove the deviation: the **interactive REPL still
-hangs** at the default 96 KB budget. Treat interactive deep imports on VS2022 as **not yet safe**.
+The 2026-09-08 fix gives `PyOS_CheckStack()` a real bound and **clears the non-interactive case**.
+The interactive REPL kept hanging for a **second, unrelated reason**: `exit()` goes through
+`Py_Exit()`, which skips `Py_RunMain()` and therefore skipped `edk2_console_detach_readline()`,
+leaving ConInEx open. The detach now runs from `Py_FinalizeEx()`, covering every exit route.
+
+**Do not lower `PY_UEFI_FIRMWARE_STACK_BUDGET`.** The high-water measurement shows `import re`
+clears `limit` by only 6 240 bytes, so 96 KB is nearly too tight, not too generous. The `used`
+figures are large (~90 KB for `import re`) because these are `-b NOOPT` builds.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.

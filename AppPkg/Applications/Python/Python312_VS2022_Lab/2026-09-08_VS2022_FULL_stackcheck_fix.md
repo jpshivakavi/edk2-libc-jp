@@ -4,9 +4,19 @@
 (*fix(python312): give PyOS_CheckStack a real bound on the MSVC 368 entry path* — the first
 code-bearing commit after **`0a674ac0`**)
 **Toolchain:** **VS2022 FULL**, `-b NOOPT`, `BUILD_PYTHON312_FULL=TRUE`, `PY_UEFI_MSVC_368_ENTRY`
-**Result:** **PARTIAL.** The **non-interactive** deep-import case now raises a clean `MemoryError`
-and Shell **`exit`** is clean. **The interactive REPL case still hangs** — see
-*"Interactive REPL still hangs"* below. The mechanism is right; the 96 KB budget is too generous.
+**Result:** **PARTIAL, and correct as far as it goes.** The **non-interactive** deep-import case
+now raises a clean `MemoryError` and Shell **`exit`** is clean. The **interactive REPL still
+hangs**, but for an **unrelated second reason** — not the budget.
+
+> **Superseded conclusion.** The *"Interactive REPL still hangs"* section below blames a too-large
+> 96 KB budget. **Measurement disproved that.** The clean and hanging runs bottom out
+> **256 bytes apart**, and `import re` clears `limit` by only **6 240 bytes** — the budget is
+> nearly too *tight*, so lowering it would have broken working imports. The real cause is that
+> REPL `exit()` goes through `Py_Exit()` and skips `edk2_console_detach_readline()`, leaving
+> ConInEx open. See
+> [`2026-09-08_VS2022_FULL_interactive_exit_leak.md`](./2026-09-08_VS2022_FULL_interactive_exit_leak.md).
+> The reasoning about `PyOS_CheckStack()` being a *sampled* guard still stands and still argues for
+> the stack switch; only the "budget is too generous" diagnosis was wrong.
 
 **Root-cause analysis this fix comes from:**
 [`2026-09-07_VS2022_FULL_pyreadline_hang.md`](./2026-09-07_VS2022_FULL_pyreadline_hang.md).
@@ -92,7 +102,7 @@ The 96 KB budget therefore trips somewhere between **4 and 6 nested imports**, w
 band where the real firmware stack was already being breached. That is a good sign: the budget is
 approximately calibrated to the hardware rather than arbitrarily tight or loose.
 
-## Interactive REPL still hangs — the budget is too generous
+## Interactive REPL still hangs — *~~the budget is too generous~~* (WRONG, see banner above)
 
 Reported the same day, same image:
 

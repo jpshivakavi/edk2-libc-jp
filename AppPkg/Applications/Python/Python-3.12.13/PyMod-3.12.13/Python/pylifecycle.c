@@ -35,6 +35,7 @@
 
 #ifdef UEFI_C_SOURCE
 #include "efi/py312boot.h"
+#include "efi/edk2console_api.h"
 #endif
 
 #if defined(__APPLE__)
@@ -1840,6 +1841,13 @@ Py_FinalizeEx(void)
 
 #ifdef UEFI_C_SOURCE
     py312_boot_print_ascii("Py_FinalizeEx enter");
+    /* Py_RunMain() detaches before calling us, but SystemExit from the REPL
+     * routes PyErr_Print() -> _Py_HandleSystemExit() -> Py_Exit(), which calls
+     * Py_FinalizeEx() and then exit() without ever returning through
+     * Py_RunMain(). Detaching here covers every exit route, otherwise an
+     * interactive session leaves ConInEx open on ConsoleInHandle against an
+     * image handle that is about to disappear. Idempotent. */
+    edk2_console_detach_readline();
 #endif
 
     // Wrap up existing "threading"-module-created, non-daemon threads.
