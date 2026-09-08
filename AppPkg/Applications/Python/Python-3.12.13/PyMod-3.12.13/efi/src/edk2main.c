@@ -233,10 +233,12 @@ UefiMain (
    g_edk2_globals.stack_limit = (uint64_t)g_edk2_globals.stack +
                                 PY_UEFI_STACK_MARGIN;
 
-   /* The IDT is independent of the stack switch, and only adds fault reporting.
-    * It is still skipped under MSVC: the full smoke sweep was signed off with
-    * it off, and the idtr helpers' ABI fix has never been exercised. Define
-    * PY_UEFI_MSVC_IDT to try it — a separate change with its own boot risk. */
+   /* The IDT is independent of the stack switch and only adds fault reporting.
+    * PY_UEFI_MSVC_IDT is set from both INFs, so MSVC now installs it like GCC
+    * always has; the #else survives for a build that drops the flag. Note the
+    * handler cannot recover — edk2_seh_try/catch have no callers — so a fault
+    * is reported and then spins. That matches GCC rather than deferring to
+    * firmware, which is the point: one entry path, one fault behaviour. */
 #if !defined(_MSC_VER) || defined(PY_UEFI_MSVC_IDT)
    PY312_BOOT_PRINT(L"before py_install_idt");
    py_install_idt();

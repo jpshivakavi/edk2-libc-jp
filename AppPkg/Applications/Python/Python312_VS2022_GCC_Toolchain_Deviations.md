@@ -419,7 +419,7 @@ unrelated change.**
 |--:|--------|-------|-----------------|
 | 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | **Cannot fault, by arithmetic** — see below. It is a meaningless offset, not an alignment hazard, which makes this the **lowest-priority** of the three. Correcting it still changes the address GCC runs on, so it needs a re-test |
 | 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it was **not idempotent**, so the second call **leaked the first block**. | `edk2main.c` `:200` and `:212`; `efi/src/environ.c:25` | **FIXED 2026-09-08, awaiting a hardware re-test on both toolchains** — see below. The double call itself is retained deliberately |
-| 3 | **No custom IDT under MSVC.** `py_install_idt()` / `py_restore_idt()` are skipped unless `PY_UEFI_MSVC_IDT` is defined. | `edk2main.c` | **The code question is closed — VERIFIED WORKING on hardware 2026-09-08, see below.** It remains off by **default** as a *policy* choice, not an unknown: it buys one diagnostic line at the cost of an unrecoverable hang on fault |
+| 3 | ~~**No custom IDT under MSVC.**~~ **CLOSED 2026-09-08** — verified working, then made the **default** via `/DPY_UEFI_MSVC_IDT=1` in **both** INFs. MSVC now installs the IDT like GCC always has. | `edk2main.c` | Was off pending proof it worked; it does (see below). Enabling it alongside the #4 fix means **both toolchains now report a fault and then spin** — one entry path, one fault behaviour |
 
 **#1 in detail — why it cannot fault on GCC.** The earlier wording ("harmless *so far*", "`malloc`
 returns well-aligned memory in practice") understated it: the safety is arithmetic, not luck.
@@ -481,14 +481,17 @@ IDT and patches only the three offset fields**, so the type/DPL/present bits com
 own valid descriptors and the packed-vs-bitfield difference never has to produce them. The trampoline
 is hand-assembled machine bytes, so it is toolchain-neutral.
 
-**Why it is still off by default — a policy call, not a defect.** `edk2_seh_try()` /
+**Now the default (2026-09-08), decided together with the #4 fix.** `edk2_seh_try()` /
 `edk2_seh_catch()` **have no callers anywhere in the tree**, so `g_context_index` is always `-1` and
-`py_handle_exception()` always takes the unhandled branch: print, `raise(signum)`, then
-`while (exc_trap)` **spins forever**. Enabling the IDT therefore converts a fault the firmware would
-report and usually reset into one named line plus a machine that hangs until power-cycled. For a
-manufacturing image that trade is arguable, so the default was left alone. **Re-enabling is one
-token** — add `/DPY_UEFI_MSVC_IDT=1` to the `MSFT` `CC_FLAGS` in `Python312.inf`. Making faults
-*survivable* means wiring up the dead `edk2_seh_*` path, which is a separate piece of work.
+`py_handle_exception()` always takes the unhandled branch: report, `raise(signum)`, then
+`while (exc_trap)` **spins forever**. Taken alone that is a poor trade — a fault the firmware would
+report and usually reset becomes one line plus a hang. **What changed the decision is that GCC has
+always behaved exactly this way**, so leaving MSVC deferring to firmware was not a safer default, it
+was a second fault behaviour to reason about. With #4 fixed, both toolchains now report the vector,
+`rip` and `cr2` and then spin, identically. `/DPY_UEFI_MSVC_IDT=1` is set in **both**
+`Python312.inf` and `Python312_MIN.inf` so the MSVC entry path does not diverge again the way
+`PY_UEFI_MSVC_368_ENTRY` did. Making faults *survivable* is separate work — it means wiring up the
+dead `edk2_seh_*` path.
 
 #### #4 — on GCC the IDT is a *silent* fault trap (found 2026-09-08)
 
@@ -510,17 +513,29 @@ dump, so the absence of *any* output means `py_handle_exception()` ran, caught t
 nothing to say before entering `while (exc_trap)`. Same input, same handler, same spin — the **only**
 difference between the two toolchains is whether the one `Print` was compiled in.
 
-**Options**, in increasing order of work: move that one `Print` out from behind
-`PY_UEFI_BOOT_TRACE` so both toolchains always report a fault; or define `PY_UEFI_BOOT_TRACE` for
-GCC too, which turns on every other boot line as a side effect; or stop spinning and let the fault
-reach firmware when there is no `edk2_seh_*` handler to recover into. **The first is the smallest and
-makes the IDT worth having on both toolchains** — a fault report is not debug tracing, and this is
-the second time the `MSFT`-only scope of that macro has hidden something (the `switched stack`
-measurement was the first).
+**FIXED 2026-09-08.** The `Print` is now unconditional — a fault report is not debug tracing, and
+the spin below it never returns, so gating it on a trace macro is what turned the fault into a silent
+hang. Rejected alternatives: defining `PY_UEFI_BOOT_TRACE` for GCC too (drags in every other boot
+line), and letting the fault reach firmware when there is no `edk2_seh_*` handler (a bigger
+behaviour change, and it would re-split the two toolchains).
 
-**Status:** **#4** is newly open and is the cheapest real improvement available. **#3** needs no
-further investigation, only a decision. **#2** is fixed and awaiting its re-test. **#1** is cosmetic
-and cannot fault, so it is the least urgent.
+**The message now carries the fault location**, which is the actual point of reporting:
+
+```text
+Python312 boot: unhandled CPU exception 13 rip=<addr> cr2=<addr>
+```
+
+`SystemContext` is safe to dereference here — `edk2handler.nasm` is a port of EDK2's own
+`ExceptionHandlerAsm.nasm` and passes a fully built `EFI_SYSTEM_CONTEXT_X64` (`mov rcx, [rbp + 8]`,
+`mov rdx, rsp`, MS x64 convention). `rip` locates the faulting instruction; `cr2` is the faulting
+address for a page fault and stale for anything else, `#GP` included.
+
+**Watch the macro's scope, not just this instance.** This is the **second** time the `MSFT`-only
+definition of `PY_UEFI_BOOT_TRACE` has hidden something from GCC — the `switched stack` measurement
+was the first. Anything that is *evidence* rather than *tracing* does not belong behind it.
+
+**Status:** **#3** and **#4** are closed. **#2** is fixed and awaiting its re-test. **#1** is
+cosmetic and cannot fault, and is now the only one still open.
 
 **Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
 `size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so

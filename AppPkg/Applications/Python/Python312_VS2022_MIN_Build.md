@@ -33,6 +33,7 @@ EDK does **not** allow `!if $(BUILD_PYTHON312_FULL)` inside INF `[BuildOptions]`
 | **`PyMod-3.12.13/efi/src/msvc_chkstk.c`** \| MSFT | **`__chkstk`** for libmpdec; FULL gets it from **`libffi_msvc/ffi.c`** |
 | **`/DPY_UEFI_BOOT_TRACE=1`** | Optional firmware **`Print()`** ladder; remove when V6 smoke is done |
 | **`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`** | **Required.** NASM helpers take arguments in **`rcx`/`rdx`** under MSVC, not **`rdi`/`rsi`**; without it **`edk2_switch_stack`** sets **`rsp`** from garbage and boot stops at **`before ShellCEntryLib`** |
+| **`/DPY_UEFI_MSVC_IDT=1`** | Installs the custom IDT under MSVC, as GCC always has. Set in **both** INFs so the MSVC entry path does not diverge the way **`PY_UEFI_MSVC_368_ENTRY`** did. A CPU fault then reports **`unhandled CPU exception N rip=… cr2=…`** and spins rather than deferring to firmware. Verified on **FULL** only |
 
 > **MIN has not been re-tested since VS2022 moved onto the 64 MB stack (2026-09-08).**
 > **`/DPY_UEFI_MSVC_368_ENTRY=1`** was removed from `Python312_MIN.inf` together with its branch in
@@ -40,6 +41,10 @@ EDK does **not** allow `!if $(BUILD_PYTHON312_FULL)` inside INF `[BuildOptions]`
 > not.** Re-run [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §2 and §4 on a MIN image —
 > including a deep import such as `import json` at the prompt, then `exit()`, then Shell `exit`.
 > Boot stopping at **`before ShellCEntryLib`** means the NASM flag above is missing.
+>
+> **Two further deltas have since landed on MIN without a hardware run:**
+> **`/DPY_UEFI_MSVC_IDT=1`** (above) and the `edk2_alloc_environ()` leak fix. Boot stopping at
+> **`before py_install_idt`** would implicate the IDT — drop that flag to isolate it.
 
 Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md).
 

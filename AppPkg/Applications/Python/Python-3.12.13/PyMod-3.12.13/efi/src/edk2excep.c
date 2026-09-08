@@ -89,9 +89,16 @@ py_handle_exception (
         break;          
     }
 
-#ifdef PY_UEFI_BOOT_TRACE
-    Print(L"Python312 boot: unhandled CPU exception %d\n", (int)InterruptType);
-#endif
+    /* Unconditional: this is the only notice anyone gets that the image took a
+     * CPU fault, and the spin below never returns, so gating it on a trace
+     * macro turns the fault into a silent hang. It was behind
+     * PY_UEFI_BOOT_TRACE, which is MSFT-only, so GCC images trapped faults and
+     * reported nothing at all. rip locates the fault; cr2 is the faulting
+     * address for a page fault and stale otherwise. */
+    Print(L"Python312 boot: unhandled CPU exception %d rip=%lx cr2=%lx\n",
+          (int)InterruptType,
+          (UINT64)SystemContext.SystemContextX64->Rip,
+          (UINT64)SystemContext.SystemContextX64->Cr2);
 
     raise(signum);
     
