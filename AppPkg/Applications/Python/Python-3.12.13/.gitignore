@@ -163,3 +163,15 @@ Python/frozen_modules/MANIFEST
 # overlaid copies cannot work here; edit and run the PyMod originals instead.
 Tools/build/fix_deepfreeze_latin1.py
 Tools/build/fix_deepfreeze_statically_allocated.py
+
+# The rest of what srcprep.py writes. Every path below is a byte-identical
+# duplicate of a PyMod-3.12.13 original, which is the only source; edit there.
+# Tracking the copies makes a plain `python srcprep.py` look like 278 edits,
+# and lets the two versions drift with the build silently preferring the copy.
+# Trees listed wholesale contain nothing but overlay output.
+/efi/
+/Modules/openssl/
+/Modules/zlib/
+/Lib/ssl/
+Tools/uefi_ssl_wrap.py
+Tools/uefi_ssl_wrap2.py
