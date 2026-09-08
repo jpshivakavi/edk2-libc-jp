@@ -327,22 +327,26 @@ now confirmed on all four rows, and the trigger is pinned to what `PyErr_Print()
 `try`/`except` does not: display the traceback and store it in `sys.last_type`/`last_value`/
 `last_traceback`, pinning the overflow's frame objects while the interpreter keeps running.
 
-**T9 — reproduce without the REPL.** This reproduces the REPL's handling faithfully in a script:
-print the traceback *and* pin it via `sys.last_*`, then keep going. Stage as `t9.py`:
+**T9 — reproduce without the REPL.** This reproduces the REPL's handling faithfully: print the
+traceback *and* pin it via `sys.last_*`, then keep going.
 
-```python
-import sys
-try:
-    import json
-except MemoryError:
-    sys.last_type, sys.last_value, sys.last_traceback = sys.exc_info()
-    sys.excepthook(sys.last_type, sys.last_value, sys.last_traceback)
-s = input('t: ')
-print('ok', s)
-```
+> **Encoding trap.** The UEFI Shell's `edit` saves files as **UTF-16 with a BOM**, and CPython
+> rejects that with `SyntaxError: Non-UTF-8 code starting with '\xff'` — `0xFF` is the first byte of
+> the UTF-16 LE BOM. `type` still displays such a file correctly, so it looks fine. A coding
+> declaration cannot rescue it; the file must be **ASCII/UTF-8 with no BOM**. Either stage
+> [`scripts/t9_uncaught_overflow.py`](./scripts/t9_uncaught_overflow.py) from Windows, or skip the
+> file with the `-c` form below.
+
+No-file form, using the same `exec` + `\n` trick as T8:
 
 ```text
-Python312.efi -S t9.py
+Python312.efi -S -c "exec('import sys\ntry:\n import json\nexcept MemoryError:\n i=sys.exc_info()\n sys.last_type,sys.last_value,sys.last_traceback=i\n sys.excepthook(*i)\n'); s=input('t = '); print('ok', s)"
+```
+
+Staged-file form:
+
+```text
+Python312.efi -S t9_uncaught_overflow.py
 ```
 
 A hang here **removes the REPL from the repro entirely** and confirms the model. That matters a
