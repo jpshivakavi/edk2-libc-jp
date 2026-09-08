@@ -133,6 +133,12 @@ Python312.efi -S -I
 **`py312_uefi_reentry_cleanup enter`**, means the previous interpreter never finalized —
 record that separately from a Shell `exit` hang (runtime notes §7).
 
+> **VS2022: this section only covers SHALLOW sessions.** A REPL session that performs a **deep
+> import** hangs Shell `exit` — `Python312.efi -S`, then `import json`, then `raise SystemExit`
+> reproduces it in two typed lines. Keep the lines here trivial (`1+1`, `print('x')`) when signing
+> off §4, and treat deep imports at the prompt as an open defect, not a §4 failure.
+> Lab: [`Python312_VS2022_Lab/2026-09-08_VS2022_FULL_interactive_exit_leak.md`](./Python312_VS2022_Lab/2026-09-08_VS2022_FULL_interactive_exit_leak.md).
+
 ---
 
 ## 5. pyreadline / readline
@@ -347,7 +353,7 @@ flags — its presence proves nothing about whether readline is wired.
 | Shell `exit` hangs after a readline run (VS2022) | **Not a readline bug.** `import logging` **alone** hangs Shell `exit` — no readline, no `edk2console`, no console I/O. pyreadline only reaches it via `pyreadline/logger.py` | lab `2026-09-07_VS2022_FULL_pyreadline_hang` |
 | Shell `exit` hangs after importing pure-Python stdlib (VS2022) | Under investigation. Threshold measured at **43–48 modules** (`len(sys.modules)`: 23 and 42 clean; 48 and 65 hang). `re`, raw heap footprint, read-only file cycles, teardown, `edk2console` and `_thread` are **all ruled out**. **ROOT CAUSE:** VS2022 sets `PY_UEFI_MSVC_368_ENTRY`, so `edk2main.c` returns before the stack switch and Python runs on the **~128 KB firmware stack**; GCC gets a **64 MB** stack. Deep import chains overflow it and corrupt memory outside the image, so teardown looks clean and only BDS hangs | same lab note, "ROOT CAUSE" |
 | `MemoryError: stack overflow` on a deep import (VS2022) | **Expected and correct** since the 2026-09-08 `PyOS_CheckStack` fix (`c3819602`) — the guard has a real bound and trips before the firmware stack is breached, so Shell `exit` stays clean on `-S -c` runs. Message is lowercase, from `Objects/object.c` | lab `2026-09-08_VS2022_FULL_stackcheck_fix` |
-| Deep import in the **interactive REPL**, then Shell `exit` hangs (VS2022) | **Open.** Ruled out: stack depth (clean and hanging runs 256 B apart, same 4 KB page), the `Py_Exit()` exit route (`-c "import sys; sys.exit(0)"` exits clean, and StdLib converges both routes), a leaked ConInEx handle, `.pyc` writes, descriptor exhaustion. **Only variable left: the run read the console via `PyOS_Readline`** — no `-c` run ever reads `stdin:` | lab `2026-09-08_VS2022_FULL_interactive_exit_leak` |
+| Deep import in the **interactive REPL**, then Shell `exit` hangs (VS2022) | **Open. Minimal repro: `Python312.efi -S`, `import json`, `raise SystemExit`, Shell `exit`.** Needs the REPL **and** a deep import — neither alone reproduces. Ruled out: stack depth, the `Py_Exit()` route, a leaked ConInEx handle, `.pyc` writes, descriptor exhaustion, `site`/`exit()`/`sys.stdin.close()`, a console read before *or* after the overflow | lab `2026-09-08_VS2022_FULL_interactive_exit_leak` |
 | Interactive session's teardown trace is missing `after Py_BytesMain` / `after main()` | Normal and expected on the `Py_Exit()` route — it longjmps straight to `ShellCEntryLib`. Use their absence as the **marker that the `Py_Exit()` route was taken** | same lab note |
 
 ---

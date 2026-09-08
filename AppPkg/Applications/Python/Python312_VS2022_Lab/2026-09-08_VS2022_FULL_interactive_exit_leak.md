@@ -235,15 +235,71 @@ Three, and they have been changing together:
    **`sys.stdin.close()`** before raising. T3 also went through that and stayed clean, so it is not
    sufficient on its own — but it has never been tested *in combination with* the deep import.
 
+### T7 result: HANGS — and it is the minimal repro
+
+```text
+Python312.efi -S
+>>> import json
+>>> raise SystemExit
+Shell> exit          -> HANG
+```
+
+**Three suspects eliminated at once:** `-S` was used, so **`site` never loaded**; therefore `exit`
+did not exist and `site.Quitter.__call__` never ran, so **`sys.stdin.close()` never happened**; and
+the extra `site` module baseline is gone. None of them are involved.
+
+**This is now the shortest known reproduction** — two typed lines under `-S`. Everything earlier in
+this note that used plain `Python312.efi` can be retired in favour of it.
+
+**Consequence for the smoke doc:** the VS2022 §4 "REPL and teardown" sign-off only covers
+**shallow** sessions. A REPL session that performs a deep import is not covered by it.
+
+### Still confounded between T7 (hang) and `-c "import json"` (clean)
+
+| Difference | T7 | `-c "import json"` |
+|---|---|---|
+| Console read by the **tokenizer** via `PyOS_Readline` | yes, twice | never |
+| Execution **continues** after the `MemoryError` | yes | no — exits immediately |
+| `sys.last_type`/`last_value`/`last_traceback` set | yes, and then **kept alive while more code runs** | set, then immediate exit |
+
+Note T5 is not a control for the third row: it **caught** the `MemoryError`, so `PyErr_Print()`
+never ran and `sys.last_*` were never set. "Uncaught overflow followed by more execution" remains
+untested outside the REPL.
+
 ### Next tests — decompose the REPL scenario
 
 | # | Steps | Isolates |
 |---|-------|----------|
 | **T6** | `Python312.efi` → `import re` → `exit()` | **Is the overflow required?** `re` is big but stays under the bound. Hang ⇒ overflow irrelevant, it is REPL + big import |
-| **T7** | `Python312.efi -S` → `import json` → `raise SystemExit` | **Is `site`/`exit()` required?** No `site`, so no `Quitter` and no `sys.stdin.close()`. Clean ⇒ one of those matters; hang ⇒ both are irrelevant |
-| **T8** | `Python312.efi` → `exec("try:\n import json\nexcept MemoryError:\n print('caught')")` → `exit()` | **Is the *uncaught* exception required?** A string literal carries the newlines, so this is one typed REPL line. Clean ⇒ traceback printing / `sys.last_*` matters |
+| ~~T7~~ | ~~`Python312.efi -S` → `import json` → `raise SystemExit`~~ | **Done — HANGS.** `site`/`exit()`/`sys.stdin.close()` all eliminated |
+| **T8** | `Python312.efi -S` → `exec("try:\n import json\nexcept MemoryError:\n print('caught')")` → `raise SystemExit` | **Is the *uncaught* exception required?** A string literal carries the newlines, so this is one typed REPL line. Clean ⇒ traceback printing / retained `sys.last_*` frames matter, not the import |
 
-T7 is the cheapest and removes the longest-standing uncontrolled variable, so run it first.
+Both now run under **`-S`** to match the T7 repro. Together they finish the decomposition:
+
+| T6 | T8 | Conclusion |
+|----|----|------------|
+| hang | — | The overflow is irrelevant; it is REPL + big import. Much easier bug |
+| clean | hang | The deep import in a REPL is enough; catching the exception changes nothing |
+| clean | clean | The **uncaught** overflow plus continued execution is required |
+
+## Firmware-side evidence — worth collecting now
+
+Proposed long ago and never run, because there was no short repro. T7 gives one, so this is now
+cheap. The Shell prompt returns normally, so `memmap` can be run **before** typing `exit`:
+
+```text
+memmap                                   (fresh boot, baseline)
+Python312.efi -S -c "import re; print('ok')"
+memmap                                   (known-clean run)
+Python312.efi -S
+>>> import json
+>>> raise SystemExit
+memmap                                   (known-hanging run, BEFORE typing exit)
+```
+
+Diff free-page totals and descriptor counts across the three. This is the first direct look at
+what the hanging run leaves behind for BDS, and unlike everything above it does not depend on
+guessing the mechanism first. Requires a Debug shell profile for `memmap`.
 
 ### Superseded tests — the one uncovered cell
 
