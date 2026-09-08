@@ -2,7 +2,12 @@
 
 **Branch:** `feature/python-3.12.13-vs2022`
 **Toolchain:** VS2022 X64, all flavours (also affects `Python312_MIN.inf`)
-**Result:** **Root enabler of the entire VS2022 bug family identified.** `edk2_switch_stack()`,
+**Result:** **FIXED AND WORKING ON HARDWARE.** `Python312.efi -S -c "import json; print('ok')"`
+prints `ok` and Shell `exit` is clean — the first time either has been possible on VS2022 in this
+port. Took two defects, both found here: the NASM ABI mismatch below, and `rsp`-relative frame
+access across the switch (*"Attempt 1"* / *"Attempt 2"*).
+
+**Root enabler of the entire VS2022 bug family identified.** `edk2_switch_stack()`,
 `edk2_get_idtr()` and `edk2_set_idtr()` are hand-written NASM that read their arguments from
 **`rdi`/`rsi`** — the System V ABI. **MSVC passes them in `rcx`/`rdx`.** So on every VS2022 build
 `edk2_switch_stack` computed `rsp` from whatever junk was in `rdi`/`rsi`.
@@ -187,6 +192,72 @@ there, the remaining suspect is `edk2_switch_stack`'s frame layout itself rather
 and the right move is to stop hand-rolling this: EDK2 `BaseLib` provides ABI-correct
 `SwitchStack()` plus `SetJump()`/`LongJump()`, which would let the interpreter run on the new stack
 via a trampoline and return without ever moving `rsp` under a live frame.
+
+---
+
+## Attempt 2 on hardware: WORKS — VS2022 runs on the 64 MB stack
+
+```text
+Python312.efi -S -c "import json; print('ok')"      -> ok
+Shell> exit                                          -> clean
+```
+
+**`import json` has never succeeded on VS2022 in this port.** It has raised `MemoryError: stack
+overflow` (after the `PyOS_CheckStack` fix) or silently corrupted firmware memory and hung Shell
+`exit` (before it). Both diagnoses are confirmed by this:
+
+1. the **NASM ABI mismatch** — `rdi`/`rsi` vs `rcx`/`rdx`
+2. **`rsp`-relative frame access across the switch** — MSVC has no frame pointer, so `UefiMain`'s
+   parameters had to be read from globals
+
+Together they were the entire reason `PY_UEFI_MSVC_368_ENTRY` existed, and therefore the reason
+VS2022 ran on the ~128 KB firmware stack. **The root enabler of the whole VS2022 bug family is
+fixed.**
+
+### Added: high-water report for the switched path
+
+The `stack high-water` line only existed in the 368 branch. The switched path now prints, after
+`edk2_revert_stack()` so the frame is valid again under MSVC:
+
+```text
+Python312 boot: switched stack min_rsp=... limit=... size=...
+```
+
+`used` should be a small fraction of `size` (`0x4000000` = 64 MB) and `min_rsp` should sit far above
+`limit`. Anything near the limit would mean 64 MB is not actually in play.
+
+## Acceptance sweep — still to run
+
+| Test | Expected | Status |
+|------|----------|--------|
+| `-S -c "import json; print('ok')"` | `ok`, clean `exit` | **PASS** |
+| `-S -c "import logging; print('ok')"` | `ok`, clean `exit` | pending |
+| **T7:** `-S`, `import json`, `raise SystemExit`, Shell `exit` | no hang — the original defect | pending |
+| Phase 8 sweep (smoke doc §3) | unchanged, all pass | pending |
+| §4 REPL and teardown, incl. **relaunch** | unchanged | pending |
+| pyreadline §5.3 / §5.4 | `Readline True`; interactive editing works | pending |
+| `switched stack` trace line | `min_rsp` far above `limit`, `used` ≪ 64 MB | pending |
+
+## Once the sweep passes — retirement list
+
+Make `PY_UEFI_MSVC_STACK_SWITCH` the default for X64 MSVC and then remove, in this order:
+
+1. `PY_UEFI_MSVC_368_ENTRY` from both INFs, and its branch in `edk2main.c`
+2. `PY_UEFI_FIRMWARE_STACK_BUDGET` — dead once `stack_limit` comes from the real allocated base
+   rather than a guessed budget measured down from entry `rsp`
+3. the *"`MemoryError: stack overflow` is expected"* rows in `Python312_Smoke_Tests.md` §6
+4. the §4 warning that the VS2022 REPL sign-off covers shallow sessions only
+5. the "VS2022 runs on the firmware stack / GCC gets 64 MB" deviation in
+   `Python312_VS2022_GCC_Toolchain_Deviations.md` §11.1 — both toolchains would finally share one
+   entry path, which also narrows "build parity does not imply runtime parity" considerably
+
+**Also worth revisiting separately:** `py_install_idt()` is still skipped on this path
+(`PY_UEFI_MSVC_IDT` re-enables it). Now that the `idtr` helpers have the right ABI it may work, and
+it would restore fault reporting on VS2022 — but it is a separate change with its own boot risk and
+should not ride along with this one.
+
+And the GCC alignment expression, `stack + (stack % 512)`, is still wrong. It should become the
+same round-up the MSVC path uses, with a GCC re-test.
 
 ### Acceptance tests
 

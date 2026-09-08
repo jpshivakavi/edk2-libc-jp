@@ -318,6 +318,17 @@ UefiMain (
    /* Frame is addressable again now that rsp is restored. */
    status = g_edk2_globals.switch_status;
 #endif
+#ifdef PY_UEFI_BOOT_TRACE
+   /* Same high-water report as the 368 path, so the two can be compared. On the
+    * switched stack `used` should be a small fraction of stack_size and
+    * `min_rsp` should stay well above `limit`; anything close to the limit here
+    * would mean 64 MB is not actually in play. Printed after the revert so
+    * UefiMain's frame is valid again under MSVC. */
+   Print(L"Python312 boot: switched stack min_rsp=%lx limit=%lx size=%lx\n",
+         (UINT64)g_edk2_globals.stack_min_rsp,
+         (UINT64)((uint64_t)g_edk2_globals.stack + PY_UEFI_STACK_MARGIN),
+         (UINT64)g_edk2_globals.stack_size);
+#endif
 
    edk2_free_environ();
    PY312_BOOT_PRINT(L"after edk2_free_environ");
