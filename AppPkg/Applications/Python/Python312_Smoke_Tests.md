@@ -343,7 +343,7 @@ Python312.efi -S
 
 | Symptom | Cause |
 |---------|-------|
-| `SyntaxError: invalid non-printable character U+001B` on arrow keys | Env set but **`import readline`** not run — REPL is still stdio and `U+001B` is the ESC of the escape sequence |
+| `SyntaxError: invalid non-printable character U+001B` on arrow keys | **Either switch missing** leaves the REPL on stdio, so the arrow key arrives as a raw escape sequence and `U+001B` is its ESC byte. Two ways in: **(a)** `PY_UEFI_READLINE` set but **`import readline`** not typed; **(b)** `import readline` typed but the **env var not set**, which gives the `_ReadlineStub` — no hook, by design. Case (b) is the **§5.2 pass condition**, i.e. correct behaviour, not a fault. Confirm which with `readline.rl.disable_readline` (§5.3) |
 | `SystemError: EDK2 input console unavailable (EFI status …)` | `edk2_console_ensure_input()` could not open ConInEx |
 | `SystemError: EDK2 input console is closed. You are running on EFIv1 …` | No `SimpleTextInputEx` on this firmware |
 | No line editing despite env set | Value not recognised — see §5.6 |
