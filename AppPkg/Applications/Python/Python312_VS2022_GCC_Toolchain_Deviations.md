@@ -490,9 +490,34 @@ manufacturing image that trade is arguable, so the default was left alone. **Re-
 token** — add `/DPY_UEFI_MSVC_IDT=1` to the `MSFT` `CC_FLAGS` in `Python312.inf`. Making faults
 *survivable* means wiring up the dead `edk2_seh_*` path, which is a separate piece of work.
 
-**Status:** **#3** needs no further investigation, only a decision. **#2** is fixed and awaiting its
-re-test. **#1** is cosmetic and cannot fault, so it is the only one left that is genuinely open, and
-the least urgent.
+#### #4 — on GCC the IDT is a *silent* fault trap (found 2026-09-08)
+
+GCC has always installed the IDT, but the only thing the handler says is behind
+`#ifdef PY_UEFI_BOOT_TRACE` (`edk2excep.c:92`), and that macro is defined **only** on the `MSFT:`
+`CC_FLAGS` line. So on a stock GCC image a CPU fault is caught by `py_handle_exception()`, reports
+**nothing**, and spins forever in `while (exc_trap)`.
+
+**That is worse than not installing the IDT at all.** It takes a fault the firmware would have
+reported — and usually reset on — and converts it into a silent hang, while compiling out the single
+diagnostic that would justify the trade. It is the mirror image of #3: VS2022 gets the reporting
+decision, GCC gets the cost with none of the benefit and no way to opt out short of a rebuild.
+
+**Found by testing.** The §E fault one-liner
+(`ctypes.cast(0x800000000000, POINTER(c_int))[0]`) produced no message on GCC where VS2022 with
+`PY_UEFI_MSVC_IDT` printed `unhandled CPU exception 13`. The tell that the handler *did* run is a
+**silent hang with no firmware output** — a firmware-handled fault normally prints its own dump.
+
+**Options**, in increasing order of work: move that one `Print` out from behind
+`PY_UEFI_BOOT_TRACE` so both toolchains always report a fault; or define `PY_UEFI_BOOT_TRACE` for
+GCC too, which turns on every other boot line as a side effect; or stop spinning and let the fault
+reach firmware when there is no `edk2_seh_*` handler to recover into. **The first is the smallest and
+makes the IDT worth having on both toolchains** — a fault report is not debug tracing, and this is
+the second time the `MSFT`-only scope of that macro has hidden something (the `switched stack`
+measurement was the first).
+
+**Status:** **#4** is newly open and is the cheapest real improvement available. **#3** needs no
+further investigation, only a decision. **#2** is fixed and awaiting its re-test. **#1** is cosmetic
+and cannot fault, so it is the least urgent.
 
 **Verified 2026-09-08 (VS2022):** `switched stack min_rsp=6486B0A8 limit=60877038 size=4000000` —
 `size` is the required **`0x4000000`** (64 MB) and `min_rsp` sits **63.95 MB above `limit`**, so
