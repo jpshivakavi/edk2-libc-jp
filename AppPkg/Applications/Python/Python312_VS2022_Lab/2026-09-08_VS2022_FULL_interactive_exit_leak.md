@@ -3,11 +3,11 @@
 **Branch:** `feature/python-3.12.13-vs2022` · **Code state:** **`4cf5698a`**
 (*fix(python312): track rsp high-water mark to size the firmware stack budget*)
 **Toolchain:** **VS2022 FULL**, `-b NOOPT`, `BUILD_PYTHON312_FULL=TRUE`, `PY_UEFI_MSVC_368_ENTRY`
-**Result:** **Confirmed:** the interactive Shell-`exit` hang is **not** a stack overflow, and the
-one measurable difference is the **exit route** — `exit()` from the REPL goes through `Py_Exit()`
-and never returns through `Py_RunMain()`.
-**Not confirmed:** *why* that matters. The first guess — a leaked ConInEx handle — is **ruled out
-by code inspection**; see *"Correction"* below. A decisive no-rebuild test is proposed at the end.
+**Result:** **Two candidate causes eliminated, one variable left.** The hang is **not** a stack
+overflow (depths 256 bytes apart, same 4 KB page) and **not** the `Py_Exit()` exit route
+(`-c "import sys; sys.exit(0)"` exits clean, and `StdLib` converges both routes). A leaked ConInEx
+handle is also ruled out by code inspection. **What remains:** the interactive run is the only one
+that **read the console** through `PyOS_Readline`. Tests to isolate it are at the end.
 
 **Predecessors:** [`2026-09-07_VS2022_FULL_pyreadline_hang.md`](./2026-09-07_VS2022_FULL_pyreadline_hang.md)
 (root cause of the *non-interactive* hang) ·
@@ -139,6 +139,47 @@ the reported test, so they are still confounded.
 
 Absence of `after Py_BytesMain` / `after main()` in the trace is the marker that the `Py_Exit()`
 route was actually taken, so the test is self-verifying.
+
+## Result: the exit route is EXONERATED
+
+Run on hardware at `abab8acc`:
+
+| Test | Route | Depth | Shell `exit` |
+|------|-------|-------|--------------|
+| `-c "print(1+1)"` | normal return | shallow | clean |
+| **`-c "import sys; sys.exit(0)"`** | **`Py_Exit()`** | shallow | **clean** |
+| `-c "import json"` | normal return | deep | clean |
+| interactive `import json` | `Py_Exit()` | deep | **HANG** |
+
+**The `Py_Exit()`/longjmp route alone does not cause the hang.** That is corroborated by
+`StdLib/LibC/Main/Main.c`, where both routes converge: `exit()` runs `exitCleanup()` (atexit
+handlers plus `gMD->cleanup`) and then `_Exit()` longjmps to the `setjmp` at `:191`, and
+everything after it — `ExitVal = gMD->ExitValue`, the `close(i)` loop over all `OPEN_MAX` fds, the
+`FreePool` of `gMD` — is **outside** the `setjmp` block and therefore runs either way. The only
+real difference is the longjmp itself and the skipped `after main()` trace print, neither of
+which is functional.
+
+**So neither variable alone is sufficient:** not depth (256 bytes apart, same page), not the exit
+route (just tested clean). What is left is the remaining thing unique to the interactive run — it
+**read the console**, via `PyOS_Readline`. Every `-c` run opens `stdin:` as a TTY at
+`Main.c:171` but never reads it.
+
+## Next tests — separate "console read" from "deep import"
+
+All three are shallow-to-deep variations that keep the **normal return route**, so the route is
+held constant and only the console read varies. `input()` is used deliberately because it goes
+through **`PyOS_Readline`**, the same read path the REPL uses.
+
+| # | Command | Console read | Depth |
+|---|---------|--------------|-------|
+| T1 | `Python312.efi -S -c "s=input('t: '); print('read', s)"` | yes | shallow |
+| T2 | `Python312.efi -S -c "s=input('t: '); import json; print('ok')"` | yes | deep |
+| T3 | `Python312.efi` → `1+1` → `exit()` | yes (full REPL) | shallow |
+
+- **T2 hangs, T1 clean** ⇒ the trigger is **console read + deep import**, with the exit route
+  irrelevant. That is a fully non-interactive repro and the tightest one available.
+- **T1 hangs** ⇒ reading the console is sufficient on its own; depth is irrelevant too.
+- **T1 and T2 clean but T3 hangs** ⇒ something specific to the REPL loop rather than to reading.
 
 ## Still open after this
 
