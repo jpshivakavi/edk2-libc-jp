@@ -201,9 +201,11 @@ read before the import or never read at all.
 So the current hypothesis is an **ordering** effect: whatever the deep import does to the stack (or
 to memory below it), the damage only becomes fatal once the console is driven **afterwards**.
 
-**One output still needed:** whether T2 printed `ok` or a `MemoryError` traceback. If it printed
-`ok`, `import json` *succeeded* there and T2 never exercised the deep case at all, which would
-invalidate that row and make the ordering theory premature.
+**T2 confirmed: it printed `MemoryError`, not `ok`.** So the guard did fire, the deep case really
+was exercised, and the row stands. Note what that means about the sequence — `input()` ran first,
+then `import json` raised, so the `MemoryError` terminated the script and there was **no console
+read after the overflow**. T2 is therefore a clean instance of *overflow with a prior console read*
+and it exits fine, which is exactly what makes the ordering theory the surviving explanation.
 
 ### Next tests — the one uncovered cell
 
