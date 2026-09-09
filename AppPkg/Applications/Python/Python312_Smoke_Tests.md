@@ -67,6 +67,14 @@ teardown hung, so a run that stops at `Shell>` has **not** been validated.
 
 ### 1.1 Read the stack boot trace once per build
 
+> **`PY_UEFI_BOOT_TRACE` is OFF in both INFs as of 2026-09-09, so a stock image of either toolchain
+> prints nothing here.** The trace code is still in the tree, `#ifdef`-guarded. To run this section,
+> add `/DPY_UEFI_BOOT_TRACE=1` to `MSFT:*_*_*_CC_FLAGS` (or `-DPY_UEFI_BOOT_TRACE=1` to
+> `GCC:*_*_*_CC_FLAGS`) in `Python312.inf` / `Python312_MIN.inf`, rebuild, and revert before
+> committing. **§1.1 is now a diagnostic procedure, not a per-build step** — do it when
+> investigating stack depth or an entry-path stop, not on every sweep. What remains unconditional on
+> a stock image is the error paths and the CPU-fault report (§5.8).
+
 Any run of a `PY_UEFI_BOOT_TRACE` image prints this on the way out of `UefiMain`:
 
 ```text
@@ -446,7 +454,7 @@ anything else it is whatever the last page fault left behind.
 |--------|---------|
 | The line above, then a stop | **Pass.** IDT installed, vector routed, handler reached |
 | **Silent** stop, no output at all | Handler ran but could not report — the `Print` is gated again. This was the pre-2026-09-08 GCC behaviour (deviations §11.8 #4) |
-| Firmware's own exception dump, or a reset | The fault **bypassed** our handler — IDT not installed. On MSVC check `PY_UEFI_MSVC_IDT`; the boot trace must read `before py_install_idt`, not `skipping py_install_idt (MSVC)` |
+| Firmware's own exception dump, or a reset | The fault **bypassed** our handler — IDT not installed. On MSVC check `PY_UEFI_MSVC_IDT`. Confirming it from the boot trace (`before py_install_idt` rather than `skipping py_install_idt (MSVC)`) now needs a `PY_UEFI_BOOT_TRACE` rebuild — see §1.1 |
 | A Python `ctypes` exception instead of a fault | The address got mapped. Pick a different one — the test proved nothing |
 
 To take the IDT back out on MSVC, drop `/DPY_UEFI_MSVC_IDT=1` from the `MSFT` `CC_FLAGS`; faults then
@@ -617,11 +625,14 @@ take `edk2_switch_stack` onto 64 MB, both install the custom IDT (`PY_UEFI_MSVC_
 INFs), and both report a CPU fault as `unhandled CPU exception N rip=… cr2=…` and then spin (§5.8).
 Stack limits, recursion depth and fault reporting no longer differ.
 
-**What still differs is diagnostics, not behaviour.** `UEFI_C_SOURCE` and `PY_UEFI_BOOT_TRACE` are
-defined only on the `MSFT:` flags line, so a GCC image prints **no `Python312 boot:` ladder and no
-`switched stack` measurement**, and the `Py_FinalizeEx()` detach is not compiled into it. Do not read
-a missing trace line on GCC as a failure — see §1.1. The one remaining code difference is the GCC
-stack-alignment expression (deviations §11.8 #1), which is cosmetic and cannot fault.
+**Diagnostics no longer differ either, as of 2026-09-09: `PY_UEFI_BOOT_TRACE` is off in both INFs**,
+so a stock image of *either* toolchain prints no `Python312 boot:` ladder and no `switched stack`
+measurement. The asymmetry that used to make VS2022 the chattier toolchain is gone by removal rather
+than by adding the flag to GCC. `UEFI_C_SOURCE` is still `MSFT:`-only, so the `Py_FinalizeEx()`
+detach remains compiled into VS2022 alone. Re-enable the trace per §1.1 when investigating.
+
+**The last code difference, the GCC stack-alignment expression, is also gone** — deviations §11.8 #1
+was unified on 2026-09-09 so both toolchains round the stack base up.
 
 ### 7.1 VS2022 MIN — swept and signed off 2026-09-09
 

@@ -57,7 +57,15 @@ UefiMain (
 
    memset(&g_edk2_globals, 0, sizeof(g_edk2_globals));
 
+   /* Gated as of 2026-09-09. This was the one boot Print not behind the trace
+    * macro, so it was the only output a GCC image produced at all, and it would
+    * have been the only output of a VS2022 image once PY_UEFI_BOOT_TRACE came
+    * off the INFs - a "traces off" build that still printed a line. Error paths
+    * below and the CPU-fault report in edk2excep.c stay unconditional; those
+    * are diagnostics for something having gone wrong, not boot progress. */
+#ifdef PY_UEFI_BOOT_TRACE
    Print(L"Python312: UefiMain\r\n");
+#endif
    PY312_BOOT_PRINT(L"UefiMain enter");
 
    //

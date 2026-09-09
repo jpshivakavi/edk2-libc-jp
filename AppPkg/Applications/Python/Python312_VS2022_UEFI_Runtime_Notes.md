@@ -235,7 +235,7 @@ Also set on **`Python312_MIN.inf`** / **`Python312.inf`** MSFT **`CC_FLAGS`** as
 
 **Symptom:** **`Python312.efi -S -c "…"`** prints **`ok`**, returns to **`Shell>`**, then **`exit`** hangs (BIOS/setup never returns). **Shell `exit` produces no boot lines** — trace only covers **Python + `UefiMain`**.
 
-**Build (WIP tree):** **`PY_UEFI_BOOT_TRACE=1`** is already on **`Python312_MIN.inf`** / **`Python312.inf`** MSFT **`CC_FLAGS`** and **`AppPkg.dsc`** MSFT LibC flags. Rebuild the module you test (MIN or FULL), deploy **`EFI\bin\Python312.efi`** (binary-only OK for these C traces).
+**Build:** **`PY_UEFI_BOOT_TRACE=1`** was removed from **`Python312.inf`** and **`Python312_MIN.inf`** MSFT **`CC_FLAGS`** on **2026-09-09** — a stock image of either toolchain now prints **no** boot ladder. Add it back to the INF you are testing (it is still on **`AppPkg.dsc`** MSFT LibC flags for the `Main.c` lines), rebuild that module, deploy **`EFI\bin\Python312.efi`** (binary-only is fine for these C traces), and revert the INF before committing. The trace code itself was never removed, only its define.
 
 **Run on firmware:** Scroll the console or capture serial/log. All lines look like **`Python312 boot: …`**.
 
