@@ -484,7 +484,7 @@ from `import edk2` means `uefi.FaultError` was not found, which is the deliberat
 described in `PyInit_edk2` — a missing fault-recovery type is exactly what should stop this
 module from loading rather than be worked around.
 
-### 11.3.1 The borrowed type actually works — end to end
+### 11.3.1 The borrowed type actually works — end to end — **PASSED 2026-09-09 (VS2022 FULL)**
 
 Identity (§11.3) proves the two names point at one object. It does not prove that object behaves
 as the exception for a real fault raised through the *other* module. That needs one more line, and
@@ -511,7 +511,7 @@ name it was created with, which is correct and worth not "fixing".
 broadly and does not know about this build should still catch a fault. That is why `OSError` was
 chosen as the base, and this is the one-line confirmation.
 
-### 11.3.2 Module surface inventory — a standing check for every remaining phase
+### 11.3.2 Module surface inventory — a standing check for every remaining phase — **`['FaultError']` confirmed 2026-09-09**
 
 ```text
 Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"

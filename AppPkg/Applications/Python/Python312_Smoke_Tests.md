@@ -987,6 +987,38 @@ True
 would have been the more dangerous result than an outright error: code catching `edk2.FaultError`
 would still work while code catching `uefi.FaultError` would silently stop catching anything.
 
+**Identity is necessary but not sufficient, so the borrow was also checked end to end** — a fault
+raised through `uefi` must be catchable as `edk2.FaultError`, which is what any consumer wrapping
+the memory APIs in `except edk2.FaultError` actually depends on. All three green:
+
+```text
+>>> import sys, uefi, edk2
+>>> uefi.mem_read(0x800000000000, 8)
+uefi.FaultError: CPU exception 13 (rip=0x... cr2=0x...)
+>>> print(isinstance(sys.last_value, edk2.FaultError))
+True
+>>> print(issubclass(edk2.FaultError, OSError))
+True
+```
+
+No `try`/`except` needed — `sys.last_value` holds the instance after an unhandled error, the same
+convention §5.9 uses to keep every row a short line. `issubclass(..., OSError)` covers a different
+audience from the identity check: tooling that catches `OSError` broadly and knows nothing about
+this build still catches a fault, which is why `OSError` is the base. **The traceback correctly
+still reads `uefi.FaultError`** — one type, keeping the name it was created with, exposed under two
+module attributes. That is not a defect to fix.
+
+**Surface inventory, confirmed `['FaultError']`:**
+
+```text
+Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"
+```
+
+Worth re-running at the end of every remaining port phase. It is the cheapest guard against a
+function added to the method table but misspelled, or written and never added to the table at all
+— both of which raise `AttributeError` on the name you expected and neither of which points at the
+table as the cause.
+
 **§5.8 was deliberately skipped.** It injects an *unhandled* fault, needs a power cycle, and
 exercises the branch of `py_handle_exception` that phase 2 did not touch. Row 1 above covers the
 handled branch, which is the part that moved.
