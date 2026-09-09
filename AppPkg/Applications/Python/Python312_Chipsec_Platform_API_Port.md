@@ -1,14 +1,18 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
 Status: **SCOPED, not yet implemented.** 2026-09-09.
-Scope decisions taken (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched),
-**naming shim option 1** (`PyMod-3.12.13/Lib/edk2.py`).
+
+Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
+an earlier recommendation in this document — **a separate non-bootstrap builtin module named
+`edk2`** rather than an extension of `uefi`/`posixmodule.c`. That last decision removes the need
+for a naming shim altogether; see §5.
+
 Source of truth for the old side: `Python-3.6.8/PyMod-3.6.8/Modules/edk2module.c` (4576 lines,
 built by `Python368.inf:165`).
 Source of truth for the new side: `Python-3.12.13/PyMod-3.12.13/Modules/posixmodule.c`.
 
 Related: `Python312_SEH_Fault_Recovery_Design.md` (the guarded-access primitives this port
-should be built on), `Python312_VS2022_GCC_Toolchain_Deviations.md`.
+builds on), `Python312_VS2022_GCC_Toolchain_Deviations.md`.
 
 ---
 
@@ -26,8 +30,11 @@ should be built on), `Python312_VS2022_GCC_Toolchain_Deviations.md`.
    no upstream equivalent and that CHIPSEC drives directly. **None of these exist in 3.12.13.**
    This is the entire porting gap.
 
-So the answer to "does anything need carrying forward" is: yes, exactly those 19 functions, plus
-a module-naming shim (§5). Nothing else.
+So: exactly those 19 functions, in a module of their own (§5). Nothing else.
+
+A useful way to hold the whole thing: 3.6.8's `edk2` module is being **split in two**. The `os`
+half already moved and was renamed `uefi`. The platform half is what remains to port, and it
+**keeps the name `edk2`** — which is why CHIPSEC ends up needing no changes at all.
 
 ## 2. The gap
 
@@ -63,26 +70,19 @@ CHIPSEC-facing names, even though our newer `uefi.mem_read` takes a single 64-bi
 
 ## 3. Scope: all 19, FULL only
 
-**All 19 are in scope** — the target CHIPSEC version needs the complete surface, so nothing is
-deferred and the `_ex` variants are not optional. Two consequences follow directly:
+**All 19 are in scope.** The `_ex` variants are **confirmed needed** — not by CHIPSEC, but by a
+second tool that consumes the same module. That closes the one question that could have removed
+the MP Services dependency, so it stays, and §6.1's lazy-location requirement is binding rather
+than advisory. Being fully in scope also means `allocphysmem` has to be *rebuilt* (§6.2) rather
+than skipped, since the 3.6.8 version does not do what its name claims.
 
-- **MP Services is a hard dependency**, not a maybe. It was the largest single piece of risk in
-  the original analysis and it cannot be dropped. That makes the lazy-location requirement in
-  §6.1 **mandatory**: the three `_ex` functions (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`) must locate
-  the protocol themselves, on first call, and raise `OSError` if it is absent. It must not be
-  touched at module init, because in 3.12.13 a failure there does not disable three functions, it
-  prevents the interpreter from starting at all.
-- **`allocphysmem` must be reimplemented, not copied.** Being in scope means the 3.6.8 version's
-  32-bit pointer truncation and ignored `max_pa` (§6.2) are now defects we have to fix rather
-  than a function we can skip.
-
-**FULL only.** The APIs go in `Python312.inf`; `Python312_MIN.inf` is untouched. This keeps MIN
-what it is today — the small, few-dependency image — and means the whole port carries no risk to
-the MIN configuration, which is convenient given MIN was only swept for the first time this week.
-CHIPSEC is a large pure-Python package that needs a filesystem `Lib` and the FULL module set
-anyway, so MIN was never a plausible host for it. Note this also means the port needs testing on
-**two** configurations rather than four (VS2022 FULL and GCC FULL), not the 2×2 that items 36-39
-in the status doc required.
+**FULL only.** The APIs go in `Python312.inf`; `Python312_MIN.inf` is untouched. With the
+separate-module design this is a single `[Sources]` line rather than an `#ifdef` inside a shared
+file, so the split costs nothing to maintain. It keeps MIN what it is today — the small,
+few-dependency image — and means the port carries no risk to the MIN configuration at all, which
+is worth having given MIN was only swept for the first time this week. It also halves the
+verification matrix to **VS2022 FULL and GCC FULL**, versus the 2×2 that items 36-39 in the
+status doc needed.
 
 ## 4. What is already in the 3.12.13 tree
 
@@ -100,75 +100,105 @@ nothing more.
 **The guarded-access machinery exists.** `uefi.mem_read` / `mem_write` / `mem_probe` and
 `uefi.FaultError` (`posixmodule.c:16147`ff) already give us fault-survivable access to arbitrary
 physical addresses, backed by `edk2_seh_try`/`edk2_seh_catch` and the IDT that is now installed by
-default on both toolchains. §6.3 explains why the CHIPSEC `readmem`/`writemem` family should be
-layered on top of this rather than copied from 3.6.8.
+default on both toolchains. §5.2 covers how the new module shares it; §6.3 covers why the CHIPSEC
+`readmem`/`writemem` family must be built on it rather than copied from 3.6.8.
 
 **The library dependencies resolve.** `AppPkg.dsc:69-70` already maps both `IoLib` and `PciLib`
 (`BasePciLibCf8`, i.e. CF8/CFC port access), so `readpci`/`readio` need only an INF-level
 `[LibraryClasses]` entry, not a DSC change. `BaseLib` is already in use on the entry path
 (`EnableInterrupts` in `edk2excep.c`), and `gRT` resolves through the `UefiLib` chain.
 
-## 5. The module was renamed: `edk2` → `uefi`
+## 5. Module architecture: a separate, non-bootstrap `edk2` builtin
 
-This is a hard compatibility break independent of the functions. In 3.6.8 the module is
-`edk2` (`edk2module.c:5131-5132`); in 3.12.13 it is `uefi`
-(`posixmodule.c:538-539`: `PyInit_uefi` / `MODNAME "uefi"`), and that name is baked into
-`Lib/os.py:102`, `Lib/importlib/_bootstrap_external.py:43` and `Lib/pathlib.py:14`.
+**Decision: the 19 functions go in a new C file of their own,
+`PyMod-3.12.13/Modules/edk2module.c`, registered as the builtin module `edk2`.** They do *not* go
+into `posixmodule.c`. An earlier revision of this document proposed adding them to `posixmodule.c`
+and papering over the name difference with a `Lib/edk2.py` shim; that approach is **withdrawn**,
+and the shim is no longer needed in any form.
 
-CHIPSEC does `import edk2`, so even a complete port leaves it broken.
+### 5.1 Why this is the right structure
 
-**Decision: option 1, a pure-Python shim** at `PyMod-3.12.13/Lib/edk2.py`. Not `from uefi import *`
-— that copies names, misses anything underscore-prefixed, and leaves `edk2 is not uefi`. Use the
-`sys.modules` replacement idiom instead:
+**It takes the port off the interpreter's startup path entirely.** This is the main argument.
+`uefi` *is* the `os` module and is imported by `importlib._bootstrap_external` while the
+interpreter is coming up, so anything added to `posixmodule.c` runs during startup: a failed
+`PyModule_AddObjectRef`, a mistimed protocol lookup, a bad exception registration, and Python
+does not start — on a platform where you then have no Python with which to investigate. A
+separate module is inert until something imports it. `_PyImport_Inittab`
+(`PyMod-3.12.13/Modules/config.c:111`) is a static table that is only scanned on import, so the
+new entry costs **nothing at startup** and cannot affect it. The worst failure becomes
+`import edk2` raising, with a working interpreter and a traceback to read. Given the whole
+history in this repo of debugging pre-`main` hangs through boot traces, moving 19 privileged
+functions *off* that path is worth more than the file split costs.
 
-```python
-"""Compatibility alias: CHIPSEC imports `edk2`; this build names the module `uefi`."""
-import sys as _sys
-import uefi as _uefi
+**It makes `import edk2` work natively, so no shim exists to go wrong.** CHIPSEC and the second
+tool both already import `edk2`; naming the module `edk2` means neither needs any change. This is
+strictly better than the withdrawn shim on four counts: no filesystem `Lib` dependency, so it
+works on a bare `Python312.efi`; no `sys.modules` manipulation to reason about; testable with the
+same bare-image one-liners as the existing §5.9 tests; and one module object rather than an alias
+to explain.
 
-_sys.modules[__name__] = _uefi
-```
+**It keeps our code out of upstream code.** `posixmodule.c` is ~17.5k lines of CPython that we
+carry with UEFI adaptations, and every line we add is permanent merge friction against future
+CPython updates. A new file is entirely ours, with zero conflict surface — which is the same
+reasoning behind the existing PyMod-source-of-truth convention and the pre-upstream-push cleanup
+item about keeping the stock tree pristine.
 
-This gives **true aliasing** — `import edk2` yields the actual `uefi` module object, so
-`edk2 is uefi` is `True`, `from edk2 import rdmsr` works, and there is exactly one module object
-and one set of state. The idiom is explicitly supported by the import machinery, not a trick:
-`_bootstrap._load` re-reads `sys.modules[spec.name]` after `exec_module` and returns that
-(`Lib/importlib/_bootstrap.py:870`), and `_load_unlocked` does the same at `:946` under a comment
-that names "the sys.modules replacement case" directly. This removes the identity downside that
-originally made option 1 the weaker choice, so option 2 — dual registration in C — buys nothing
-and costs a second entry in the builtin table and a second init path.
+**It makes the FULL/MIN split and the review story trivial.** Inclusion is one `[Sources]` line
+per INF (§7) instead of conditional compilation inside a shared file. And a firmware-security
+tool's privileged primitives — arbitrary MSR writes, arbitrary physical memory writes, SMI
+triggers — sitting in one auditable file is worth a great deal more than the same code diffused
+through the `os` module.
 
-**It ships with no build-system change.** `create_python_pkg.bat:92-93` already copies
-`PyMod-3.12.13/Lib/*` to `EFI\lib\python3.12\` on the ESP, which is also the directory CHIPSEC's
-own `.py` files land in. `PyMod-3.12.13/Lib/` is the correct home per the PyMod-source-of-truth
-convention; do not put it in the stock `Python-3.12.13/Lib/`.
+The one real cost: `edk2` was the *os* module's name in 3.6.8, so old code doing `edk2.listdir()`
+now gets `AttributeError` rather than working. That is a documentation matter (§1 has the framing:
+the module split in two, and each half took a name), and arguably better than silently working.
 
-**One consequence for testing.** Being a filesystem module, `import edk2` needs a packaged
-deployment, so it will not work on a bare `Python312.efi` the way the §5.9 tests run today. That
-is not a limitation in practice — CHIPSEC cannot run without a filesystem `Lib` regardless, so
-the shim is available exactly when CHIPSEC is. It does split the test plan: exercise the 19
-functions as `uefi.*` in the existing bare-image one-liner style, and cover the alias with a
-single separate check on a packaged image.
+### 5.2 Sharing the guarded-access path with `uefi`
+
+The new module must not duplicate the fault-recovery code — that path is verified on four
+configurations and having two copies is how one of them silently rots. Of the three helpers
+currently in `posixmodule.c`:
+
+- `uefi_guarded_access` (`:16056`, ~35 lines) is **pure C with no Python in it** — `setjmp` around
+  a sized load or store, wrapped in `edk2_seh_try`/`edk2_seh_catch`. **Move it** to the EFI glue
+  (`efi/src/edk2excep.c`, declared in `edk2excep.h`) as `edk2_guarded_access()` and have both
+  modules call it. Behaviour-preserving relocation of already-verified code.
+- `uefi_check_access_size` (`:16035`, 10 lines) raises `ValueError`; small enough that either
+  sharing or a local copy is defensible.
+- `uefi_set_fault_error` (`:16092`, ~45 lines) is Python-specific and currently reaches into
+  `get_posix_state(module)->FaultErrorType`. Generalise it to take the exception type as a
+  parameter instead of the module, after which it is shareable.
+
+**Reuse `uefi.FaultError` rather than defining a second exception type.** The new module fetches
+it from `uefi` at its own init and re-exposes it as `edk2.FaultError` — the *same object*, so
+`edk2.FaultError is uefi.FaultError`. One type, no hierarchy, and `except uefi.FaultError`
+continues to catch everything including faults from the new APIs. This is the "internally use the
+`uefi` module as needed" shape, and it is safe because `uefi` is loaded during startup, long
+before anything can import `edk2`.
+
+Because this moves code on the verified fault path, the §5.9 smoke tests must be re-run on both
+FULL configurations after the move — not because anything should change, but because that path is
+the one place in this project where a silent regression has real consequences.
 
 ## 6. Defects in the 3.6.8 reference — do not copy these
 
 The old module is a useful specification of *what* the APIs are, not of *how* to implement them.
 Four things in it should not be carried forward.
 
-### 6.1 Module init hard-fails the whole interpreter without MP Services
+### 6.1 Module init hard-fails without MP Services
 
 `PyEdk2__Init` (`edk2module.c:5142-5150`) does `gBS->LocateProtocol(&gEfiMpServiceProtocolGuid…)`
 and on failure prints and `return NULL`s — **before** `PyModule_Create`. So on any platform that
 does not publish MP Services, importing the module fails outright.
 
-In 3.6.8 that was already bad. In 3.12.13 it would be far worse: `uefi` *is* the `os` module, and
-it is imported by `importlib._bootstrap_external` during interpreter startup. A hard failure
-there does not disable three APIs, it bricks the interpreter — on a platform we would have no way
-to diagnose from Python, because Python would not start.
+The separate-module design (§5) already defuses the worst version of this: a failure here can no
+longer prevent the interpreter from starting, only `import edk2`. **The requirement stands
+anyway**, for a reason that survives the redesign: 16 of the 19 functions have nothing to do with
+MP Services, and a platform without that protocol should still get `rdmsr`, `readpci`, `readmem`
+and the rest. Locating it at init trades 16 working functions for 3 unavailable ones.
 
-The `_ex` variants are in scope (§3), so this is binding: MP Services must be located **lazily,
-inside those three functions**, raising `OSError` on failure. It must never be touched at module
-init.
+So: locate MP Services **lazily, inside the three `_ex` functions** (`rdmsr_ex`, `wrmsr_ex`,
+`cpuid_ex`), on first call, caching the result; raise `OSError` if absent. Never at module init.
 
 ### 6.2 `allocphysmem` silently truncates its return value on X64
 
@@ -197,12 +227,11 @@ result = *addr;
 No probe, no guard. A bad address from a CHIPSEC script is a `#GP`/`#PF` that, before this
 month's work, was a silent hang or reset.
 
-We are now in a strictly better position than 3.6.8 was: these four functions should be
-implemented on top of `uefi_guarded_access()`, so a bad address raises `uefi.FaultError` with
-vector/rip/cr2 and the interpreter survives. That turns the single most dangerous part of the
-CHIPSEC surface into something recoverable, and it is the reason to port rather than copy. It
-also means the port has a real test story — the §5.9 smoke tests already exercise exactly this
-path on all four configurations.
+We are now in a strictly better position than 3.6.8 was: these four functions must be implemented
+on the shared guarded path (§5.2), so a bad address raises `uefi.FaultError` with vector/rip/cr2
+and the interpreter survives. That turns the single most dangerous part of the CHIPSEC surface
+into something recoverable, and it is the reason to port rather than copy. It also means the port
+inherits a real test story — the §5.9 smoke tests already exercise exactly this path.
 
 ### 6.4 Cosmetic sloppiness (verified harmless — do not propagate, but do not panic)
 
@@ -221,48 +250,56 @@ re-derives it:
 
 **`Python312.inf` only.** `Python312_MIN.inf` gets no changes (§3).
 
+- `[Sources]`: add `PyMod-3.12.13/Modules/edk2module.c`. `cpu.nasm`/`cpu_gcc.s` need no change —
+  already listed (§4).
 - `[LibraryClasses]`: add `PciLib` (3.6.8 declared it, 3.12.13 does not) and `IoLib`. Both already
   resolve via `AppPkg.dsc:69-70`; no DSC change needed.
 - `[Protocols]`: add `gEfiMpServiceProtocolGuid` — required, since the `_ex` variants are in scope.
-- `[Sources]`: no change — `cpu.nasm`/`cpu_gcc.s` are already listed (§4).
-- Packaging: no change — the shim ships via the existing `create_python_pkg.bat` copy (§5).
+- `PyMod-3.12.13/Modules/config.c`: one `extern PyObject* PyInit_edk2(void);` alongside the others
+  at `:97`, and one `{"edk2", PyInit_edk2},` entry in `_PyImport_Inittab` at `:111`. Follow the
+  `edk2console` precedent at `:204`.
+- Packaging: no change. Nothing ships to the ESP — it is a builtin.
 
 Declaring the MP Services GUID in `[Protocols]` is a build-time declaration only; it does not
-make the protocol's presence a runtime requirement. Keeping it that way is the whole point of
-§6.1.
+make the protocol's presence a runtime requirement. Keeping it that way is the point of §6.1.
 
 ## 8. Proposed sequencing
 
-All eight phases are in scope (§3). Ordered by risk, cheapest and safest first; each is
-independently testable and shippable, so the ordering is about getting verified ground under the
-port early, not about deciding what to include.
+All phases are in scope (§3). Ordered by risk, cheapest first; each is independently testable, so
+the ordering is about getting verified ground under the port early, not about what to include.
 
-1. **Naming shim** (§5). `PyMod-3.12.13/Lib/edk2.py`. No C change.
-2. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio`. BaseLib/IoLib only,
-   all trivially verifiable from the REPL (`cpuid(0,0)` returns the vendor string as four
+1. **Module skeleton**: `edk2module.c` with an empty method table, the `config.c` inittab entry,
+   and the `Python312.inf` `[Sources]` line. Acceptance: `import edk2` succeeds and startup is
+   unchanged — which also proves the zero-startup-cost claim in §5.1 before any real code lands.
+2. **Share the guarded path** (§5.2): move `uefi_guarded_access` into `edk2excep.c`, generalise
+   `uefi_set_fault_error`, re-run §5.9 on both FULL configurations. No new API; a refactor that
+   must be shown to have changed nothing.
+3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio`. BaseLib/IoLib only,
+   all verifiable from a bare-image one-liner (`cpuid(0,0)` returns the vendor string as four
    registers; `rdmsr(0x1B)` returns the APIC base).
-3. **PCI**: `readpci`, `writepci`. Adds `PciLib`. Verifiable by reading vendor/device at 0:0.0
+4. **PCI**: `readpci`, `writepci`. Adds `PciLib`. Verifiable by reading vendor/device at 0:0.0
    and comparing against the Shell's `pci` command.
-4. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword`, layered on
-   `uefi_guarded_access()` per §6.3, keeping the split-address signature.
-5. **`swsmi`**: C wrapper over the `_swsmi` already in the image. Widen the arguments to 64-bit
+5. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword` on the shared path
+   from phase 2, keeping the split `(lo32, hi32)` signature.
+6. **`swsmi`**: C wrapper over the `_swsmi` already in the image. Widen the arguments to 64-bit
    (`"K"`), since the asm takes `UINT64` and 3.6.8's `"(IIIIIII)"` narrowed them to 32.
    Needs care in testing — it triggers a real SMI.
-6. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable`. Straightforward
-   `gRT` calls, but the 3.6.8 argument parsing (`"uu#K"`) uses formats that changed in Python 3
-   and must be rewritten, not copied.
-7. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
-   with a matching free. Not a transcription — the 3.6.8 version does not do what its name says.
-8. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located
-   lazily per §6.1. Deliberately last: highest risk, and the only phase that can affect
-   interpreter startup if implemented wrongly. Everything else is verified by the time it lands.
+7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable`. Straightforward `gRT`
+   calls, but the 3.6.8 argument parsing (`"uu#K"`) uses formats that changed in Python 3 and must
+   be rewritten, not copied.
+8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
+   with a matching free.
+9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
+   per §6.1. Last because it is the highest-risk phase; by then everything else is verified.
 
 ## 9. Decisions taken
 
 | Question | Decision |
 |---|---|
-| Which of the 19 to port? | **All 19.** MP Services becomes a hard dependency; §6.1 lazy location is mandatory (§3). |
+| Which of the 19 to port? | **All 19.** The `_ex` variants are confirmed needed by a second tool, so MP Services stays a hard dependency and §6.1 is binding (§3). |
 | FULL only, or MIN too? | **FULL only** — `Python312.inf`. MIN untouched (§3, §7). |
-| Naming shim | **Option 1**, `PyMod-3.12.13/Lib/edk2.py` using `sys.modules[__name__] = uefi` for true aliasing (§5). |
+| Where do the functions live? | **A separate non-bootstrap builtin module, `edk2`**, in its own `PyMod-3.12.13/Modules/edk2module.c` — not in `posixmodule.c` (§5). |
+| Naming shim | **Not needed.** Withdrawn; the module is named `edk2`, so both consuming tools import it unchanged (§5.1). |
+| Fault exception type | **Reuse `uefi.FaultError`**, re-exposed as the same object on `edk2` (§5.2). |
 
 No open questions remain before implementation. The next step is phase 1.
