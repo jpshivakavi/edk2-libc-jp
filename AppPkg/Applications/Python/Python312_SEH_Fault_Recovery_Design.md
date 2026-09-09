@@ -1,9 +1,13 @@
 # Design — surviving CPU faults in UEFI Python (`edk2_seh_*`)
 
-**Status: §2.1 and §2.2 defect fixes APPLIED and BUILT 2026-09-09 (VS2022 MIN, swept clean —
-[`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.1). API in §4 is design only — not
-implemented.** Decision recorded 2026-09-09: implement guarded memory primitives on the
-existing builtin **`uefi`** module. The two defect fixes were taken first and independently, because
+**Status: §2.1 and §2.2 defect fixes APPLIED, BUILT and SWEPT 2026-09-09 on all four configurations
+([`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.1–§7.4). The §4 API is now IMPLEMENTED
+IN CODE 2026-09-09 and is UNTESTED ON HARDWARE — `mem_read` / `mem_write` / `mem_probe` /
+`FaultError` are in `PyMod-3.12.13/Modules/posixmodule.c` under `UEFI_C_SOURCE`, with the guarded
+core in `uefi_guarded_access()`. §6 is the acceptance plan and none of it has been run yet.** This
+is the first caller the `edk2_seh_*` recovery path has ever had, so the whole mechanism below moves
+from dead code to live code with this change. Decision recorded 2026-09-09: implement guarded memory
+primitives on the existing builtin **`uefi`** module. The two defect fixes were taken first and independently, because
 they are wrong regardless of whether the API is ever built; they land in a **dead path**, so they
 change no observable behaviour and ride along with the next MIN rebuild rather than needing a sweep
 of their own.
@@ -147,7 +151,24 @@ to bound the damage from the C side.
 
 Host: the existing builtin **`uefi`** module. It is `Modules/posixmodule.c` compiled with
 `UEFI_C_SOURCE`, which sets `INITFUNC PyInit_uefi` / `MODNAME "uefi"` (`posixmodule.c:536-539`), so
-adding methods there needs **no `config.c` and no INF changes**.
+adding methods there needs **no `config.c` and no INF changes**. As built, the three methods follow
+the `os_fdstat` pattern already in the file: hand-written, no Argument Clinic, exposed through
+`OS_MEM_*_METHODDEF` macros that expand to nothing off UEFI. Because `os.py` does `from uefi import
+*`, they are reachable as `os.mem_read` as well; `uefi.mem_read` is the documented spelling.
+
+**One unresolved question about the `UEFI_C_SOURCE` gate, recorded rather than guessed.**
+`UEFI_C_SOURCE` appears **only** on the `MSFT:*_*_*_CC_FLAGS` line of both INFs — not on the `GCC:`
+line, and nowhere in any `.dsc`, `.dec` or `pyconfig.h` in the tree. Taken at face value that would
+mean GCC images have no `uefi` module at all, which cannot be true: `config.c:114` registers
+`{"uefi", PyInit_uefi}` unconditionally so a GCC link would fail outright, and `os.py:91` requires
+`'uefi' in sys.builtin_module_names` before `from uefi import *`, yet GCC images import `os`
+(the `os.environ` canary in migration status item 28). So GCC must acquire the define by some
+mechanism outside these files — a WSL-local INF edit, or `tools_def.txt` in the WSL edk2 clone are
+the candidates — and the "`UEFI_C_SOURCE` is `MSFT:`-only" claim repeated in the deviations doc and
+the WSL build guide is at best incomplete. **This does not affect correctness of the change**: the
+new methods sit behind exactly the same gate as every other UEFI-only entry point in the file, so
+they exist wherever the `uefi` module exists, whatever defines it. It does mean the first GCC test
+should be the presence check in §6 test 0 rather than an assumption.
 
 *Tradeoff accepted:* hardware-poke primitives on the posix module is not a clean home. A separate
 `edk2seh` builtin would be tidier but costs `config.c` registration plus `[Sources]` in both INFs.
@@ -242,6 +263,7 @@ All on hardware; the fault-injection procedure and its result table are
 
 | # | Test | Expected |
 |--:|------|----------|
+| 0 | `import uefi; print(hasattr(uefi, "mem_read"), uefi.FaultError)` | `True` and the class. Run this **first on each toolchain** — it is also the answer to the `UEFI_C_SOURCE` question in §4, since a `False` on GCC would mean the gate excluded the methods there |
 | 1 | `uefi.mem_read(0x800000000000, 8)` (non-canonical) | `FaultError` with `vector == 13`, **process survives** |
 | 2 | `uefi.mem_read` of a known-good address, e.g. the loaded image base | Correct value, no fault |
 | 3 | Test 1, then test 2 in the same process | Second call still correct — proves recovery left the interpreter usable |

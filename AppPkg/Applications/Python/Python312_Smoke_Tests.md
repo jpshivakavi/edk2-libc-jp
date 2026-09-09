@@ -456,8 +456,9 @@ Python312 boot: unhandled CPU exception 13 rip=<addr> cr2=<addr>
 then the machine sits there. **The print is the entire deliverable**; the stop after it is
 `py_handle_exception()`'s own `while (exc_trap)` loop, not a crash. Faults are **reported, not
 survivable** — `edk2_seh_try()` / `edk2_seh_catch()` exist but have no callers, so there is nothing
-to recover into. Making them survivable is designed but not built:
-[`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md).
+to recover into. **As of 2026-09-09 they do have callers** — the guarded primitives in §5.9 — so a
+fault raised *inside* one of those three calls is survivable while everything else still lands here.
+Design: [`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md).
 
 **Why this address:** `0x800000000000` is non-canonical (bit 47 set, bits 63:48 clear), so it raises
 a **#GP (13)** deterministically, independent of how firmware mapped memory. For a **page fault
@@ -475,6 +476,44 @@ anything else it is whatever the last page fault left behind.
 
 To take the IDT back out on MSVC, drop `/DPY_UEFI_MSVC_IDT=1` from the `MSFT` `CC_FLAGS`; faults then
 go to firmware as they did before. GCC has no equivalent switch — it always installs the IDT.
+
+---
+
+## 5.9 Guarded memory access — survivable faults (`uefi.mem_read` / `mem_write` / `mem_probe`)
+
+**Status: implemented in code 2026-09-09, NOT YET RUN on any configuration.** Unlike §5.8 this is
+**non-destructive by design** — a fault inside these three calls raises `uefi.FaultError` and the
+interpreter keeps running. If a test here stops the machine instead of raising, that is a failure of
+this feature, and the machine still needs a power cycle.
+
+Run test 0 first on each toolchain, then the rest in order in **one interactive session** so that
+tests 3, 4 and 6 see the state left by the earlier ones.
+
+```text
+Python312.efi -S -c "import uefi; print(hasattr(uefi,'mem_read'), uefi.FaultError)"
+```
+
+| # | Command (at the `>>>` prompt unless shown otherwise) | Expected |
+|--:|------|----------|
+| 0 | the one-liner above | `True <class 'uefi.FaultError'>`. A `False` on **GCC** means the `UEFI_C_SOURCE` gate excluded the methods — see the design doc §4 note, and stop here on that toolchain |
+| 1 | `uefi.mem_read(0x800000000000, 8)` | `uefi.FaultError: CPU exception 13 (rip=0x… cr2=0x…)`, **prompt returns** |
+| 2 | `try: uefi.mem_read(0x800000000000,8)`<br>`except uefi.FaultError as e: print(e.vector, hex(e.rip), e.error_code)` | `13`, a plausible code address, and an integer |
+| 3 | `uefi.mem_read(<image base>, 4)` — any address you know is readable | The value there, no exception. **This is the test that matters**: it proves the recovery in 1 left the interpreter usable rather than merely appearing to |
+| 4 | `import time; time.sleep(2)` after test 1 | Returns in roughly 2 s. An immediate return or a hang means `RFLAGS.IF` was not restored — the design doc §2.1 defect regressing, and the reason that fix exists |
+| 5 | `uefi.mem_probe(0x800000000000)` then `uefi.mem_probe(<good addr>)` | `False` then `True`, **no exception either way** |
+| 6 | `for i in range(200): uefi.mem_probe(0x800000000000)` | Completes, still responsive. Guards must balance — a leak here shows up as test 7 failing |
+| 7 | `uefi.mem_read(0, 3)` and `uefi.mem_write(0x1000, 1, 256)` | `ValueError` on the size, `OverflowError` on the value. Both are rejected **before** the guarded region, so neither touches the address |
+| 8 | Re-run §2, §3 and §4 | Unchanged. This must disturb nothing that already worked |
+
+**Do not run `mem_write` against an address you have not chosen deliberately.** It is a real store to
+a real address; the guard makes an *invalid* address survivable, and does nothing about a valid one
+that mattered. There is no undo.
+
+**On MIN this section is the only fault-path test available at all.** §5.8 needs `ctypes` to
+dereference an address and MIN has no `_ctypes`, so MIN could previously show only that
+`py_install_idt()` *ran*, never that a fault actually routes to the handler. A `FaultError` carrying
+`vector == 13` is direct proof the IDT entry is live, on a configuration where that was
+unobservable — see migration status item 30, which recorded this as the one unclosable gap.
 
 ---
 

@@ -63,6 +63,7 @@
 #include <efi/fs.h>
 #include <efi/unistd.h>
 #include <efi/environ.h>
+#include <efi/edk2excep.h>     // edk2_seh_try/catch, for mem_read/write/probe
 
 #define _exit _Exit
 #define DT_LNK  0x0000000000000040
@@ -1039,6 +1040,9 @@ typedef struct {
     PyObject *struct_rusage;
 #endif
     PyObject *st_mode;
+#ifdef UEFI_C_SOURCE
+    PyObject *FaultErrorType;
+#endif
 } _posixstate;
 
 
@@ -2380,6 +2384,9 @@ _posix_clear(PyObject *module)
     Py_CLEAR(state->struct_rusage);
 #endif
     Py_CLEAR(state->st_mode);
+#ifdef UEFI_C_SOURCE
+    Py_CLEAR(state->FaultErrorType);
+#endif
     return 0;
 }
 
@@ -2405,6 +2412,9 @@ _posix_traverse(PyObject *module, visitproc visit, void *arg)
     Py_VISIT(state->struct_rusage);
 #endif
     Py_VISIT(state->st_mode);
+#ifdef UEFI_C_SOURCE
+    Py_VISIT(state->FaultErrorType);
+#endif
     return 0;
 }
 
@@ -15999,8 +16009,258 @@ os_fdstat(PyObject *module, PyObject *const *args, Py_ssize_t nargs)
                       PyLong_FromUnsignedLong(opn),
                       PyLong_FromUnsignedLong(cls));
 }
+
+/* ---------------------------------------------------------------------------
+ * Guarded memory access: mem_read / mem_write / mem_probe
+ *
+ * A CPU fault inside one of these three calls raises uefi.FaultError instead of
+ * stopping the machine. Recovery uses the setjmp/longjmp path in
+ * efi/src/edk2excep.c, which until now had no caller at all; see
+ * Python312_SEH_Fault_Recovery_Design.md.
+ *
+ * The guarded region is one leaf load or store and nothing else, and that is a
+ * hard constraint rather than a starting point. Recovery longjmps out of the
+ * fault handler, discarding every intervening C frame without unwinding it: no
+ * DECREF runs, no allocator or container invariant gets repaired. Guarding code
+ * that holds Python references would therefore not report an error, it would
+ * corrupt the interpreter and keep running. §3 of the design doc records why an
+ * API that guards an arbitrary callable was rejected for that reason.
+ *
+ * These depend on the custom IDT from py_install_idt(), which UefiMain installs
+ * on both toolchains. Without it a bad access reaches the firmware's own
+ * handler and the machine stops exactly as it did before.
+ * ------------------------------------------------------------------------- */
+
+static int
+uefi_check_access_size(int size)
+{
+    if (size != 1 && size != 2 && size != 4 && size != 8) {
+        PyErr_Format(PyExc_ValueError,
+                     "size must be 1, 2, 4 or 8, not %d", size);
+        return -1;
+    }
+    return 0;
+}
+
+/* Performs one guarded access. Returns 0 on success, 1 if it faulted (with
+ * *kind_out and *ctx_out filled in), or -1 if the guard could not be installed.
+ *
+ * value is a pointer to volatile deliberately: it is the one object written
+ * inside the guarded region and read after a longjmp. SetJump/LongJump restore
+ * the callee-saved registers, so a non-volatile local assigned in the region
+ * could be rolled back to its pre-setjmp value on the recovery path. Nothing
+ * else here is written after setjmp, which is why nothing else needs it. This
+ * is the easiest thing in the file to get subtly wrong, and it would fail
+ * intermittently rather than outright. */
+static int
+uefi_guarded_access(int is_write, unsigned long long addr, int size,
+                    volatile unsigned long long *value,
+                    uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out)
+{
+    jmp_buf *jb = (jmp_buf *)edk2_seh_try();
+    if (jb == NULL)
+        return -1;
+
+    if (setjmp(*jb) == 0) {
+        if (is_write) {
+            switch (size) {
+            case 1: *(volatile uint8_t  *)(uintptr_t)addr = (uint8_t )*value; break;
+            case 2: *(volatile uint16_t *)(uintptr_t)addr = (uint16_t)*value; break;
+            case 4: *(volatile uint32_t *)(uintptr_t)addr = (uint32_t)*value; break;
+            case 8: *(volatile uint64_t *)(uintptr_t)addr = (uint64_t)*value; break;
+            }
+        }
+        else {
+            switch (size) {
+            case 1: *value = *(volatile uint8_t  *)(uintptr_t)addr; break;
+            case 2: *value = *(volatile uint16_t *)(uintptr_t)addr; break;
+            case 4: *value = *(volatile uint32_t *)(uintptr_t)addr; break;
+            case 8: *value = *(volatile uint64_t *)(uintptr_t)addr; break;
+            }
+        }
+        edk2_seh_catch(0, NULL, NULL, 0);
+        return 0;
+    }
+
+    /* edk2_seh_catch() dereferences kind_out unconditionally when asked to
+     * report, so both out-params are always passed. */
+    edk2_seh_catch(1, kind_out, (uint8_t *)ctx_out, sizeof(*ctx_out));
+    return 1;
+}
+
+static void
+uefi_set_fault_error(PyObject *module, uint64_t kind,
+                     const EFI_SYSTEM_CONTEXT_X64 *ctx)
+{
+    PyObject *exc_type = get_posix_state(module)->FaultErrorType;
+    PyObject *msg, *exc, *attr;
+
+    /* %p rather than a hex conversion: PyUnicode_FromFormat's integer support
+     * does not cover %llx portably, and the exact values are on the exception
+     * as integers anyway. */
+    msg = PyUnicode_FromFormat("CPU exception %lld (rip=%p cr2=%p)",
+                               (long long)kind,
+                               (void *)(uintptr_t)ctx->Rip,
+                               (void *)(uintptr_t)ctx->Cr2);
+    if (msg == NULL)
+        return;
+
+    exc = PyObject_CallOneArg(exc_type, msg);
+    Py_DECREF(msg);
+    if (exc == NULL)
+        return;
+
+#define UEFI_FAULT_ATTR(name, val)                          \
+    do {                                                    \
+        attr = PyLong_FromUnsignedLongLong((val));          \
+        if (attr == NULL ||                                 \
+            PyObject_SetAttrString(exc, (name), attr) < 0) { \
+            Py_XDECREF(attr);                               \
+            Py_DECREF(exc);                                 \
+            return;                                         \
+        }                                                   \
+        Py_DECREF(attr);                                    \
+    } while (0)
+
+    UEFI_FAULT_ATTR("vector",     (unsigned long long)kind);
+    UEFI_FAULT_ATTR("rip",        (unsigned long long)ctx->Rip);
+    UEFI_FAULT_ATTR("cr2",        (unsigned long long)ctx->Cr2);
+    UEFI_FAULT_ATTR("error_code", (unsigned long long)ctx->ExceptionData);
+#undef UEFI_FAULT_ATTR
+
+    PyErr_SetObject(exc_type, exc);
+    Py_DECREF(exc);
+}
+
+PyDoc_STRVAR(os_mem_read__doc__,
+"mem_read($module, addr, size, /)\n"
+"--\n"
+"\n"
+"UEFI specific. Read size bytes from physical address addr and return an int.\n"
+"\n"
+"size must be 1, 2, 4 or 8. Raises FaultError if the access takes a CPU\n"
+"fault, where the machine would otherwise have stopped. Alignment is the\n"
+"caller's problem: a misaligned access can fault on its own, and now reports\n"
+"instead of hanging. A recovered fault does not reach signal handlers.");
+
+#define OS_MEM_READ_METHODDEF \
+    {"mem_read", _PyCFunction_CAST(os_mem_read), METH_VARARGS, os_mem_read__doc__},
+
+static PyObject *
+os_mem_read(PyObject *module, PyObject *args)
+{
+    unsigned long long addr;
+    int size;
+    volatile unsigned long long value = 0;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "Ki:mem_read", &addr, &size))
+        return NULL;
+    if (uefi_check_access_size(size) < 0)
+        return NULL;
+
+    rc = uefi_guarded_access(0, addr, size, &value, &kind, &ctx);
+    if (rc < 0)
+        return PyErr_Format(PyExc_RuntimeError,
+                            "fault guard nesting depth (%d) exceeded",
+                            EDK2_SEH_CONTEXT_SIZE);
+    if (rc > 0) {
+        uefi_set_fault_error(module, kind, &ctx);
+        return NULL;
+    }
+    return PyLong_FromUnsignedLongLong(value);
+}
+
+PyDoc_STRVAR(os_mem_write__doc__,
+"mem_write($module, addr, size, value, /)\n"
+"--\n"
+"\n"
+"UEFI specific. Write value as size bytes to physical address addr.\n"
+"\n"
+"size must be 1, 2, 4 or 8, and value must fit in it -- a value too large is\n"
+"an OverflowError rather than a silent truncation, since a truncated write to\n"
+"hardware is worse than a refused one. Raises FaultError if the access takes\n"
+"a CPU fault. See mem_read for the shared caveats.");
+
+#define OS_MEM_WRITE_METHODDEF \
+    {"mem_write", _PyCFunction_CAST(os_mem_write), METH_VARARGS, os_mem_write__doc__},
+
+static PyObject *
+os_mem_write(PyObject *module, PyObject *args)
+{
+    unsigned long long addr, raw;
+    int size;
+    volatile unsigned long long value;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "KiK:mem_write", &addr, &size, &raw))
+        return NULL;
+    if (uefi_check_access_size(size) < 0)
+        return NULL;
+    if (size < 8 && (raw >> (size * 8)) != 0) {
+        PyErr_Format(PyExc_OverflowError,
+                     "value does not fit in %d byte(s)", size);
+        return NULL;
+    }
+
+    value = raw;
+    rc = uefi_guarded_access(1, addr, size, &value, &kind, &ctx);
+    if (rc < 0)
+        return PyErr_Format(PyExc_RuntimeError,
+                            "fault guard nesting depth (%d) exceeded",
+                            EDK2_SEH_CONTEXT_SIZE);
+    if (rc > 0) {
+        uefi_set_fault_error(module, kind, &ctx);
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(os_mem_probe__doc__,
+"mem_probe($module, addr, size=1, /)\n"
+"--\n"
+"\n"
+"UEFI specific. Return True if addr can be read, False if reading it faults.\n"
+"\n"
+"The same guarded read as mem_read with the result reduced to a bool, for the\n"
+"common question of whether an address is there at all. Never raises\n"
+"FaultError.");
+
+#define OS_MEM_PROBE_METHODDEF \
+    {"mem_probe", _PyCFunction_CAST(os_mem_probe), METH_VARARGS, os_mem_probe__doc__},
+
+static PyObject *
+os_mem_probe(PyObject *module, PyObject *args)
+{
+    unsigned long long addr;
+    int size = 1;
+    volatile unsigned long long value = 0;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "K|i:mem_probe", &addr, &size))
+        return NULL;
+    if (uefi_check_access_size(size) < 0)
+        return NULL;
+
+    rc = uefi_guarded_access(0, addr, size, &value, &kind, &ctx);
+    if (rc < 0)
+        return PyErr_Format(PyExc_RuntimeError,
+                            "fault guard nesting depth (%d) exceeded",
+                            EDK2_SEH_CONTEXT_SIZE);
+    return PyBool_FromLong(rc == 0);
+}
+
 #else // UEFI_C_SOURCE
 #define OS_FDSTAT_METHODDEF
+#define OS_MEM_READ_METHODDEF
+#define OS_MEM_WRITE_METHODDEF
+#define OS_MEM_PROBE_METHODDEF
 #endif // UEFI_C_SOURCE
 
 static PyMethodDef posix_methods[] = {
@@ -16201,6 +16461,9 @@ static PyMethodDef posix_methods[] = {
     OS__PATH_ISLINK_METHODDEF
     OS__PATH_EXISTS_METHODDEF
     OS_FDSTAT_METHODDEF
+    OS_MEM_READ_METHODDEF
+    OS_MEM_WRITE_METHODDEF
+    OS_MEM_PROBE_METHODDEF
     {NULL,              NULL}            /* Sentinel */
 };
 
@@ -17150,6 +17413,24 @@ posixmodule_exec(PyObject *m)
     state->st_mode = PyUnicode_InternFromString("st_mode");
     if (state->st_mode == NULL)
         return -1;
+
+#ifdef UEFI_C_SOURCE
+    /* Raised by mem_read/mem_write on a recovered CPU fault. OSError is the
+     * right base: this is the machine refusing an access, and it lets callers
+     * that do not care about .vector treat it like any other OS-level failure.
+     * The instance attributes are set in uefi_set_fault_error(). */
+    state->FaultErrorType = PyErr_NewExceptionWithDoc(
+        MODNAME ".FaultError",
+        "A guarded memory access took a CPU fault.\n\n"
+        "Attributes: vector (EFI_EXCEPTION_TYPE, e.g. 13 for #GP, 14 for #PF),\n"
+        "rip (faulting instruction), cr2 (faulting address, meaningful only for\n"
+        "vector 14) and error_code.",
+        PyExc_OSError, NULL);
+    if (state->FaultErrorType == NULL)
+        return -1;
+    if (PyModule_AddObjectRef(m, "FaultError", state->FaultErrorType) < 0)
+        return -1;
+#endif
 
     /* suppress "function not used" warnings */
     {

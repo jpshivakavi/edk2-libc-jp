@@ -4,6 +4,13 @@
 #include <setjmp.h>
 #include <stdint.h>
 
+/* EFI_EXCEPTION_TYPE and EFI_SYSTEM_CONTEXT_X64, both used below, live here and
+ * are not reachable from Uefi.h. Until now this header compiled only because
+ * its two includers happened to include Protocol/Cpu.h first; posixmodule.c
+ * includes it without that, so make the dependency explicit rather than
+ * ordering-dependent. */
+#include <Protocol/DebugSupport.h>
+
 #define EDK2_SEH_MAGIC 0x0053454820435458
 #define EDK2_SEH_CONTEXT_SIZE 10
 
