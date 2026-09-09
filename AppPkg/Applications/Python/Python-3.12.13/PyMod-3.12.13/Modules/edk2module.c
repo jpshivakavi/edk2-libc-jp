@@ -29,6 +29,10 @@
 
 #include "Python.h"
 
+#include <Uefi.h>
+#include <Library/BaseLib.h>
+#include <Library/IoLib.h>
+
 PyDoc_STRVAR(module_doc,
 "Platform-level UEFI operations: MSR, CPUID, PCI config, port I/O, physical\n\
 memory, software SMI and UEFI variables.\n\
@@ -43,10 +47,207 @@ Guarded memory access raises uefi.FaultError, re-exposed here as\n\
 edk2.FaultError, when an access takes a CPU fault that would otherwise have\n\
 stopped the machine.");
 
+/* ---------------------------------------------------------------------------
+ * MSR and CPUID
+ *
+ * Signatures follow Python 3.6.8's edk2module.c exactly, including the split
+ * 32-bit halves, because consumers call these positionally and the return
+ * shape is their ABI. A single 64-bit value would be nicer and is not on offer.
+ *
+ * No Py_BEGIN_ALLOW_THREADS around any of these, unlike 3.6.8. Threading is
+ * stubbed in this build (efi/src/dummy_pthread.c), so releasing the GIL around
+ * one instruction buys nothing and adds a moving part.
+ * ------------------------------------------------------------------------- */
+
+PyDoc_STRVAR(edk2_rdmsr__doc__,
+"rdmsr(msr) -> (lower_32bits, higher_32bits)\n\
+\n\
+Read the given MSR on the current processor and return it as two 32-bit\n\
+halves. Use rdmsr_ex to target a specific processor.\n\
+\n\
+No validation is possible: a reserved or unimplemented MSR raises #GP, which\n\
+is a CPU fault and not catchable here, so it stops the machine.");
+
+static PyObject *
+edk2_rdmsr(PyObject *self, PyObject *args)
+{
+    unsigned int msr;
+    UINT64 data;
+
+    if (!PyArg_ParseTuple(args, "I:rdmsr", &msr))
+        return NULL;
+
+    data = AsmReadMsr64(msr);
+
+    return Py_BuildValue("(II)",
+                         (unsigned int)(data & 0xFFFFFFFFu),
+                         (unsigned int)(data >> 32));
+}
+
+PyDoc_STRVAR(edk2_wrmsr__doc__,
+"wrmsr(msr, lower_32bits, higher_32bits) -> None\n\
+\n\
+Write higher_32bits:lower_32bits to the given MSR on the current processor.\n\
+\n\
+There is no undo and no confirmation. Writing an MSR the firmware or a driver\n\
+relies on can destabilise the platform in ways that only appear later.");
+
+static PyObject *
+edk2_wrmsr(PyObject *self, PyObject *args)
+{
+    unsigned int msr, eax, edx;
+
+    if (!PyArg_ParseTuple(args, "III:wrmsr", &msr, &eax, &edx))
+        return NULL;
+
+    AsmWriteMsr64(msr, ((UINT64)edx << 32) | (UINT64)eax);
+
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(edk2_cpuid__doc__,
+"cpuid(eax, ecx) -> (eax, ebx, ecx, edx)\n\
+\n\
+Execute CPUID with the given leaf in eax and subleaf in ecx on the current\n\
+processor, and return all four result registers.\n\
+\n\
+ecx is significant only for leaves that define a subleaf; pass 0 otherwise.");
+
+static PyObject *
+edk2_cpuid(PyObject *self, PyObject *args)
+{
+    unsigned int leaf, subleaf;
+    UINT32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+
+    if (!PyArg_ParseTuple(args, "II:cpuid", &leaf, &subleaf))
+        return NULL;
+
+    AsmCpuidEx(leaf, subleaf, &eax, &ebx, &ecx, &edx);
+
+    return Py_BuildValue("(IIII)",
+                         (unsigned int)eax, (unsigned int)ebx,
+                         (unsigned int)ecx, (unsigned int)edx);
+}
+
+/* ---------------------------------------------------------------------------
+ * Port I/O
+ *
+ * Three things are checked here that 3.6.8 did not check, each of which is a
+ * real failure rather than pedantry:
+ *
+ * 1. The port number. 3.6.8 did `addrs = (short)(addr & 0xffff)` into a
+ *    *signed* short, so every port from 0x8000 up became negative and then
+ *    sign-extended to an enormous UINTN inside IoRead8 — i.e. the whole upper
+ *    half of the I/O space addressed the wrong thing. A ValueError beats both
+ *    that and the silent truncation the mask was there for.
+ * 2. Alignment. MdePkg's IoRead16/IoRead32 ASSERT on a misaligned port, and
+ *    this build has PcdDebugPropertyMask 0x0F (asserts enabled), so a
+ *    misaligned access does not misbehave subtly — it stops the machine in
+ *    DebugAssert(). Checking it here turns that into an exception.
+ * 3. The value, for writes. 3.6.8 masked with & 0xFF, which silently writes
+ *    something other than what the caller asked for. OverflowError matches
+ *    uefi.mem_write, which made the same call for the same reason.
+ *
+ * An unimplemented port is still not detectable: reads return 0xFF..., writes
+ * go nowhere, and neither faults.
+ * ------------------------------------------------------------------------- */
+
+static int
+edk2_check_port(unsigned int port, unsigned int size)
+{
+    if (size != 1 && size != 2 && size != 4) {
+        PyErr_Format(PyExc_ValueError, "size must be 1, 2 or 4, not %u", size);
+        return -1;
+    }
+    if (port > 0xFFFF) {
+        PyErr_Format(PyExc_ValueError,
+                     "I/O port must be 0x0000-0xFFFF, not 0x%x", port);
+        return -1;
+    }
+    if (port % size != 0) {
+        PyErr_Format(PyExc_ValueError,
+                     "port 0x%x is not %u-byte aligned; a misaligned port I/O "
+                     "access trips an ASSERT in IoLib and stops the machine",
+                     port, size);
+        return -1;
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(edk2_readio__doc__,
+"readio(port, size) -> int\n\
+\n\
+Read size bytes (1, 2 or 4) from the given I/O port.\n\
+\n\
+port must be 0x0000-0xFFFF and size-aligned. An unimplemented port typically\n\
+reads back all ones rather than failing.");
+
+static PyObject *
+edk2_readio(PyObject *self, PyObject *args)
+{
+    unsigned int port, size;
+    UINT32 value = 0;
+
+    if (!PyArg_ParseTuple(args, "II:readio", &port, &size))
+        return NULL;
+    if (edk2_check_port(port, size) < 0)
+        return NULL;
+
+    switch (size) {
+    case 1: value = IoRead8((UINTN)port);  break;
+    case 2: value = IoRead16((UINTN)port); break;
+    case 4: value = IoRead32((UINTN)port); break;
+    }
+
+    return PyLong_FromUnsignedLong((unsigned long)value);
+}
+
+PyDoc_STRVAR(edk2_writeio__doc__,
+"writeio(port, size, value) -> None\n\
+\n\
+Write value as size bytes (1, 2 or 4) to the given I/O port.\n\
+\n\
+port must be 0x0000-0xFFFF and size-aligned, and value must fit in size --\n\
+a value too large is an OverflowError rather than a silent truncation, since\n\
+a truncated write to hardware is worse than a refused one.");
+
+static PyObject *
+edk2_writeio(PyObject *self, PyObject *args)
+{
+    unsigned int port, size;
+    unsigned long long value;
+
+    if (!PyArg_ParseTuple(args, "IIK:writeio", &port, &size, &value))
+        return NULL;
+    if (edk2_check_port(port, size) < 0)
+        return NULL;
+    if (value >> (size * 8) != 0) {
+        PyErr_Format(PyExc_OverflowError,
+                     "value does not fit in %u byte(s)", size);
+        return NULL;
+    }
+
+    switch (size) {
+    case 1: IoWrite8((UINTN)port,  (UINT8 )value); break;
+    case 2: IoWrite16((UINTN)port, (UINT16)value); break;
+    case 4: IoWrite32((UINTN)port, (UINT32)value); break;
+    }
+
+    Py_RETURN_NONE;
+}
+
 /* Single-phase init with m_size = -1, following edk2console.c. This build has
  * one interpreter and no subinterpreter support, so per-module state buys
- * nothing over file statics here. */
+ * nothing over file statics here.
+ *
+ * Kept alphabetical, so that the sorted dir() inventory used as a per-phase
+ * acceptance check reads in the same order as this table. */
 static PyMethodDef edk2_methods[] = {
+    {"cpuid",   edk2_cpuid,   METH_VARARGS, edk2_cpuid__doc__},
+    {"rdmsr",   edk2_rdmsr,   METH_VARARGS, edk2_rdmsr__doc__},
+    {"readio",  edk2_readio,  METH_VARARGS, edk2_readio__doc__},
+    {"wrmsr",   edk2_wrmsr,   METH_VARARGS, edk2_wrmsr__doc__},
+    {"writeio", edk2_writeio, METH_VARARGS, edk2_writeio__doc__},
     {NULL, NULL}            /* Sentinel */
 };
 

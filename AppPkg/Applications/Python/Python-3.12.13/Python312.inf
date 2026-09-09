@@ -31,6 +31,11 @@
 [LibraryClasses]
   UefiLib
   DebugLib
+# Port I/O for the edk2 module's readio/writeio. Resolved by AppPkg.dsc to
+# BaseIoLibIntrinsic. BaseLib, used by the same module for AsmReadMsr64 and
+# AsmCpuidEx, needs no entry: it is already in UefiLib's dependency closure,
+# which is why edk2excep.c can call EnableInterrupts() today.
+  IoLib
   LibC
   LibString
   LibStdio

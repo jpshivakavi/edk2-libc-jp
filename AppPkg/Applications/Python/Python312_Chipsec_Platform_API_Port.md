@@ -290,9 +290,8 @@ the ordering is about getting verified ground under the port early, not about wh
    table, the `config.c` inittab entry, and the `Python312.inf` `[Sources]` line. Acceptance in
    §10; it proves the zero-startup-cost claim in §5.1 before any real code lands.
 2. **Share the guarded path** (§5.2) — **WRITTEN, not yet built or tested.** Acceptance in §11.
-3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio`. BaseLib/IoLib only,
-   all verifiable from a bare-image one-liner (`cpuid(0,0)` returns the vendor string as four
-   registers; `rdmsr(0x1B)` returns the APIC base).
+3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio` — **WRITTEN, not yet
+   built or tested.** Acceptance in §12.
 4. **PCI**: `readpci`, `writepci`. Adds `PciLib`. Verifiable by reading vendor/device at 0:0.0
    and comparing against the Shell's `pci` command.
 5. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword` on the shared path
@@ -540,3 +539,163 @@ Recorded in §5.2 and worth not re-deriving: `setjmp` resolves to the same EDK2
 `SetJump`/`LongJump` in the destination file, and the function was moved **whole**, keeping the
 `setjmp`, the access and the return in one frame. Both were checked before the move rather than
 after.
+
+---
+
+## 12. Phase 3 acceptance — MSR, CPUID, port I/O
+
+**Status: WRITTEN, not yet built or tested.** FULL only, as with every phase.
+
+`rdmsr`, `wrmsr`, `cpuid`, `readio` and `writeio` are in
+`PyMod-3.12.13/Modules/edk2module.c`. The only build-system change is `IoLib` added to
+`Python312.inf`'s `[LibraryClasses]`; `BaseLib` needs no entry because it is already in
+`UefiLib`'s dependency closure, which is what lets `edk2excep.c` call `EnableInterrupts()`
+today.
+
+### 12.1 Three deviations from 3.6.8, all deliberate
+
+These are behaviour changes, not cleanups, so a consumer that depended on the old behaviour will
+notice. Each replaces something that failed silently or fatally.
+
+| 3.6.8 | Here | Why |
+|---|---|---|
+| `addrs = (short)(addr & 0xffff)` | `ValueError` if port > 0xFFFF | The mask was meant to stop out-of-range ports, but the cast is to a **signed** short, so every port from 0x8000 up went negative and then sign-extended inside `IoRead8(UINTN)`. The entire upper half of the I/O space addressed something else entirely. |
+| No alignment check | `ValueError` if port is not size-aligned | MdePkg's `IoRead16`/`IoRead32` `ASSERT` on a misaligned port, and this build sets `PcdDebugPropertyMask` to 0x0F, so asserts are live. `readio(0x81, 2)` on 3.6.8 does not return a wrong value — it stops the machine in `DebugAssert()`. |
+| `IoWrite8(port, val & 0xFF)` | `OverflowError` if the value does not fit | A silently truncated write to hardware is worse than a refused one. This also matches `uefi.mem_write`, which made the same call for the same reason. |
+
+Unchanged and still true: an unimplemented port reads back all ones and swallows writes, and
+neither faults, so port I/O has no error reporting beyond these argument checks.
+
+### 12.2 Surface inventory
+
+```text
+Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"
+```
+
+```text
+['FaultError', 'cpuid', 'rdmsr', 'readio', 'wrmsr', 'writeio']
+```
+
+Exactly five names more than phase 2, which is the whole of what phase 3 adds.
+
+### 12.3 CPUID — self-validating, needs no knowledge of the platform
+
+```text
+Python312.efi -S -c "import edk2, struct; r = edk2.cpuid(0,0); print(b''.join(struct.pack('<I', x) for x in (r[1], r[3], r[2])))"
+```
+
+```text
+b'GenuineIntel'
+```
+
+or `b'AuthenticAMD'`. This is the strongest cheap test in the phase: leaf 0 returns the vendor
+string spread across ebx, edx, ecx in that order, so a correct result is a **recognisable
+English string**, and any mistake in argument passing, register ordering or the return tuple
+produces garbage rather than a plausible-looking number. It also proves `AsmCpuidEx` is being
+reached with the right leaf.
+
+Then the subleaf argument, which leaf 0 ignores and leaf 4 does not:
+
+```text
+Python312.efi -S -c "import edk2; print([hex(x) for x in edk2.cpuid(1,0)])"
+```
+
+eax is family/model/stepping and will be non-zero; edx bit 0 (FPU) is set on anything that can
+run this. The point is only that it differs from the leaf-0 result.
+
+### 12.4 rdmsr — a value with checkable structure
+
+```text
+Python312.efi -S -c "import edk2; print([hex(v) for v in edk2.rdmsr(0x1B)])"
+```
+
+```text
+['0xfee00900', '0x0']
+```
+
+MSR 0x1B is IA32_APIC_BASE. The exact value varies, but the shape does not: the top of the low
+half is the APIC base (0xFEE00000 on essentially every platform), bit 11 is the enable bit and
+bit 8 marks the bootstrap processor — which is what the Shell runs on, so it should be set. The
+high half is 0 unless the platform has more than 36 physical address bits in use for it.
+
+A plain hex dump would tell you nothing; this MSR was chosen because a wrong answer looks wrong.
+
+### 12.5 readio and writeio — validated against the Shell, not against this document
+
+Rather than trusting an expected constant, read something the firmware can independently report.
+`0xCF8`/`0xCFC` are the PCI configuration address and data ports, so this is a PCI config read of
+bus 0, device 0, function 0, offset 0 — vendor and device ID:
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> edk2.writeio(0xCF8, 4, 0x80000000)
+>>> hex(edk2.readio(0xCFC, 4))
+'0x0c008086'
+>>> exit()
+Shell> pci 00 00 00
+```
+
+The Shell's `pci` command prints the same vendor and device ID for 00:00.0. **If the two agree,
+`readio` and `writeio` are both correct**, including the port number, the width and the value —
+and the check does not depend on anything written here being right about your platform. In the
+example, 0x8086 is the vendor (Intel) in the low half and 0x0c00 the device in the high half.
+
+Both ports are 4-byte aligned and below 0x10000, so the new argument checks pass. Writing 0xCF8
+is not a side effect to worry about: it is an address latch, and setting it is how every PCI
+configuration access on the machine already works.
+
+### 12.6 The argument checks, which are the new behaviour
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> edk2.readio(0x81, 2)
+>>> edk2.readio(0x10000, 1)
+>>> edk2.readio(0x80, 3)
+>>> edk2.writeio(0x80, 1, 256)
+```
+
+| Call | Expected |
+|---|---|
+| `readio(0x81, 2)` | `ValueError: port 0x81 is not 2-byte aligned; ...` |
+| `readio(0x10000, 1)` | `ValueError: I/O port must be 0x0000-0xFFFF, not 0x10000` |
+| `readio(0x80, 3)` | `ValueError: size must be 1, 2 or 4, not 3` |
+| `writeio(0x80, 1, 256)` | `OverflowError: value does not fit in 1 byte(s)` |
+
+**Every one of these must raise before touching the port.** That is the entire point of the row:
+the first would have stopped the machine on 3.6.8, and the interpreter surviving all four with
+the prompt still responsive is the result being checked. Confirm the session is still alive
+afterwards with `print(1+1)` and a clean `exit()`.
+
+### 12.7 wrmsr — optional, and skipping it is defensible
+
+There is no MSR that is safe to write on an arbitrary platform, so `wrmsr` has no default test.
+Its implementation is three lines sharing `rdmsr`'s plumbing, and `rdmsr` passing is most of the
+evidence that the pair is wired correctly.
+
+If you want it exercised on a machine you are willing to risk, TSC_AUX is about as benign as this
+gets — it only feeds the aux value that `RDTSCP` returns, and the test restores it:
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> edk2.cpuid(0x80000001, 0)[3] >> 27 & 1        # RDTSCP present, so TSC_AUX exists
+1
+>>> before = edk2.rdmsr(0xC0000103)
+>>> edk2.wrmsr(0xC0000103, 0x1234, 0)
+>>> edk2.rdmsr(0xC0000103)
+(4660, 0)
+>>> edk2.wrmsr(0xC0000103, before[0], before[1])
+>>> edk2.rdmsr(0xC0000103) == before
+True
+```
+
+Reading back exactly what was written, then restoring it and confirming the restore, is a
+complete test of the write path. **Do not run it if the first line prints 0** — TSC_AUX does not
+exist without RDTSCP, and writing a non-existent MSR raises #GP, which is a CPU fault taken
+outside any guard and therefore stops the machine.
+
+That last sentence is the general rule for this whole phase: `rdmsr` and `wrmsr` on a reserved or
+unimplemented MSR are **not** survivable. The guarded path from phase 2 covers memory accesses
+only. Making MSR access survivable is possible with the same mechanism and is not in scope here.
