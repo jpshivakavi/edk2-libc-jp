@@ -493,21 +493,48 @@ tests 3, 4 and 6 see the state left by the earlier ones.
 Python312.efi -S -c "import uefi; print(hasattr(uefi,'mem_read'), uefi.FaultError)"
 ```
 
+Two conventions make every row a short line you can type at a UEFI prompt:
+
+- **A known-good address without `ctypes`:** `id(x)` is the address of a Python object, so
+  `uefi.mem_read(id(x), 8)` reads its `ob_refcnt` and must return a small positive integer. That
+  works on MIN, which has no other way to name a readable address.
+- **Reading the exception without `try`/`except`:** after an unhandled error the REPL leaves the
+  instance in `sys.last_value`, so the attributes can be inspected on the next line. Multi-line
+  `try:` blocks through `-c` are a quoting fight in the Shell and are not needed.
+
+```text
+Python312.efi -S
+>>> import sys, uefi
+>>> x = b'abcd'
+```
+
 | # | Command (at the `>>>` prompt unless shown otherwise) | Expected |
 |--:|------|----------|
 | 0 | the one-liner above | `True <class 'uefi.FaultError'>`. A `False` on **GCC** means the `UEFI_C_SOURCE` gate excluded the methods — see the design doc §4 note, and stop here on that toolchain |
-| 1 | `uefi.mem_read(0x800000000000, 8)` | `uefi.FaultError: CPU exception 13 (rip=0x… cr2=0x…)`, **prompt returns** |
-| 2 | `try: uefi.mem_read(0x800000000000,8)`<br>`except uefi.FaultError as e: print(e.vector, hex(e.rip), e.error_code)` | `13`, a plausible code address, and an integer |
-| 3 | `uefi.mem_read(<image base>, 4)` — any address you know is readable | The value there, no exception. **This is the test that matters**: it proves the recovery in 1 left the interpreter usable rather than merely appearing to |
-| 4 | `import time; time.sleep(2)` after test 1 | Returns in roughly 2 s. An immediate return or a hang means `RFLAGS.IF` was not restored — the design doc §2.1 defect regressing, and the reason that fix exists |
-| 5 | `uefi.mem_probe(0x800000000000)` then `uefi.mem_probe(<good addr>)` | `False` then `True`, **no exception either way** |
-| 6 | `for i in range(200): uefi.mem_probe(0x800000000000)` | Completes, still responsive. Guards must balance — a leak here shows up as test 7 failing |
-| 7 | `uefi.mem_read(0, 3)` and `uefi.mem_write(0x1000, 1, 256)` | `ValueError` on the size, `OverflowError` on the value. Both are rejected **before** the guarded region, so neither touches the address |
-| 8 | Re-run §2, §3 and §4 | Unchanged. This must disturb nothing that already worked |
+| 1 | `uefi.mem_read(0x800000000000, 8)` | `uefi.FaultError: CPU exception 13 (rip=0x… cr2=0x…)` and **the prompt returns**. This is the whole feature in one line |
+| 2 | `e = sys.last_value; print(e.vector, hex(e.rip), hex(e.cr2), e.error_code)` | `13`, a plausible code address for `rip`, and integers. `cr2` is **meaningless for a #GP** — see §5.8 |
+| 3 | `print(uefi.mem_read(id(x), 8))` | A small positive integer (the refcount), no exception. **This is the test that matters**: it proves the recovery in 1 left the interpreter usable rather than merely appearing to |
+| 4 | `import time; t = time.time(); time.sleep(2); print(round(time.time() - t, 1))` | About `2.0`. An instant return or a hang means `RFLAGS.IF` was not restored after the fault — the design doc §2.1 defect regressing, which is the reason that fix exists |
+| 5 | `print(uefi.mem_probe(0x800000000000), uefi.mem_probe(id(x)))` | `False True`, **no exception either way** |
+| 6 | `print(sum(uefi.mem_probe(0x800000000000) for i in range(200)))` then repeat test 3 | `0`, then test 3 still works. 200 faults must leave the guard stack balanced; if it leaks, `edk2_seh_try()` starts returning `NULL` and test 3 turns into `RuntimeError` |
+| 7 | `uefi.mem_read(0, 3)` then `uefi.mem_write(0x1000, 1, 256)` | `ValueError` on the size, `OverflowError` on the value. Both are rejected **before** the guard is installed, so **neither one touches an address** |
+| 8 | `exit()`, then Shell `exit` | Clean, no hang — the teardown route this port has spent the most time on |
+| 9 | Re-run §2, §3 and §4 | Unchanged. This must disturb nothing that already worked |
 
-**Do not run `mem_write` against an address you have not chosen deliberately.** It is a real store to
-a real address; the guard makes an *invalid* address survivable, and does nothing about a valid one
-that mattered. There is no undo.
+**A successful `mem_write` is deliberately not in the list above, and needs `ctypes` (so FULL only):**
+
+```text
+>>> import ctypes, uefi
+>>> b = ctypes.create_string_buffer(8); a = ctypes.addressof(b)
+>>> uefi.mem_write(a, 1, 65); print(b.raw[:1])
+b'A'
+```
+
+That is the only safe shape for it — a buffer this process owns. **Never pick a write address any
+other way.** The guard makes an *invalid* address survivable; it does nothing whatsoever about a
+valid address that mattered, and there is no undo. In particular do not compute one by reading a
+pointer out of a Python object: if the offset is wrong the value read is still a plausible address,
+so the store lands somewhere real.
 
 **On MIN this section is the only fault-path test available at all.** §5.8 needs `ctypes` to
 dereference an address and MIN has no `_ctypes`, so MIN could previously show only that
