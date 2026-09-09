@@ -1,7 +1,8 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
 Status: **Phases 1 and 2 closed** — phase 2 verified on VS2022 FULL and GCC FULL and compiled
-clean in both MINs (§11). **Phase 3 written, not yet built or tested** (§12). 2026-09-09.
+clean in both MINs (§11). **Phase 3 green on VS2022 FULL**, GCC FULL outstanding (§12).
+2026-09-09.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -290,8 +291,8 @@ the ordering is about getting verified ground under the port early, not about wh
    table, the `config.c` inittab entry, and the `Python312.inf` `[Sources]` line. Acceptance in
    §10; it proves the zero-startup-cost claim in §5.1 before any real code lands.
 2. **Share the guarded path** (§5.2) — **WRITTEN, not yet built or tested.** Acceptance in §11.
-3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio` — **WRITTEN, not yet
-   built or tested.** Acceptance in §12.
+3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio` — **green on VS2022
+   FULL; GCC FULL outstanding.** Acceptance in §12.
 4. **PCI**: `readpci`, `writepci`. Adds `PciLib`. Verifiable by reading vendor/device at 0:0.0
    and comparing against the Shell's `pci` command.
 5. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword` on the shared path
@@ -548,7 +549,24 @@ after.
 
 ## 12. Phase 3 acceptance — MSR, CPUID, port I/O
 
-**Status: WRITTEN, not yet built or tested.** FULL only, as with every phase.
+**Status: PASSED on VS2022 FULL, 2026-09-09 — all of §12.2 through §12.6. GCC FULL outstanding.**
+FULL only, as with every phase, so there is no MIN build to do: `Python312_MIN.inf` is untouched
+and does not compile `edk2module.c`.
+
+What the passing run establishes, beyond "five functions work":
+
+- **The tuple ABI is right.** `b'GenuineIntel'` can only come out if the leaf argument, all four
+  result registers and their order are all correct. This is the check that would have caught the
+  `(IIII))` malformed format string that 3.6.8 shipped in its `cpuid`.
+- **Port I/O is right against an independent witness.** The 0xCF8/0xCFC value agreed with the
+  Shell's own `pci 00 00 00`, so port number, access width and data are confirmed by something
+  other than this document's expectations.
+- **The three new argument checks fire before the access, and the machine survives all four.**
+  That is the deviation from 3.6.8 doing its job: `readio(0x81, 2)` there does not return a wrong
+  value, it trips the `ASSERT` in `IoRead16` and stops the box.
+
+Still unproven and unprovable here: `wrmsr` (§12.7 is optional by design), and any behaviour on a
+*non-existent* MSR or port, which is not survivable on either toolchain.
 
 `rdmsr`, `wrmsr`, `cpuid`, `readio` and `writeio` are in
 `PyMod-3.12.13/Modules/edk2module.c`. The only build-system change is `IoLib` added to
