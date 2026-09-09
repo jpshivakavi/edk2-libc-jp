@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phase 1 closed** — VS2022 FULL green and the MIN gate confirmed by a clean link
-(2026-09-09), §10. **Phase 2 written, not yet built or tested**, §11.
+Status: **Phase 1 closed** (§10). **Phase 2 green on VS2022 FULL** (§11); GCC FULL and the two MIN
+builds outstanding. 2026-09-09.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -430,7 +430,10 @@ already known good.
 
 ## 11. Phase 2 acceptance — the refactor
 
-**Status: written, not yet built or tested.**
+**Status: VS2022 FULL green 2026-09-09** (§5.9 tests 0-8, the `ctypes` write row, §2/§3/§4, and the
+new `edk2.FaultError is uefi.FaultError` assertion — recorded in
+`Python312_Smoke_Tests.md` §7.9). **Outstanding:** VS2022 MIN and GCC MIN builds, GCC FULL build
+plus §5.9.
 
 Four files. Nothing gains a new capability; one attribute appears.
 

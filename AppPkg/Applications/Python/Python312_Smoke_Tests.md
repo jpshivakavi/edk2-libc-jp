@@ -956,6 +956,45 @@ recorded for GCC MIN, now narrowed from "the whole configuration is unexercised"
 four is compile-verified". Run §5.9 tests 0 and 1 if a GCC MIN image goes on hardware for any other
 reason — two lines, and it closes this outright.
 
+### 7.9 VS2022 FULL — re-verified after the guarded path moved translation units, 2026-09-09
+
+**§5.9 tests 0–8, the `ctypes` write row and the §2/§3/§4 regression all green again**, on an image
+where `uefi_guarded_access` no longer lives in `posixmodule.c`. It moved whole into
+`efi/src/edk2excep.c` as `edk2_guarded_access()` so the new `edk2` module can share it instead of
+carrying a second copy (CHIPSEC port phase 2 — see
+[`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §11).
+
+**This re-run existed to detect nothing, which makes the passing rows the point rather than a
+formality.** Four of them are the ones a bad move would have broken, and each fails in a different
+and recognisable way:
+
+| Row | What it would have caught |
+|---|---|
+| 1 — fault raises, prompt returns | the moved `setjmp` no longer owning the frame `longjmp` returns to |
+| 3 — read after the fault | recovery that only *looks* successful, leaving the interpreter subtly unusable |
+| 4 — `2.0` sleep | `RFLAGS.IF` not restored, i.e. the design doc §2.1 defect regressing |
+| 6 — 200 faults then a read | guard stack leaking, which surfaces as `edk2_seh_try()` returning `NULL` |
+
+**One new assertion, and it is the only positive claim in the phase:**
+
+```text
+Python312.efi -S -c "import edk2, uefi; print(edk2.FaultError is uefi.FaultError)"
+True
+```
+
+`PyInit_edk2` borrows the type from `uefi` rather than creating one, so there is a single
+`FaultError` and `except uefi.FaultError` keeps catching faults raised through either module. `False`
+would have been the more dangerous result than an outright error: code catching `edk2.FaultError`
+would still work while code catching `uefi.FaultError` would silently stop catching anything.
+
+**§5.8 was deliberately skipped.** It injects an *unhandled* fault, needs a power cycle, and
+exercises the branch of `py_handle_exception` that phase 2 did not touch. Row 1 above covers the
+handled branch, which is the part that moved.
+
+**Outstanding for phase 2:** VS2022 MIN and GCC MIN builds (compile only — both INFs compile
+`posixmodule.c` and `edk2excep.c`, so neither may break, and neither gains anything), and GCC FULL
+build plus a §5.9 re-run.
+
 ---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.
