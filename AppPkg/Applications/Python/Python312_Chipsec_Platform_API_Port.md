@@ -484,6 +484,54 @@ from `import edk2` means `uefi.FaultError` was not found, which is the deliberat
 described in `PyInit_edk2` — a missing fault-recovery type is exactly what should stop this
 module from loading rather than be worked around.
 
+### 11.3.1 The borrowed type actually works — end to end
+
+Identity (§11.3) proves the two names point at one object. It does not prove that object behaves
+as the exception for a real fault raised through the *other* module. That needs one more line, and
+it needs no `try`/`except` — after an unhandled error the REPL leaves the instance in
+`sys.last_value`, the same convention §5.9 uses to avoid multi-line blocks at a UEFI prompt:
+
+```text
+Python312.efi -S
+>>> import sys, uefi, edk2
+>>> uefi.mem_read(0x800000000000, 8)
+uefi.FaultError: CPU exception 13 (rip=0x... cr2=0x...)
+>>> print(isinstance(sys.last_value, edk2.FaultError))
+True
+>>> print(issubclass(edk2.FaultError, OSError))
+True
+```
+
+The first `print` is the real assertion: a fault raised by `uefi.mem_read` is caught by
+`edk2.FaultError`, which is what any consumer writing `except edk2.FaultError` around the
+memory APIs is relying on. Note the traceback still says `uefi.FaultError` — the type keeps the
+name it was created with, which is correct and worth not "fixing".
+
+`issubclass(..., OSError)` matters for a different audience: tooling that catches `OSError`
+broadly and does not know about this build should still catch a fault. That is why `OSError` was
+chosen as the base, and this is the one-line confirmation.
+
+### 11.3.2 Module surface inventory — a standing check for every remaining phase
+
+```text
+Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"
+```
+
+After phase 2 this must print exactly:
+
+```text
+['FaultError']
+```
+
+Worth running at the end of **every** phase from here on, because it is the cheapest possible
+guard against the two mistakes this port is most likely to make: a function that was added to the
+method table but spelled wrong, and a function that was written but never reached the table at
+all. Both are invisible to any test that calls the API by its intended name — the first raises
+`AttributeError` on the name you expected, the second does too, and neither tells you the table
+is the problem. The expected list grows by a known set each phase (phase 3 adds `cpuid`, `rdmsr`,
+`readio`, `wrmsr`, `writeio`), so a diff against the previous phase is a complete statement of
+what that phase added.
+
 ### 11.4 Why the move is safe
 
 Recorded in §5.2 and worth not re-deriving: `setjmp` resolves to the same EDK2
