@@ -678,10 +678,40 @@ MIN — VS2022 MIN at least has the trace line — and it is unclosable until th
 exist ([`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) §4). It
 is not a regression risk, since the IDT code is shared and proven on GCC FULL.
 
-> **Still outstanding at this code state: GCC FULL, including §5.8.** That is the run that exercises
-> `py_handle_exception()` itself, the function the `edk2_seh_*` fixes edited. Until it is green, the
-> fixes are verified on VS2022 (MIN) and compile-verified on GCC, but the GCC **fault-reporting**
-> path has not been re-confirmed since they landed.
+> **GCC FULL has since been swept — see §7.3, including §5.8 green.** The gap noted here is closed.
+
+### 7.3 GCC FULL — swept 2026-09-09, §5.8 green
+
+| Check | Result |
+|-------|--------|
+| §2 baseline + `import os; print(len(os.environ))` | **Pass.** The `os.environ` count is the canary for the `edk2_alloc_environ()` fix |
+| §3 Phase 8 — `zlib`, `hashlib`, `ssl.__file__`, `phase8 ok` | **Pass** |
+| §3 — `ctypes.sizeof(c_void_p)` | **`8`.** LLP64 pointer width correct |
+| §3 — `ssl.create_default_context()` | **Pass.** OpenSSL RNG canary |
+| §4 — REPL `import json`, `exit()`, Shell `exit`, relaunch | **Pass.** No `MemoryError`, no hang |
+| **§5.8 — fault injection** | **Pass. `unhandled CPU exception 13` with `rip` and `cr2`** |
+
+**§5.8 here is the row that mattered for the `edk2_seh_*` fixes.** They edited
+`py_handle_exception()`, and GCC is the toolchain where that function's `Print` was silently
+compiled out until 2026-09-08 (deviations §11.8 #4). A green fault report on GCC FULL confirms the
+reporting path survived the change on the toolchain where it was historically fragile.
+
+### 7.4 State of the matrix at 2026-09-09
+
+| Configuration | Status at this code state |
+|---------------|---------------------------|
+| **VS2022 MIN** | **Swept green** — §7.1, incl. boot trace and IDT trace line |
+| **GCC MIN** | **Swept green** — §7.2, §2 + §4 (no trace, §5.8 n/a) |
+| **GCC FULL** | **Swept green** — §7.3, incl. §5.8 fault reporting |
+| **VS2022 FULL** | **Not rebuilt since the `edk2_seh_*` fixes landed.** Last swept at `3ec592e1` (tag `python312-both-toolchains-idt-fault-report-2026-09-08`) |
+
+**On the VS2022 FULL gap — small, and stated rather than assumed.** `edk2excep.c` compiles into both
+VS2022 INFs off the *same* `MSFT:` `CC_FLAGS`, and VS2022 MIN has run it (boot, operation, teardown),
+so compile, link and execution are all covered under MSVC. The modified lines are in the **dead**
+recovery path plus one conditional inside it; the *unhandled* branch that §5.8 exercises was **not
+touched**, and GCC FULL has just confirmed that branch with the fixes present. The residual risk is
+that FULL links more modules, which cannot affect this file. A VS2022 FULL rebuild plus §5.8 would
+close it outright and is cheap — do it before any release that ships FULL on VS2022.
 
 ---
 
