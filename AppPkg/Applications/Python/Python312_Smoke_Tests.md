@@ -819,11 +819,41 @@ adjacent to, in the same function.
 
 ### 7.5 VS2022 MIN — §5.9 guarded primitives green 2026-09-09 (first hardware run)
 
-**The `edk2_seh_*` recovery path executed successfully for the first time in this port.** Every row
-of §5.9 tests 0–8 matched on **VS2022 MIN**: `FaultError` raised with `vector == 13` and the prompt
-returned, the refcount read afterwards worked, `time.sleep(2)` took ~2 s, `mem_probe` gave
-`False`/`True`, 200 consecutive recovered faults left the guard stack balanced, both argument
-rejections fired before the guard, and `exit()` → Shell `exit` stayed clean.
+**The `edk2_seh_*` recovery path executed successfully for the first time in this port.** All of
+§5.9 tests 0–8 green on **VS2022 MIN**, as observed:
+
+```text
+>>> uefi.mem_read(0x800000000000, 8)
+uefi.FaultError: CPU exception 13 (rip=0x6484bec6 cr2=0x0)
+>>> e = sys.last_value; print(e.vector, hex(e.rip), hex(e.cr2), e.error_code)
+13 0x6484bec6 0x0 0
+>>> print(uefi.mem_read(id(x), 8))
+1
+>>> import time; t = time.time(); time.sleep(2); print(round(time.time() - t, 1))
+2.0
+>>> print(uefi.mem_probe(0x800000000000), uefi.mem_probe(id(x)))
+False True
+>>> print(sum(uefi.mem_probe(0x800000000000) for i in range(200)))
+0                      <-- run twice, 400 recovered faults in total
+>>> print(uefi.mem_read(id(x), 8))
+1                      <-- unchanged after all of them
+>>> uefi.mem_read(0, 3)
+ValueError: size must be 1, 2, 4 or 8, not 3
+>>> uefi.mem_write(0x1000, 1, 256)
+OverflowError: value does not fit in 1 byte(s)
+```
+
+`exit()` → Shell `exit` then returned to firmware cleanly.
+
+**The `0` from the loop is the strongest single result here.** Each iteration installed a guard, took
+a real #GP, `longjmp`'d out of the fault handler and popped the guard; 400 of those leaving the
+count at exactly `0` with the prompt still live means the guard stack balanced every time. A leak of
+one slot per fault would have exhausted `EDK2_SEH_CONTEXT_SIZE` by the tenth iteration and every
+call after it would have raised `RuntimeError` instead of returning `False`. The refcount read still
+returning `1` afterwards, and a clean teardown after 400 non-unwinding `longjmp`s, is the evidence
+that the abandoned C frames left nothing inconsistent behind.
+
+Note `cr2=0x0` and `error_code=0`: correct for a #GP, where neither carries the address (§5.8).
 
 **Three things this establishes that no earlier sweep could:**
 
