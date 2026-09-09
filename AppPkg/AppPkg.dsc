@@ -159,7 +159,19 @@
 !include StdLib/StdLib.inc
 !include AppPkg/Applications/Sockets/Sockets.inc
 
-!if $(BUILD_PYTHON312)
-[BuildOptions]
-  MSFT:*_*_*_CC_FLAGS = /DPY_UEFI_BOOT_TRACE=1
-!endif
+# Boot traces are OFF as of 2026-09-09. This block is DSC-level, so it applied
+# to *every* module in the build - both StdLib/LibC (which is how Main.c's boot
+# lines were compiled in) and Python312 itself. Because EDK2 appends DSC
+# [BuildOptions] to each module's own INF [BuildOptions], removing
+# /DPY_UEFI_BOOT_TRACE=1 from Python312.inf / Python312_MIN.inf alone would NOT
+# have disabled the traces - this block would have kept defining it. Both have
+# to go together, and both have to come back together.
+#
+# To re-enable: uncomment the four lines below, and add /DPY_UEFI_BOOT_TRACE=1
+# to the MSFT CC_FLAGS in the INF you are testing. All trace code is still in
+# the tree, #ifdef-guarded; nothing was deleted.
+#
+#!if $(BUILD_PYTHON312)
+#[BuildOptions]
+#  MSFT:*_*_*_CC_FLAGS = /DPY_UEFI_BOOT_TRACE=1
+#!endif

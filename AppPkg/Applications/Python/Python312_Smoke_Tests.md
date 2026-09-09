@@ -67,10 +67,12 @@ teardown hung, so a run that stops at `Shell>` has **not** been validated.
 
 ### 1.1 Read the stack boot trace once per build
 
-> **`PY_UEFI_BOOT_TRACE` is OFF in both INFs as of 2026-09-09, so a stock image of either toolchain
-> prints nothing here.** The trace code is still in the tree, `#ifdef`-guarded. To run this section,
-> add `/DPY_UEFI_BOOT_TRACE=1` to `MSFT:*_*_*_CC_FLAGS` (or `-DPY_UEFI_BOOT_TRACE=1` to
-> `GCC:*_*_*_CC_FLAGS`) in `Python312.inf` / `Python312_MIN.inf`, rebuild, and revert before
+> **`PY_UEFI_BOOT_TRACE` is OFF as of 2026-09-09, so a stock image of either toolchain prints
+> nothing here.** The trace code is still in the tree, `#ifdef`-guarded. Re-enabling takes **two**
+> edits, and either alone does nothing: add `/DPY_UEFI_BOOT_TRACE=1` to `MSFT:*_*_*_CC_FLAGS` (or
+> `-DPY_UEFI_BOOT_TRACE=1` to `GCC:*_*_*_CC_FLAGS`) in `Python312.inf` / `Python312_MIN.inf`, **and**
+> uncomment the `[BuildOptions]` block in `AppPkg/AppPkg.dsc` — that one is DSC-level, so EDK2
+> appends it to every module including `Python312` itself. Rebuild, then revert both before
 > committing. **§1.1 is now a diagnostic procedure, not a per-build step** — do it when
 > investigating stack depth or an entry-path stop, not on every sweep. What remains unconditional on
 > a stock image is the error paths and the CPU-fault report (§5.8).
