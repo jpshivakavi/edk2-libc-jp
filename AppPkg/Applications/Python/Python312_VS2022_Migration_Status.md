@@ -98,7 +98,7 @@ Optional **pyreadline** (env + **`import readline`**, U+001B pitfall, GCC-only o
 
 ### Boot trace (GCC vs VS2022)
 
-**`PY_UEFI_BOOT_TRACE=1`** is on **MSFT** `[BuildOptions]` only (**`Python312.inf`**). **GCC** images show **`Python312: UefiMain`**, **`Python312: enter main`**, and script output — **not** the MSVC finalize/ssl ladder unless **`-DPY_UEFI_BOOT_TRACE=1`** is added to **`GCC:*_*_*_CC_FLAGS`** for debug.
+**Off everywhere as of 2026-09-09** — removed from the MSFT **`CC_FLAGS`** of **`Python312.inf`** and **`Python312_MIN.inf`** *and* from the DSC-level **`[BuildOptions]`** in **`AppPkg.dsc`** (which applied to every module, including Python312 itself, so both had to go). **A stock image of either toolchain now prints nothing on a normal boot.** The two lines GCC images used to show, **`Python312: UefiMain`** and **`Python312: enter main`**, were the only *ungated* boot output in the tree and are now behind **`PY_UEFI_BOOT_TRACE`** as well — the second one used **`fputs`** to stdout rather than firmware **`Print()`**, which is why it survived the first pass. Re-enable for debugging per [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §1.1; the trace code was never deleted.
 
 ### UEFI interactive REPL and pyreadline (FULL)
 

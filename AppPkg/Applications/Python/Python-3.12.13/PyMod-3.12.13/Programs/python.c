@@ -32,8 +32,16 @@ main(int argc, char **argv)
     *stderr = *stdout;
     PyOS_ReadlineFunctionPointer = NULL;
     edk2_console_detach_readline();
+    /* Gated as of 2026-09-09, same reasoning as the "Python312: UefiMain" line
+     * in edk2main.c. These two were the only ungated boot output, and together
+     * they were the whole console of a GCC image. This one used fputs to stdout
+     * rather than firmware Print(), which is why it outlived the first pass at
+     * turning the traces off. The fflush goes with it: it existed to push this
+     * line out, not for anything downstream. */
+#ifdef PY_UEFI_BOOT_TRACE
     fputs("Python312: enter main\n", stdout);
     fflush(stdout);
+#endif
     py312_boot_print_ascii("before Py_BytesMain");
     rc = Py_BytesMain(argc, argv);
     py312_boot_print_ascii("after Py_BytesMain");

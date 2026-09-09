@@ -26,8 +26,8 @@
 | **Compiler flags / warnings** | `-Wno-error`, libffi `-I` on preprocessor | `/WX-`, `/Oi-`, many `/wd…`, **`LIBFFI_MSVC_*` `-I`** | N/A |
 | **Packaging script** | `create_python_pkg.sh GCC …` | `create_python_pkg.bat VS2022 …` | Same **`EFI/`** layout |
 | **Typical build flavor** | Often `NOOPT` on WSL | `NOOPT` (lab sign-off); `RELEASE` also builds | Size/optimize differ |
-| **UEFI firmware entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **Same switch onto 64 MB** since 2026-09-08; **IDT still skipped** (`PY_UEFI_MSVC_IDT` opts in) | **Stack: yes. Faults: no** — **§11.1** |
-| **Boot trace verbosity** | **`PY_UEFI_BOOT_TRACE`** not on GCC **`CC_FLAGS`** — short console (UefiMain, enter main) | **`PY_UEFI_BOOT_TRACE=1`** on MSFT — long ladder | N/A (debug only) |
+| **UEFI firmware entry** | **`edk2_switch_stack`** + **`py_install_idt`**, then **`ShellCEntryLib`** | **Identical** since 2026-09-08 — same 64 MB switch, and the IDT is installed too (`PY_UEFI_MSVC_IDT` set in both INFs) | **No divergence** — **§11.1**, §11.8 #3 |
+| **Boot trace verbosity** | Silent | Silent | **No divergence** since 2026-09-09 — `PY_UEFI_BOOT_TRACE` is off in both INFs *and* in `AppPkg.dsc`, so neither toolchain prints a ladder. Re-enable per smoke §1.1 |
 | **Interactive REPL (manufacturing)** | Post–**`59000200`**: **stub readline** policy in tree | **Stdio REPL** signed off; pyreadline **opt-in** only | **Observed** divergence — **§11** |
 
 ---
