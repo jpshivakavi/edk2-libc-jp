@@ -36,6 +36,12 @@
 # AsmCpuidEx, needs no entry: it is already in UefiLib's dependency closure,
 # which is why edk2excep.c can call EnableInterrupts() today.
   IoLib
+# PCI config space for readpci/writepci. AppPkg.dsc maps this to BasePciLibCf8,
+# so accesses go via 0xCF8/0xCFC and extended config space (offset >= 0x100) is
+# out of reach — edk2module.c range-checks the offset rather than letting
+# BasePciCf8Lib ASSERT. Remapping this to an ECAM PciLib is what would extend
+# the reach; no code in edk2module.c would need to change.
+  PciLib
   LibC
   LibString
   LibStdio

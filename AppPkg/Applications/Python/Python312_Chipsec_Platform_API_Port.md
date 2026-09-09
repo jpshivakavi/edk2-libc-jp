@@ -1,8 +1,9 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
 Status: **Phases 1 and 2 closed** — phase 2 verified on VS2022 FULL and GCC FULL and compiled
-clean in both MINs (§11). **Phase 3 green on VS2022 FULL**, GCC FULL outstanding (§12).
-2026-09-09.
+clean in both MINs (§11). **Phase 3 green on VS2022 FULL**; its GCC FULL run was deliberately
+skipped, with the reasoning and the residual gap in §12.8. **Phase 4 written, not yet built or
+tested** (§13). 2026-09-09.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -292,9 +293,9 @@ the ordering is about getting verified ground under the port early, not about wh
    §10; it proves the zero-startup-cost claim in §5.1 before any real code lands.
 2. **Share the guarded path** (§5.2) — **WRITTEN, not yet built or tested.** Acceptance in §11.
 3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio` — **green on VS2022
-   FULL; GCC FULL outstanding.** Acceptance in §12.
-4. **PCI**: `readpci`, `writepci`. Adds `PciLib`. Verifiable by reading vendor/device at 0:0.0
-   and comparing against the Shell's `pci` command.
+   FULL**; GCC run skipped by decision (§12.8). Acceptance in §12.
+4. **PCI**: `readpci`, `writepci`. Adds `PciLib` — **WRITTEN, not yet built or tested.** Acceptance
+   in §13, cross-checked against both the Shell's `pci` command and phase 3's manual CF8 read.
 5. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword` on the shared path
    from phase 2, keeping the split `(lo32, hi32)` signature.
 6. **`swsmi`**: C wrapper over the `_swsmi` already in the image. Widen the arguments to 64-bit
@@ -568,6 +569,22 @@ What the passing run establishes, beyond "five functions work":
 Still unproven and unprovable here: `wrmsr` (§12.7 is optional by design), and any behaviour on a
 *non-existent* MSR or port, which is not survivable on either toolchain.
 
+### 12.8 GCC FULL for phase 3 — deliberately not run
+
+Decided 2026-09-09, and recorded as a gap rather than a pass. **Most of what it would have told us
+is answerable without a build, and was checked instead:** `IoLib` and `PciLib` are in
+`AppPkg.dsc`'s *common* `[LibraryClasses]` (lines 69-70), not in any toolchain-conditional block,
+so library resolution is identical on GCC and MSVC — which was the main thing a GCC link would
+have established. The code itself is straight-line calls into `BaseLib` and `IoLib`, with no
+`setjmp` frame whose layout differs between compilers; that is what made GCC FULL load-bearing in
+phase 2 (§11.4) and what makes it near-formality here.
+
+**What genuinely remains unverified on GCC:** that the file compiles under it at all — GCC is
+stricter than MSVC about some format-specifier and constant-folding warnings, and this build treats
+warnings as errors. Any such problem is a *build* failure, not a runtime one, so it will surface
+the moment a GCC FULL build is done for any later phase and cannot escape into a shipped image
+unnoticed. That is the whole reason skipping it here is safe: a compile error cannot hide.
+
 `rdmsr`, `wrmsr`, `cpuid`, `readio` and `writeio` are in
 `PyMod-3.12.13/Modules/edk2module.c`. The only build-system change is `IoLib` added to
 `Python312.inf`'s `[LibraryClasses]`; `BaseLib` needs no entry because it is already in
@@ -721,3 +738,163 @@ outside any guard and therefore stops the machine.
 That last sentence is the general rule for this whole phase: `rdmsr` and `wrmsr` on a reserved or
 unimplemented MSR are **not** survivable. The guarded path from phase 2 covers memory accesses
 only. Making MSR access survivable is possible with the same mechanism and is not in scope here.
+
+---
+
+## 13. Phase 4 acceptance — PCI configuration space
+
+**Status: WRITTEN, not yet built or tested.** FULL only; `PciLib` added to `Python312.inf`.
+
+`readpci` and `writepci` in `edk2module.c`, over `PciLib`, which `AppPkg.dsc` already maps to
+`BasePciLibCf8` — so no DSC change was needed, only the INF `[LibraryClasses]` entry.
+
+### 13.1 The CF8 mechanism sets two hard limits, and both of them are ASSERTs
+
+This is the important content of the phase, because in 3.6.8 both limits were reachable from
+Python and one of them stopped the machine.
+
+`BasePciCf8Lib` validates every address with:
+
+```c
+#define ASSERT_INVALID_PCI_ADDRESS(A, M) \
+  ASSERT (((A) & (~0xffff0ff | (M))) == 0)
+```
+
+`PCI_LIB_ADDRESS` places the register offset in bits 0..11, and `M` is 0 for the 8-bit accessors,
+**1 for the 16-bit and 3 for the 32-bit** ones. So:
+
+| Condition | Consequence in MdePkg | 3.6.8 | Here |
+|---|---|---|---|
+| offset >= 0x100 | bits 8..11 set, **ASSERT** — the MdePkg header says so outright: "If the register specified by Address >= 0x100, then ASSERT()" | `unsigned char off` wrapped it, so 0x100 read register 0x00 and **returned it as if it were the register asked for** | `ValueError` naming the CF8 limitation |
+| offset misaligned for the width | `M` catches it, **ASSERT** | nothing — `readpci(0,0,0,2,4)` stops the machine | `ValueError` |
+| bus/dev/func out of range | `PCI_LIB_ADDRESS` masks silently | truncated to `unsigned char` then masked, so it became a **different, possibly populated** device | `ValueError` |
+
+The third row matters far more for `writepci` than for `readpci`: a silently-masked *write* lands
+on real hardware that the caller never named.
+
+Extended configuration space (0x100-0xFFF, where PCIe capabilities live) is therefore not
+reachable at all in this build. That is a property of the DSC's `PciLib` choice, not of this code
+— remapping `PciLib` to an ECAM implementation would extend the reach with **no change to
+`edk2module.c`**, and the range check exists so that the limit is reported rather than guessed at.
+Worth flagging to whoever is driving CHIPSEC: anything that walks PCIe extended capabilities will
+need that remap.
+
+### 13.2 Argument order — do not tidy this
+
+```text
+readpci(bus, dev, func, offset, size)
+writepci(bus, dev, func, offset, value, size)
+```
+
+`writepci` takes **value before size**, the opposite of `writeio(port, size, value)`. It is
+inconsistent, it is 3.6.8's published signature, and callers pass positionally, so it stays. A
+"cleanup" here silently swaps two integers in every existing call site.
+
+### 13.3 Surface inventory
+
+```text
+Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"
+```
+
+```text
+['FaultError', 'cpuid', 'rdmsr', 'readio', 'readpci', 'wrmsr', 'writeio', 'writepci']
+```
+
+### 13.4 readpci cross-checked against two independent sources
+
+Phase 3 already read 00:00.0 vendor/device by driving 0xCF8/0xCFC by hand. `readpci` must agree
+with **that** and with the Shell's `pci`, which is three separate paths to one number:
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> hex(edk2.readpci(0, 0, 0, 0, 4))
+'0x0c008086'
+>>> hex(edk2.readpci(0, 0, 0, 0, 2))
+'0x8086'
+>>> hex(edk2.readpci(0, 0, 0, 0, 1))
+'0x86'
+```
+
+The three widths of the same register are a complete width test on their own: 2 bytes must be the
+low half of the 4-byte value and 1 byte the low quarter, so the numbers check each other and no
+external reference is needed to spot a wrong accessor.
+
+Then a register that is not the vendor ID, to confirm the offset reaches the hardware:
+
+```text
+>>> hex(edk2.readpci(0, 0, 0, 8, 4))
+```
+
+Offset 0x08 is revision/class code; the top byte is the base class, `0x06` for a host bridge.
+Anything that ignored the offset would return the vendor ID again.
+
+### 13.5 An absent device — how probing is meant to work
+
+Pick a bus:dev.func that `pci` does **not** list (run `pci` first; do not assume 00:1F.7 is
+empty, it often is not):
+
+```text
+>>> hex(edk2.readpci(0, 31, 7, 0, 4))
+'0xffffffff'
+```
+
+All ones, and **no exception** — an absent device is not an error at this level, it is the
+documented way to detect one. There is no fault protection here to lean on either: PCI config
+access to nothing does not fault, so this is the only signal available.
+
+### 13.6 The argument checks — the row that used to halt the box
+
+```text
+>>> edk2.readpci(0, 0, 0, 0x100, 4)
+>>> edk2.readpci(0, 0, 0, 2, 4)
+>>> edk2.readpci(0, 32, 0, 0, 4)
+>>> edk2.readpci(0, 0, 8, 0, 4)
+>>> edk2.readpci(0, 0, 0, 0, 3)
+>>> edk2.writepci(0, 0, 0, 0, 0x10000, 2)
+>>> print(1+1)
+>>> exit()
+```
+
+| Call | Expected |
+|---|---|
+| `readpci(0,0,0,0x100,4)` | `ValueError: register offset 0x100 exceeds 0xFF; extended configuration space is unreachable...` |
+| `readpci(0,0,0,2,4)` | `ValueError: register offset 0x2 is not 4-byte aligned; ...` |
+| `readpci(0,32,0,0,4)` | `ValueError: bus/device/function 0/32/0 out of range (max 255/31/7); ...` |
+| `readpci(0,0,8,0,4)` | `ValueError: bus/device/function 0/0/8 out of range ...` |
+| `readpci(0,0,0,0,3)` | `ValueError: size must be 1, 2 or 4, not 3` |
+| `writepci(0,0,0,0,0x10000,2)` | `OverflowError: value does not fit in 2 byte(s)` |
+
+**The second row is the one to watch:** on 3.6.8 that exact call trips the alignment `ASSERT` in
+`BasePciCf8Lib` and stops the machine. Surviving all six with a live prompt afterwards is the
+result, same as §12.6.
+
+### 13.7 writepci — a write that is safe because nothing is listening
+
+Writing PCI config on a live platform is not something to do casually, so the default test writes
+to a **device that is not there** — the same absent b/d/f from §13.5:
+
+```text
+>>> edk2.writepci(0, 31, 7, 0, 0x1234, 2)
+>>> hex(edk2.readpci(0, 31, 7, 0, 2))
+'0xffff'
+```
+
+No exception, and the read still returns all ones. This proves the call path executes and the
+argument checks pass, without touching anything real.
+
+**Optional, stronger, and only on a machine you accept some risk on:** the vendor ID at offset
+0x00 is architecturally read-only, so writing it should be a no-op that the read-back confirms:
+
+```text
+>>> before = edk2.readpci(0, 0, 0, 0, 2)
+>>> edk2.writepci(0, 0, 0, 0, 0x1234, 2)
+>>> edk2.readpci(0, 0, 0, 0, 2) == before
+True
+```
+
+`True` means the write reached a real device and was correctly ignored, which is as close to
+proving the write data path as can be done without changing platform state. **`False` means the
+host bridge accepted a write to a read-only register and 00:00.0's vendor ID is now wrong** —
+recoverable by a power cycle, since config space is not persistent, but stop and power-cycle
+rather than continuing.
