@@ -1,6 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phase 1 written, not yet built or tested.** 2026-09-09. Acceptance procedure in §10.
+Status: **Phase 1 passed on VS2022 FULL** (2026-09-09). MIN gate check still outstanding.
+Acceptance procedure and results in §10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -375,7 +376,14 @@ This matters more than usual for this phase, because the FULL and MIN expectatio
 *opposites*: `import edk2` must succeed on one and raise `ModuleNotFoundError` on the other.
 Deploying the wrong file makes a pass look like a failure, or worse, the reverse.
 
-### 10.2 On hardware — FULL
+### 10.2 On hardware — FULL — **PASSED 2026-09-09**
+
+Tests 1-5 all observed as expected on VS2022 FULL, teardown included, no hang. The two that
+carry the argument — `'edk2' in sys.modules` → `False` and `'edk2' in sys.builtin_module_names`
+→ `True` — both landed, so §5.1's claim is now measured rather than asserted: the module is
+registered and genuinely is not loaded until something imports it. The `edk2` module machinery
+is known good, and phase 3 onward can treat a failure as being about the function it just added
+rather than about the plumbing.
 
 | # | Command | Expected |
 |---|---------|----------|
