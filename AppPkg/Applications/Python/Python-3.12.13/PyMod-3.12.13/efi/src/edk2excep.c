@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <Uefi.h>
+#include <Library/BaseLib.h>
 #include <Library/UefiLib.h>
 
 #include <Protocol/LoadedImage.h>
@@ -26,8 +27,15 @@ edk2_seh_try()
 {  
   edk2_seh_context_t *entry = NULL;
 
-  if(++g_context_index >= EDK2_SEH_CONTEXT_SIZE)
+  /* Undo the increment before bailing out. The caller receives NULL and so will
+   * not call edk2_seh_catch(), which is the only thing that decrements. Left
+   * incremented, py_handle_exception() would take the recovery branch, index
+   * g_context out of bounds, write a whole EFI_SYSTEM_CONTEXT_X64 past the end
+   * of the array and longjmp through whatever followed it. */
+  if(++g_context_index >= EDK2_SEH_CONTEXT_SIZE) {
+    --g_context_index;
     return NULL;
+  }
 
   entry = g_context + g_context_index;
   
@@ -124,7 +132,17 @@ py_handle_exception (
 
   entry->exc_kind = InterruptType;
   entry->exc_context = *SystemContext.SystemContextX64;
-  
+
+  /* py_common_interrupt_entry starts with cli, and it is the iretq on the normal
+   * return path that puts RFLAGS (including IF) back. The longjmp below never
+   * reaches that iretq, so without this interrupts stay masked for the rest of
+   * the run and the firmware timer stops firing, which surfaces much later as
+   * unrelated-looking console misbehaviour. Conditional on the faulting code's
+   * own IF: a fault taken inside a critical section must not resume with
+   * interrupts enabled. */
+  if(entry->exc_context.Rflags & BIT9)
+    EnableInterrupts();
+
   longjmp(entry->ret_context, 1);
 }
 

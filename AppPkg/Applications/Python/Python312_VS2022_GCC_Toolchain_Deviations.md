@@ -504,7 +504,13 @@ was a second fault behaviour to reason about. With #4 fixed, both toolchains now
 `rip` and `cr2` and then spin, identically. `/DPY_UEFI_MSVC_IDT=1` is set in **both**
 `Python312.inf` and `Python312_MIN.inf` so the MSVC entry path does not diverge again the way
 `PY_UEFI_MSVC_368_ENTRY` did. Making faults *survivable* is separate work — it means wiring up the
-dead `edk2_seh_*` path.
+dead `edk2_seh_*` path. **Designed but not built (2026-09-09):**
+[`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md). Reading that
+path end to end turned up two defects in it that only stay latent while it has no caller — the
+`longjmp` skips the `iretq` that would restore `RFLAGS.IF`, leaving interrupts off for the rest of
+the run, and `edk2_seh_try()` leaves `g_context_index` incremented past the end of `g_context[]` on
+overflow, so a later fault writes a whole `EFI_SYSTEM_CONTEXT_X64` out of bounds. Both should be
+fixed whether or not the API is ever built.
 
 #### #4 — on GCC the IDT is a *silent* fault trap (found 2026-09-08)
 
