@@ -172,6 +172,14 @@ uefi.FaultError            # subclass of OSError
 `mem_probe` is the same guarded access with the result reduced to a bool — the common "is this
 address there at all" question, without exception handling at the call site.
 
+**A side benefit worth having: this makes the fault path testable on MIN.** §5.8 injects a fault with
+`ctypes.cast(...)`, and MIN has no `_ctypes` — nor any other way to dereference an arbitrary address
+from pure Python — so today MIN can only show that `py_install_idt()` *ran* (`before py_install_idt`
+in the boot trace) and never that a fault actually **routes** to `py_handle_exception()`. Hosting
+these on the `uefi` module, which is built in every configuration, closes that gap: a `FaultError`
+carrying the right vector is itself proof the IDT entry is live. Noted 2026-09-09 after §5.8 came
+back `ModuleNotFoundError` on MIN as expected.
+
 Caller rules to document:
 
 - **Alignment is the caller's problem.** A misaligned access can fault on its own; that now reports
