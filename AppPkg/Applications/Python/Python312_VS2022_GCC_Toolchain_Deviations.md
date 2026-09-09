@@ -421,15 +421,21 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 **Regression:** After changing NASM or **`rand_efi.c`**, re-smoke **VS2022** with **`import ssl; ssl.create_default_context(); print('ok')`** then Shell **`exit`**. **GCC** one-liner is cheap parity.
 
-### 11.8 Open latent defects on the shared entry path (as of 2026-09-08)
+### 11.8 Latent defects on the shared entry path — all fixed as of 2026-09-09
 
-Left deliberately unfixed when VS2022 moved onto the 64 MB stack. All three sit in code GCC has
-been signed off with, so **each needs a GCC re-test (§11.5) and none should ride along with an
-unrelated change.**
+Left deliberately unfixed when VS2022 moved onto the 64 MB stack, because all of them sat in code
+GCC had been signed off with. **#2, #3 and #4 are fixed and hardware-verified on both toolchains**
+(2026-09-08, tag `python312-both-toolchains-idt-fault-report-2026-09-08`, re-confirmed across all
+four configurations at `python312-seh-fix-all-configs-2026-09-09`).
+
+**#1 is fixed in code as of 2026-09-09 but its GCC re-test is still PENDING.** It is the only one
+whose fix changes what GCC executes — it moves the stack base — so until that re-test is green,
+treat the GCC entry path as carrying an unverified change. MSVC needs nothing: it already compiled
+the surviving expression.
 
 | # | Defect | Where | Why it was left |
 |--:|--------|-------|-----------------|
-| 1 | **Stack alignment expression does not align.** `stack + (stack % 512)` offsets the base by an arbitrary 0–511 bytes instead of rounding it up. MSVC needed a real alignment — `edk2_switch_stack()` leaves `rsp` at `base+size-0x200`, and a misaligned `rsp` faults MSVC's `movaps` spills — so the MSVC branch uses `(base + 511) & ~511`. **The GCC branch still has the original expression.** | `edk2main.c`, the `#ifdef _MSC_VER` alignment block | **Cannot fault, by arithmetic** — see below. It is a meaningless offset, not an alignment hazard, which makes this the **lowest-priority** of the three. Correcting it still changes the address GCC runs on, so it needs a re-test |
+| 1 | **Stack alignment expression does not align.** **FIXED IN CODE 2026-09-09 — GCC re-test pending.** `stack + (stack % 512)` offset the base by an arbitrary 0–511 bytes instead of rounding it up, on the GCC branch only; MSVC already used `(base + 511) & ~511` because `edk2_switch_stack()` leaves `rsp` at `base+size-0x200` and a misaligned `rsp` faults MSVC's `movaps` spills. **The `#ifdef` is now gone and both toolchains round up.** | `edk2main.c`, formerly the `#ifdef _MSC_VER` alignment block | Was **unable to fault, by arithmetic** — see below — so it was the lowest-priority of the four and was left until everything else was green. Fixing it moves the address GCC runs its stack on, so it took a GCC re-test rather than being free |
 | 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it was **not idempotent**, so the second call **leaked the first block**. | `edk2main.c` `:200` and `:212`; `efi/src/environ.c:25` | **FIXED 2026-09-08, awaiting a hardware re-test on both toolchains** — see below. The double call itself is retained deliberately |
 | 3 | ~~**No custom IDT under MSVC.**~~ **CLOSED 2026-09-08** — verified working, then made the **default** via `/DPY_UEFI_MSVC_IDT=1` in **both** INFs. MSVC now installs the IDT like GCC always has. | `edk2main.c` | Was off pending proof it worked; it does (see below). Enabling it alongside the #4 fix means **both toolchains now report a fault and then spin** — one entry path, one fault behaviour |
 
@@ -443,6 +449,18 @@ either toolchain.** What it actually does is move the stack base up by an unpred
 the `malloc` over-allocates by 1024, so it cannot overrun either. Real cost: it is misleading, and
 the offset is not reproducible run to run. **Treat #1 as a correctness-of-intent cleanup, not a
 latent crash.**
+
+**#1 as fixed (2026-09-09).** The `#ifdef _MSC_VER` is deleted and both toolchains use
+`(base + 511) & ~511`. Rounding up is strictly stronger than the old offset, and the 511-byte shift
+stays inside the `malloc(size + 1024)` slack. **MSVC codegen is unchanged** — it already compiled
+this exact expression, and only comments changed on its side — so the re-test burden was GCC's
+alone.
+
+**One thing deliberately not folded in:** `stack_limit` is still computed from the raw `malloc` base
+rather than from `aligned_stack`, so the round-up eats up to 511 of `PY_UEFI_STACK_MARGIN`'s 8 192
+bytes. That is immaterial — 64 MB of stack against 39–71 KB of measured use (§1.1 of the smoke doc)
+— and correcting it would move `PyOS_CheckStack()`'s threshold, which is a behavioural change that
+has no business riding along inside a cosmetic cleanup. Recorded here rather than silently fixed.
 
 **#2 in detail — it is a per-run pool leak, not just a redundant call.** `edk2_alloc_environ()`
 (`environ.c:25`) unconditionally `malloc`s `environ_size + environ_values_size` and assigns

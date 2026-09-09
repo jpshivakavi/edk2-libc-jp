@@ -214,20 +214,23 @@ UefiMain (
 
    PY312_BOOT_PRINT(L"before switch_stack");
 
-#ifdef _MSC_VER
    /* edk2_switch_stack() leaves rsp at base+size-0x200, so base+size must be
     * 16-byte aligned or MSVC's SSE spills (movaps) fault. Round the base *up*
     * to 512; the malloc above over-allocates by 1024, so this cannot overrun.
     *
-    * The GCC expression below adds (base % 512) instead, which does not align
-    * anything — it just offsets by an arbitrary amount. It is left untouched
-    * because GCC is the signed-off toolchain and changing it would invalidate
-    * that sign-off; it should be corrected separately, with a GCC re-test. */
+    * Both toolchains share this now. GCC used to add (base % 512) instead,
+    * which aligns nothing - it offsets the base by an arbitrary multiple of 16.
+    * That never faulted, and could not: malloc returns a 16-byte-aligned base
+    * and 512 is a multiple of 16, so the offset was always a multiple of 16 and
+    * rsp stayed 16-byte aligned. Rounding up is strictly stronger, so this is a
+    * cleanup rather than a bug fix - but it does move the address GCC runs its
+    * stack on, which is why it needed a GCC re-test rather than being free.
+    *
+    * Note stack_limit below is still derived from the raw malloc base, not from
+    * aligned_stack, so up to 511 of PY_UEFI_STACK_MARGIN's 8192 bytes are eaten
+    * by the round-up. Deliberate: immaterial against 64 MB with 39-71 KB in
+    * actual use, and changing it would shift PyOS_CheckStack()'s threshold. */
    uint64_t aligned_stack = ((uint64_t)g_edk2_globals.stack + 511) & ~(uint64_t)511;
-#else
-   uint64_t aligned_stack = (uint64_t)g_edk2_globals.stack +
-                            (((uint64_t)g_edk2_globals.stack) % 512);
-#endif
    edk2_switch_stack(aligned_stack, g_edk2_globals.stack_size);
 
    g_edk2_globals.stack_limit = (uint64_t)g_edk2_globals.stack +
