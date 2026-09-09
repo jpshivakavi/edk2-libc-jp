@@ -210,6 +210,10 @@
   Modules/atexitmodule.c
   PyMod-3.12.13/Modules/faulthandler.c
   PyMod-3.12.13/Modules/posixmodule.c
+# Platform primitives for firmware tooling (CHIPSEC). FULL only by design: not
+# in Python312_MIN.inf, and its config.c inittab entry is gated on
+# BUILD_PYTHON312_FULL to match.
+  PyMod-3.12.13/Modules/edk2module.c
   PyMod-3.12.13/Modules/signalmodule.c
   Modules/_tracemalloc.c
   Modules/_codecsmodule.c

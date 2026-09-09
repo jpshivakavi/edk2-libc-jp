@@ -1,6 +1,6 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **SCOPED, not yet implemented.** 2026-09-09.
+Status: **Phase 1 written, not yet built or tested.** 2026-09-09. Acceptance procedure in §10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -268,9 +268,9 @@ make the protocol's presence a runtime requirement. Keeping it that way is the p
 All phases are in scope (§3). Ordered by risk, cheapest first; each is independently testable, so
 the ordering is about getting verified ground under the port early, not about what to include.
 
-1. **Module skeleton**: `edk2module.c` with an empty method table, the `config.c` inittab entry,
-   and the `Python312.inf` `[Sources]` line. Acceptance: `import edk2` succeeds and startup is
-   unchanged — which also proves the zero-startup-cost claim in §5.1 before any real code lands.
+1. **Module skeleton** — **WRITTEN, not yet built or tested.** `edk2module.c` with an empty method
+   table, the `config.c` inittab entry, and the `Python312.inf` `[Sources]` line. Acceptance in
+   §10; it proves the zero-startup-cost claim in §5.1 before any real code lands.
 2. **Share the guarded path** (§5.2): move `uefi_guarded_access` into `edk2excep.c`, generalise
    `uefi_set_fault_error`, re-run §5.9 on both FULL configurations. No new API; a refactor that
    must be shown to have changed nothing.
@@ -302,4 +302,61 @@ the ordering is about getting verified ground under the port early, not about wh
 | Naming shim | **Not needed.** Withdrawn; the module is named `edk2`, so both consuming tools import it unchanged (§5.1). |
 | Fault exception type | **Reuse `uefi.FaultError`**, re-exposed as the same object on `edk2` (§5.2). |
 
-No open questions remain before implementation. The next step is phase 1.
+No open questions remain before implementation.
+
+## 10. Phase 1 acceptance
+
+Three files changed, no behaviour added: `PyMod-3.12.13/Modules/edk2module.c` (new, empty method
+table), `PyMod-3.12.13/Modules/config.c` (extern + `{"edk2", PyInit_edk2}`, both inside the
+existing `#if defined(BUILD_PYTHON312_FULL)` blocks that already gate `zlib`/`_ctypes`/`_ssl`),
+and `Python312.inf` `[Sources]`. `srcprep.py` needs no change — the INF compiles the PyMod path in
+place, exactly as it does `posixmodule.c`.
+
+### 10.1 Build
+
+FULL, VS2022:
+
+```
+build -t VS2022 -a X64 -b NOOPT -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
+```
+
+**Then build MIN as well**, even though MIN gains no functionality. MIN is the configuration that
+can actually break here: `config.c` is shared between the two INFs, so if the
+`BUILD_PYTHON312_FULL` gate around either the extern or the inittab entry were wrong, MIN would
+fail to link with an unresolved `PyInit_edk2`. A clean MIN link *is* the test of the gate, and it
+costs one build to get.
+
+### 10.2 On hardware — FULL
+
+| # | Command | Expected |
+|---|---------|----------|
+| 1 | `Python312.efi -S -c "import edk2; print(edk2)"` | `<module 'edk2' (built-in)>` |
+| 2 | `Python312.efi -S -c "import sys; print('edk2' in sys.builtin_module_names)"` | `True` |
+| 3 | `Python312.efi -S -c "print(1+1)"` | `2` and nothing else — boot still silent |
+| 4 | `Python312.efi -S -c "import sys; print(len(sys.modules))"` | **unchanged from the pre-change image** |
+| 5 | `import edk2` → `exit()` → Shell `exit` | no hang, returns to firmware |
+
+**Test 4 is the one that matters** and is worth running deliberately rather than skimming. It is
+the direct evidence for §5.1: if `edk2` were being pulled in during interpreter startup the count
+would go up by one, and if it is genuinely inert the count is identical. Run the command on the
+**currently deployed image first**, note the number, then deploy the new image and run it again —
+a same-day before/after is the honest comparison, because the count drifts as modules are added.
+For reference the historically observed value on VS2022 FULL was **23**, but treat that as a
+sanity bound rather than the expected answer.
+
+### 10.3 On hardware — MIN
+
+| # | Command | Expected |
+|---|---------|----------|
+| 6 | `Python312.efi -S -c "import edk2"` | `ModuleNotFoundError: No module named 'edk2'` |
+| 7 | `Python312.efi -S -c "print(1+1)"` | `2` and nothing else |
+
+Test 6 is the runtime half of the gate check — MIN linking clean proves the build gate, this
+proves the module genuinely is not there. A `ModuleNotFoundError` is the pass condition.
+
+### 10.4 What phase 1 does not test
+
+Nothing about MSR, PCI, memory or the fault path — there is no code for any of it yet. The point
+of the phase is to land the plumbing and the startup-cost claim separately from anything that
+could fail for an interesting reason, so that when phase 3 misbehaves, the module machinery is
+already known good.

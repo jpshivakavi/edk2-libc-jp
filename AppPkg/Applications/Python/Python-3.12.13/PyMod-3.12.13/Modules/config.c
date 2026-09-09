@@ -89,6 +89,10 @@ extern PyObject* PyInit__string(void);
   extern PyObject* PyInit__ctypes(void);
   extern PyObject* PyInit__hashlib(void);
   extern PyObject* PyInit__ssl(void);
+  /* Platform primitives for firmware tooling; PyMod-3.12.13/Modules/edk2module.c.
+   * FULL only — that file is not in Python312_MIN.inf's [Sources], so the gate
+   * is what keeps the MIN link closed. */
+  extern PyObject* PyInit_edk2(void);
 #endif
 #ifndef UEFI_C_SOURCE
   extern PyObject* PyInit__ctypes_test(void);
@@ -199,6 +203,7 @@ struct _inittab _PyImport_Inittab[] = {
 #endif
     {"_hashlib", PyInit__hashlib},
     {"_ssl", PyInit__ssl},
+    {"edk2", PyInit_edk2},
 #endif
     {"_posixsubprocess", PyInit__posixsubprocess},
     {"edk2console", PyInit_edk2console},
