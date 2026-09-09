@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phase 1 passed on VS2022 FULL** (2026-09-09). MIN gate check still outstanding.
-Acceptance procedure and results in §10.
+Status: **Phase 1 closed** — VS2022 FULL green and the MIN gate confirmed by a clean link
+(2026-09-09), §10. **Phase 2 written, not yet built or tested**, §11.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -289,9 +289,7 @@ the ordering is about getting verified ground under the port early, not about wh
 1. **Module skeleton** — **WRITTEN, not yet built or tested.** `edk2module.c` with an empty method
    table, the `config.c` inittab entry, and the `Python312.inf` `[Sources]` line. Acceptance in
    §10; it proves the zero-startup-cost claim in §5.1 before any real code lands.
-2. **Share the guarded path** (§5.2): move `uefi_guarded_access` into `edk2excep.c`, generalise
-   `uefi_set_fault_error`, re-run §5.9 on both FULL configurations. No new API; a refactor that
-   must be shown to have changed nothing.
+2. **Share the guarded path** (§5.2) — **WRITTEN, not yet built or tested.** Acceptance in §11.
 3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio`. BaseLib/IoLib only,
    all verifiable from a bare-image one-liner (`cpuid(0,0)` returns the vendor string as four
    registers; `rdmsr(0x1B)` returns the APIC base).
@@ -406,7 +404,14 @@ mismatch would be ambiguous rather than informative. Test 1 measures the thing i
 kept only as a recorded data point for future comparison — the historically observed value on
 VS2022 FULL was **23** — and nothing is asserted about it.
 
-### 10.3 On hardware — MIN
+### 10.3 On hardware — MIN — **gate PASSED 2026-09-09 (link), runtime check not run**
+
+MIN **built and linked clean**, which is the half that matters: `config.c` is shared between the
+two INFs, so a wrong `BUILD_PYTHON312_FULL` bracket around either the extern or the inittab entry
+would have surfaced as an unresolved `PyInit_edk2` at MIN link time. It did not, so the gate is
+correct and phase 1 is closed on both configurations. The runtime `ModuleNotFoundError` check
+below was deliberately skipped rather than forgotten — it needs an image swap to learn something
+the link already established.
 
 | # | Command | Expected |
 |---|---------|----------|
@@ -422,3 +427,63 @@ Nothing about MSR, PCI, memory or the fault path — there is no code for any of
 of the phase is to land the plumbing and the startup-cost claim separately from anything that
 could fail for an interesting reason, so that when phase 3 misbehaves, the module machinery is
 already known good.
+
+## 11. Phase 2 acceptance — the refactor
+
+**Status: written, not yet built or tested.**
+
+Four files. Nothing gains a new capability; one attribute appears.
+
+| File | Change |
+|---|---|
+| `efi/src/edk2excep.c` | `edk2_guarded_access()` added — `uefi_guarded_access` moved whole, body unchanged |
+| `efi/Include/efi/edk2excep.h` | declares it; no new includes needed |
+| `Modules/posixmodule.c` | its copy deleted; three call sites retargeted; `uefi_set_fault_error` now takes the exception type instead of the module |
+| `Modules/edk2module.c` | `PyInit_edk2` binds `edk2.FaultError` to `uefi.FaultError` |
+
+`uefi_set_fault_error` stays `static` in `posixmodule.c`. Generalising its signature is the
+enabling step and is worth doing while the file is open, but choosing *how* to export it would be
+speculative until something else raises a fault — that decision belongs to phase 5, which is the
+first phase with a second caller.
+
+### 11.1 Both toolchains, FULL and MIN
+
+All four configurations must build: `posixmodule.c` and `edk2excep.c` are in **both** INFs, so
+unlike phase 1 this touches MIN's compiled code. MIN gains nothing and must break nothing.
+
+### 11.2 The refactor changed nothing — re-run §5.9
+
+Re-run the §5.9 guarded-memory sequence from `Python312_Smoke_Tests.md` on **VS2022 FULL and GCC
+FULL**. Every value must match what §7.5-§7.7 already recorded, `rip` aside, which differs because
+the images do. This is the whole point of the phase: `mem_read`, `mem_write`, `mem_probe` and
+`uefi.FaultError` are verified on four configurations, and the code underneath them just moved
+translation units. A difference here is a real regression, not a curiosity.
+
+The §5.8 fault-report check is worth including too, since it exercises the same IDT path from the
+other direction.
+
+### 11.3 The sharing works — one new check
+
+```
+Python312.efi -S -c "import edk2, uefi; print(edk2.FaultError is uefi.FaultError)"
+```
+
+Expected: `True`. This is the only *positive* assertion in the phase — everything else is an
+absence of change — and it is what makes the design in §5.2 real rather than intended: one
+exception type, so `except uefi.FaultError` catches faults raised by either module, and there is
+no second type to drift.
+
+Two failure modes worth recognising. `False` would mean two distinct type objects exist, i.e. the
+new module built its own instead of borrowing — which would still *work* for anyone catching
+`edk2.FaultError` and silently fail for anyone catching `uefi.FaultError`, the worse of the two
+because it only shows up in someone else's error handling. An `ImportError` or `AttributeError`
+from `import edk2` means `uefi.FaultError` was not found, which is the deliberate loud failure
+described in `PyInit_edk2` — a missing fault-recovery type is exactly what should stop this
+module from loading rather than be worked around.
+
+### 11.4 Why the move is safe
+
+Recorded in §5.2 and worth not re-deriving: `setjmp` resolves to the same EDK2
+`SetJump`/`LongJump` in the destination file, and the function was moved **whole**, keeping the
+`setjmp`, the access and the return in one frame. Both were checked before the move rather than
+after.

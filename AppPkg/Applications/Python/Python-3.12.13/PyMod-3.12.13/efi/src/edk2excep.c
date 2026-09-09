@@ -71,6 +71,63 @@ edk2_seh_catch(INTN should_raise, uint64_t *exc_kind_out, uint8_t *buf, size_t b
   memset((char *)entry, '\0', sizeof(edk2_seh_context_t));
 }
 
+/* Performs one guarded access. Returns 0 on success, 1 if it faulted (with
+ * *kind_out and *ctx_out filled in), or -1 if the guard could not be installed.
+ *
+ * value is a pointer to volatile deliberately: it is the one object written
+ * inside the guarded region and read after a longjmp. SetJump/LongJump restore
+ * the callee-saved registers, so a non-volatile local assigned in the region
+ * could be rolled back to its pre-setjmp value on the recovery path. Nothing
+ * else here is written after setjmp, which is why nothing else needs it. This
+ * is the easiest thing in the file to get subtly wrong, and it would fail
+ * intermittently rather than outright.
+ *
+ * Do not split this function. setjmp has to be called by the frame that longjmp
+ * returns to, so the setjmp, the access and the return belong in one frame.
+ * Factoring out an "arm the guard" helper would compile, read fine, and arm the
+ * guard against a frame that had already returned.
+ *
+ * Lived in posixmodule.c until the edk2 module needed it too; there is nothing
+ * Python about it, so it belongs here next to edk2_seh_try/catch rather than
+ * being duplicated. Types are spelled unsigned long long rather than uint64_t
+ * to match the callers, whose values come from PyArg_ParseTuple's "K": the two
+ * spellings need not be the same type under GCC, and a volatile
+ * unsigned long long * would then not be assignable to a volatile uint64_t *. */
+int
+edk2_guarded_access(int is_write, unsigned long long addr, int size,
+                    volatile unsigned long long *value,
+                    uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out)
+{
+  jmp_buf *jb = (jmp_buf *)edk2_seh_try();
+  if (jb == NULL)
+    return -1;
+
+  if (setjmp(*jb) == 0) {
+    if (is_write) {
+      switch (size) {
+      case 1: *(volatile uint8_t  *)(uintptr_t)addr = (uint8_t )*value; break;
+      case 2: *(volatile uint16_t *)(uintptr_t)addr = (uint16_t)*value; break;
+      case 4: *(volatile uint32_t *)(uintptr_t)addr = (uint32_t)*value; break;
+      case 8: *(volatile uint64_t *)(uintptr_t)addr = (uint64_t)*value; break;
+      }
+    }
+    else {
+      switch (size) {
+      case 1: *value = *(volatile uint8_t  *)(uintptr_t)addr; break;
+      case 2: *value = *(volatile uint16_t *)(uintptr_t)addr; break;
+      case 4: *value = *(volatile uint32_t *)(uintptr_t)addr; break;
+      case 8: *value = *(volatile uint64_t *)(uintptr_t)addr; break;
+      }
+    }
+    edk2_seh_catch(0, NULL, NULL, 0);
+    return 0;
+  }
+
+  /* edk2_seh_catch() dereferences kind_out unconditionally when asked to
+   * report, so both out-params are always passed. */
+  edk2_seh_catch(1, kind_out, (uint8_t *)ctx_out, sizeof(*ctx_out));
+  return 1;
+}
 
 
 VOID

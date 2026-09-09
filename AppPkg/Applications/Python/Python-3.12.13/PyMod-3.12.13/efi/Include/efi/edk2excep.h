@@ -60,6 +60,12 @@ void *
 edk2_seh_try();
 void
 edk2_seh_catch(INTN should_raise, uint64_t *exc_kind_out, uint8_t *buf, size_t bufsize);
+/* One guarded 1/2/4/8-byte load or store. 0 = ok, 1 = faulted (kind_out and
+ * ctx_out filled in), -1 = guard unavailable (nesting depth exhausted). */
+int
+edk2_guarded_access(int is_write, unsigned long long addr, int size,
+                    volatile unsigned long long *value,
+                    uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out);
 EFI_STATUS
 py_install_idt();
 void

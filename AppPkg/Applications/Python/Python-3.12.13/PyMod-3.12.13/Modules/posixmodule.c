@@ -16042,57 +16042,16 @@ uefi_check_access_size(int size)
     return 0;
 }
 
-/* Performs one guarded access. Returns 0 on success, 1 if it faulted (with
- * *kind_out and *ctx_out filled in), or -1 if the guard could not be installed.
+/* The guarded access itself is edk2_guarded_access() in efi/src/edk2excep.c —
+ * pure C with no Python in it, shared with the edk2 module rather than
+ * duplicated. Its contract: 0 = ok, 1 = faulted, -1 = guard unavailable.
  *
- * value is a pointer to volatile deliberately: it is the one object written
- * inside the guarded region and read after a longjmp. SetJump/LongJump restore
- * the callee-saved registers, so a non-volatile local assigned in the region
- * could be rolled back to its pre-setjmp value on the recovery path. Nothing
- * else here is written after setjmp, which is why nothing else needs it. This
- * is the easiest thing in the file to get subtly wrong, and it would fail
- * intermittently rather than outright. */
-static int
-uefi_guarded_access(int is_write, unsigned long long addr, int size,
-                    volatile unsigned long long *value,
-                    uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out)
-{
-    jmp_buf *jb = (jmp_buf *)edk2_seh_try();
-    if (jb == NULL)
-        return -1;
-
-    if (setjmp(*jb) == 0) {
-        if (is_write) {
-            switch (size) {
-            case 1: *(volatile uint8_t  *)(uintptr_t)addr = (uint8_t )*value; break;
-            case 2: *(volatile uint16_t *)(uintptr_t)addr = (uint16_t)*value; break;
-            case 4: *(volatile uint32_t *)(uintptr_t)addr = (uint32_t)*value; break;
-            case 8: *(volatile uint64_t *)(uintptr_t)addr = (uint64_t)*value; break;
-            }
-        }
-        else {
-            switch (size) {
-            case 1: *value = *(volatile uint8_t  *)(uintptr_t)addr; break;
-            case 2: *value = *(volatile uint16_t *)(uintptr_t)addr; break;
-            case 4: *value = *(volatile uint32_t *)(uintptr_t)addr; break;
-            case 8: *value = *(volatile uint64_t *)(uintptr_t)addr; break;
-            }
-        }
-        edk2_seh_catch(0, NULL, NULL, 0);
-        return 0;
-    }
-
-    /* edk2_seh_catch() dereferences kind_out unconditionally when asked to
-     * report, so both out-params are always passed. */
-    edk2_seh_catch(1, kind_out, (uint8_t *)ctx_out, sizeof(*ctx_out));
-    return 1;
-}
-
+ * This takes the exception type rather than the module, so that callers outside
+ * this file, which have no posix state to look it up in, can use it too. */
 static void
-uefi_set_fault_error(PyObject *module, uint64_t kind,
+uefi_set_fault_error(PyObject *exc_type, uint64_t kind,
                      const EFI_SYSTEM_CONTEXT_X64 *ctx)
 {
-    PyObject *exc_type = get_posix_state(module)->FaultErrorType;
     PyObject *msg, *exc, *attr;
 
     /* %p rather than a hex conversion: PyUnicode_FromFormat's integer support
@@ -16161,13 +16120,13 @@ os_mem_read(PyObject *module, PyObject *args)
     if (uefi_check_access_size(size) < 0)
         return NULL;
 
-    rc = uefi_guarded_access(0, addr, size, &value, &kind, &ctx);
+    rc = edk2_guarded_access(0, addr, size, &value, &kind, &ctx);
     if (rc < 0)
         return PyErr_Format(PyExc_RuntimeError,
                             "fault guard nesting depth (%d) exceeded",
                             EDK2_SEH_CONTEXT_SIZE);
     if (rc > 0) {
-        uefi_set_fault_error(module, kind, &ctx);
+        uefi_set_fault_error(get_posix_state(module)->FaultErrorType, kind, &ctx);
         return NULL;
     }
     return PyLong_FromUnsignedLongLong(value);
@@ -16208,13 +16167,13 @@ os_mem_write(PyObject *module, PyObject *args)
     }
 
     value = raw;
-    rc = uefi_guarded_access(1, addr, size, &value, &kind, &ctx);
+    rc = edk2_guarded_access(1, addr, size, &value, &kind, &ctx);
     if (rc < 0)
         return PyErr_Format(PyExc_RuntimeError,
                             "fault guard nesting depth (%d) exceeded",
                             EDK2_SEH_CONTEXT_SIZE);
     if (rc > 0) {
-        uefi_set_fault_error(module, kind, &ctx);
+        uefi_set_fault_error(get_posix_state(module)->FaultErrorType, kind, &ctx);
         return NULL;
     }
     Py_RETURN_NONE;
@@ -16248,7 +16207,7 @@ os_mem_probe(PyObject *module, PyObject *args)
     if (uefi_check_access_size(size) < 0)
         return NULL;
 
-    rc = uefi_guarded_access(0, addr, size, &value, &kind, &ctx);
+    rc = edk2_guarded_access(0, addr, size, &value, &kind, &ctx);
     if (rc < 0)
         return PyErr_Format(PyExc_RuntimeError,
                             "fault guard nesting depth (%d) exceeded",

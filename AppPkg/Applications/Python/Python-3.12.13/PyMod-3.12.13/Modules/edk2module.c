@@ -65,5 +65,42 @@ static struct PyModuleDef edk2module = {
 PyMODINIT_FUNC
 PyInit_edk2(void)
 {
-    return PyModule_Create(&edk2module);
+    PyObject *m, *uefi, *fault_error;
+
+    m = PyModule_Create(&edk2module);
+    if (m == NULL)
+        return NULL;
+
+    /* Reuse uefi.FaultError rather than defining a second exception type, so
+     * that `except uefi.FaultError` catches faults from either module and
+     * `edk2.FaultError is uefi.FaultError` holds. One type, no hierarchy.
+     *
+     * `uefi` is a builtin that the interpreter loads during startup, so by the
+     * time anything can import edk2 this is a sys.modules hit rather than work.
+     *
+     * Failing the import if it is missing is deliberate. FaultError absent
+     * means the fault-recovery infrastructure that this module's memory APIs
+     * depend on is not in the image, and an import that raises is far easier to
+     * diagnose than memory APIs that stop the machine instead of reporting. */
+    uefi = PyImport_ImportModule("uefi");
+    if (uefi == NULL)
+        goto error;
+
+    fault_error = PyObject_GetAttrString(uefi, "FaultError");
+    Py_DECREF(uefi);
+    if (fault_error == NULL)
+        goto error;
+
+    /* AddObjectRef does not steal, so the local reference is still ours. */
+    if (PyModule_AddObjectRef(m, "FaultError", fault_error) < 0) {
+        Py_DECREF(fault_error);
+        goto error;
+    }
+    Py_DECREF(fault_error);
+
+    return m;
+
+error:
+    Py_DECREF(m);
+    return NULL;
 }
