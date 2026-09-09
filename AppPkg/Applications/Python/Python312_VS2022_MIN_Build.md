@@ -148,6 +148,13 @@ FULL on GCC:
 build ... -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
 
+**GCC MIN was swept for the first time on 2026-09-09** — §2 and §4 green
+([`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.2). Note that on GCC there is **no boot
+trace at all** (`PY_UEFI_BOOT_TRACE` is `MSFT:`-only), so the `size=4000000` and
+`before py_install_idt` confirmations available on VS2022 MIN simply do not exist there; combined
+with §5.8 being n/a for want of `_ctypes`, GCC MIN is the one configuration where neither the IDT
+install nor fault routing is directly observable. Shared code, proven on GCC FULL.
+
 Both toolchains now use the **`UefiMain` + stack switch** path, and since 2026-09-08 both also
 install the **custom IDT** — `/DPY_UEFI_MSVC_IDT=1` is set in both INFs and was verified on hardware
 under MSVC, so the entry path no longer diverges by toolchain at all. Fault behaviour is identical:

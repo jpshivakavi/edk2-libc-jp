@@ -654,6 +654,35 @@ The build also settled an open question from the `edk2_seh_*` fixes: `EnableInte
 without adding `BaseLib` to `[LibraryClasses]`, since it is already in the module's link closure via
 `UefiLib`/`DebugLib`.
 
+### 7.2 GCC MIN — swept 2026-09-09
+
+**First sweep of GCC MIN in this port.** It is a deliverable, and it had never been run — the GCC
+line was always validated on FULL.
+
+| Check | Result |
+|-------|--------|
+| §2 — `-h`, `sys.version`, `import os, sys, json`, `hashlib` | **Pass** |
+| §2 — `import ssl` / `import ctypes` | **Pass (must fail)** |
+| §4 — `-S`, `import json`, `exit()`, Shell `exit`, relaunch | **Pass** |
+| §1.1 boot trace | **Unavailable on GCC** — `PY_UEFI_BOOT_TRACE` is on the `MSFT:` flags line only, so there is no ladder, no `size=`, no `min_rsp`. Absence is not a failure |
+| §5.8 fault injection | **n/a** — no `_ctypes` to build the bad pointer with, and no other way to dereference an arbitrary address from pure Python |
+
+**What this settles beyond MIN itself:** the two `edk2_seh_*` fixes touch shared code, and their only
+real risk was that `EnableInterrupts()` might need an explicit `BaseLib` in `[LibraryClasses]`. The
+GCC build linking cleanly confirms `BaseLib` is in the module's closure on **both** toolchains, not
+just under MSVC.
+
+**Consequence of §1.1 being unavailable and §5.8 being n/a:** on GCC MIN nothing directly proves the
+IDT installed *or* that a fault routes to `py_handle_exception()`. That combination is unique to GCC
+MIN — VS2022 MIN at least has the trace line — and it is unclosable until the guarded primitives
+exist ([`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) §4). It
+is not a regression risk, since the IDT code is shared and proven on GCC FULL.
+
+> **Still outstanding at this code state: GCC FULL, including §5.8.** That is the run that exercises
+> `py_handle_exception()` itself, the function the `edk2_seh_*` fixes edited. Until it is green, the
+> fixes are verified on VS2022 (MIN) and compile-verified on GCC, but the GCC **fault-reporting**
+> path has not been re-confirmed since they landed.
+
 ---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.
