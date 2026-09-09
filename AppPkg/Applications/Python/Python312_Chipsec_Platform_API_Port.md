@@ -430,10 +430,12 @@ already known good.
 
 ## 11. Phase 2 acceptance — the refactor
 
-**Status: VS2022 FULL green 2026-09-09** (§5.9 tests 0-8, the `ctypes` write row, §2/§3/§4, and the
-new `edk2.FaultError is uefi.FaultError` assertion — recorded in
-`Python312_Smoke_Tests.md` §7.9). **Outstanding:** VS2022 MIN and GCC MIN builds, GCC FULL build
-plus §5.9.
+**Status: VS2022 FULL green and both MIN builds clean, 2026-09-09.** FULL covered §5.9 tests 0-8,
+the `ctypes` write row, §2/§3/§4, and the whole `edk2` surface (§11.3, §11.3.1, §11.3.2) — recorded
+in `Python312_Smoke_Tests.md` §7.9. **VS2022 MIN and GCC MIN both build and link clean**, which is
+all that was asked of them: they compile the changed `posixmodule.c` and `edk2excep.c` but gain no
+functionality. **Outstanding: GCC FULL** — build plus a §5.9 re-run, the last item before phase 2
+closes.
 
 Four files. Nothing gains a new capability; one attribute appears.
 

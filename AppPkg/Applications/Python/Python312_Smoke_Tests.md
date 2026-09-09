@@ -1023,9 +1023,13 @@ table as the cause.
 exercises the branch of `py_handle_exception` that phase 2 did not touch. Row 1 above covers the
 handled branch, which is the part that moved.
 
-**Outstanding for phase 2:** VS2022 MIN and GCC MIN builds (compile only — both INFs compile
-`posixmodule.c` and `edk2excep.c`, so neither may break, and neither gains anything), and GCC FULL
-build plus a §5.9 re-run.
+**VS2022 MIN and GCC MIN both build and link clean** (2026-09-09), which is the whole of what was
+asked of them — they compile the changed `posixmodule.c` and `edk2excep.c` but gain no
+functionality, so "did not break" is the entire result. **Outstanding for phase 2: GCC FULL**,
+build plus a §5.9 re-run against the §7.7 values. That is the run carrying real information, since
+it varies the *toolchain* across the move: `SetJump`/`LongJump` is the same EDK2 assembly on both
+sides, but how each compiler lays out the frame `setjmp` captures is not, so a relocation problem
+is likelier to look different there than to look identical.
 
 ---
 
