@@ -493,6 +493,16 @@ tests 3, 4 and 6 see the state left by the earlier ones.
 Python312.efi -S -c "import uefi; print(hasattr(uefi,'mem_read'), uefi.FaultError)"
 ```
 
+> **A `SyntaxError` on a long line is usually the console, not the test — retype it before believing
+> it.** Observed 2026-09-09 on VS2022 MIN over the HTML KVM client:
+> `import time; t = time.time(); time.sleep(2); print(round(time.time() - t, 1))` returned
+> `SyntaxError: unmatched ')'`, and **the identical line retyped ran fine and printed `2.0`**. So
+> characters are dropped intermittently in transit; it is not a deterministic wrap at 80 columns.
+> The trap is that Python faithfully reports a problem with the *mangled* line, which reads exactly
+> like a typo in the procedure. Same class as the earlier `non-utf-8 code` syntax error, and **not**
+> specific to this section. Splitting a long line across several short ones reduces the exposure and
+> is worth doing for anything you will run repeatedly.
+
 Two conventions make every row a short line you can type at a UEFI prompt:
 
 - **A known-good address without `ctypes`:** `id(x)` is the address of a Python object, so
@@ -514,7 +524,7 @@ Python312.efi -S
 | 1 | `uefi.mem_read(0x800000000000, 8)` | `uefi.FaultError: CPU exception 13 (rip=0x… cr2=0x…)` and **the prompt returns**. This is the whole feature in one line |
 | 2 | `e = sys.last_value; print(e.vector, hex(e.rip), hex(e.cr2), e.error_code)` | `13`, a plausible code address for `rip`, and integers. `cr2` is **meaningless for a #GP** — see §5.8 |
 | 3 | `print(uefi.mem_read(id(x), 8))` | A small positive integer (the refcount), no exception. **This is the test that matters**: it proves the recovery in 1 left the interpreter usable rather than merely appearing to |
-| 4 | `import time; t = time.time(); time.sleep(2); print(round(time.time() - t, 1))` | About `2.0`. An instant return or a hang means `RFLAGS.IF` was not restored after the fault — the design doc §2.1 defect regressing, which is the reason that fix exists |
+| 4 | `import time; t = time.time(); time.sleep(2); print(round(time.time() - t, 1))` — or as four short lines if it gets mangled | About `2.0` (observed exactly `2.0`). An instant return or a hang means `RFLAGS.IF` was not restored after the fault — the design doc §2.1 defect regressing, which is the reason that fix exists |
 | 5 | `print(uefi.mem_probe(0x800000000000), uefi.mem_probe(id(x)))` | `False True`, **no exception either way** |
 | 6 | `print(sum(uefi.mem_probe(0x800000000000) for i in range(200)))` then repeat test 3 | `0`, then test 3 still works. 200 faults must leave the guard stack balanced; if it leaks, `edk2_seh_try()` starts returning `NULL` and test 3 turns into `RuntimeError` |
 | 7 | `uefi.mem_read(0, 3)` then `uefi.mem_write(0x1000, 1, 256)` | `ValueError` on the size, `OverflowError` on the value. Both are rejected **before** the guard is installed, so **neither one touches an address** |
