@@ -35,16 +35,20 @@ EDK does **not** allow `!if $(BUILD_PYTHON312_FULL)` inside INF `[BuildOptions]`
 | **`MSFT:*_*_*_NASM_FLAGS = -DPY_UEFI_MS_ABI`** | **Required.** NASM helpers take arguments in **`rcx`/`rdx`** under MSVC, not **`rdi`/`rsi`**; without it **`edk2_switch_stack`** sets **`rsp`** from garbage and boot stops at **`before ShellCEntryLib`** |
 | **`/DPY_UEFI_MSVC_IDT=1`** | Installs the custom IDT under MSVC, as GCC always has. Set in **both** INFs so the MSVC entry path does not diverge the way **`PY_UEFI_MSVC_368_ENTRY`** did. A CPU fault then reports **`unhandled CPU exception N rip=… cr2=…`** and spins rather than deferring to firmware. Verified on **FULL** only |
 
-> **MIN has not been re-tested since VS2022 moved onto the 64 MB stack (2026-09-08).**
-> **`/DPY_UEFI_MSVC_368_ENTRY=1`** was removed from `Python312_MIN.inf` together with its branch in
-> `edk2main.c`, so MIN now takes the switched path too. **FULL is signed off on hardware; MIN is
-> not.** Re-run [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §2 and §4 on a MIN image —
-> including a deep import such as `import json` at the prompt, then `exit()`, then Shell `exit`.
-> Boot stopping at **`before ShellCEntryLib`** means the NASM flag above is missing.
+> **MIN VS2022 IS SIGNED OFF ON HARDWARE — 2026-09-09.** It had accumulated **four** deltas that
+> were only ever validated on FULL: the removal of **`/DPY_UEFI_MSVC_368_ENTRY=1`** (so MIN takes
+> the 64 MB switched path), **`/DPY_UEFI_MSVC_IDT=1`**, the `edk2_alloc_environ()` leak fix, and the
+> two `edk2_seh_*` defect fixes
+> ([`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) §2). All
+> four are now demonstrated rather than inferred — [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md)
+> §7.1 has the evidence. Highlights: `size=4000000` in the boot trace (64 MB, so the switched path
+> is genuinely in play), `before py_install_idt` and **not** `skipping py_install_idt (MSVC)`, and
+> `import json` at the `>>>` prompt followed by `exit()` and Shell `exit` with **no hang and no
+> `MemoryError`** — the exact sequence that used to hang FULL.
 >
-> **Two further deltas have since landed on MIN without a hardware run:**
-> **`/DPY_UEFI_MSVC_IDT=1`** (above) and the `edk2_alloc_environ()` leak fix. Boot stopping at
-> **`before py_install_idt`** would implicate the IDT — drop that flag to isolate it.
+> Failure signatures if you rebuild and it regresses: boot stopping at **`before ShellCEntryLib`**
+> means the NASM `-DPY_UEFI_MS_ABI` flag above went missing; stopping at **`before py_install_idt`**
+> implicates the IDT, so drop that flag to isolate it.
 
 Details: [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md).
 
@@ -144,4 +148,7 @@ FULL on GCC:
 build ... -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
 
-Both toolchains now use the **`UefiMain` + stack switch** path; only the **custom IDT** remains GCC-only (**`PY_UEFI_MSVC_IDT`** opts MSVC in, untested).
+Both toolchains now use the **`UefiMain` + stack switch** path, and since 2026-09-08 both also
+install the **custom IDT** — `/DPY_UEFI_MSVC_IDT=1` is set in both INFs and was verified on hardware
+under MSVC, so the entry path no longer diverges by toolchain at all. Fault behaviour is identical:
+report `unhandled CPU exception N rip=… cr2=…`, then spin.

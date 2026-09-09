@@ -130,7 +130,17 @@ Python312.efi -S -c "import os, sys, json; print('ok')"
 | **`-h`** | Help text, returns to Shell prompt |
 | **`sys.version`** | **`3.12.13`** |
 | **`import os`**, **`json`**, **`hashlib`** | **OK** |
-| **`import ssl`**, **`import ctypes`** | **Must fail** — MIN has no Phase 8 |
+| **`import ssl`**, **`import ctypes`** | **Must fail** — MIN has no Phase 8. Either signature counts, see below |
+
+**Which name the failure mentions depends on the `lib` tree, not the binary.** On a volume carrying
+a **MIN**-packaged tree you get `No module named 'ssl'` / `'ctypes'`. On one still carrying a
+**FULL** tree — common when reusing a stick between builds — the Python-level `ssl/` and `ctypes/`
+packages import and then fail reaching for their extensions, giving **`No module named '_ssl'` /
+`'_ctypes'`** (observed on MIN VS2022, 2026-09-09).
+
+**Both are a pass, and the `_`-prefixed one is the stronger signal**: it proves the *binary* lacks
+the extension. A failure on the bare `ssl` / `ctypes` name cannot distinguish "extension not linked"
+from "lib tree incomplete". What would be a **failure** is either import *succeeding*.
 
 ---
 
@@ -422,7 +432,8 @@ Python312 boot: unhandled CPU exception 13 rip=<addr> cr2=<addr>
 then the machine sits there. **The print is the entire deliverable**; the stop after it is
 `py_handle_exception()`'s own `while (exc_trap)` loop, not a crash. Faults are **reported, not
 survivable** — `edk2_seh_try()` / `edk2_seh_catch()` exist but have no callers, so there is nothing
-to recover into.
+to recover into. Making them survivable is designed but not built:
+[`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md).
 
 **Why this address:** `0x800000000000` is non-canonical (bit 47 set, bits 63:48 clear), so it raises
 a **#GP (13)** deterministically, independent of how firmware mapped memory. For a **page fault
@@ -472,7 +483,7 @@ go to firmware as they did before. GCC has no equivalent switch — it always in
 | Phase 8 **`-S -c`** + Shell **`exit`** | **Pass** | **Pass** | n/a |
 | **`ctypes.sizeof(c_void_p)`** == **`8`** (§3) | **Pass** (09-04) | **Pass** (09-04) | n/a |
 | Four modules, one process (§3 `phase8 ok`) | **Pass** (09-04) | **Pass** (09-04) | n/a |
-| Stdio **`-S`** REPL + teardown | **Pass** | **Pass** | **Pass** |
+| Stdio **`-S`** REPL + teardown | **Pass** | **Pass** | **Pass** (09-09, incl. `import json`) |
 | Stub default **asserted** (§5.2) | **Pass** (09-07) | **Pass** (09-07) | Observed safe (Session 10) |
 | Non-interactive opt-in (§5.3) | **Pass** (09-07) | **HANG** on Shell `exit` (09-07) | n/a |
 | Interactive pyreadline opt-in (§5.4) | **Pass** (09-07) | **HANG** on Shell `exit` (09-07) | n/a |
@@ -582,8 +593,8 @@ lab note mapped the trigger accurately but the cause sat one layer below, in ass
 exercised on this toolchain. `PY_UEFI_MSVC_368_ENTRY` and `PY_UEFI_FIRMWARE_STACK_BUDGET` are both
 gone.
 
-**Still pending: the same sweep on the MIN build.** MIN carried `PY_UEFI_MSVC_368_ENTRY` too and now
-takes the switched path unvalidated — see [`Python312_VS2022_MIN_Build.md`](./Python312_VS2022_MIN_Build.md).
+**MIN has since been swept too — 2026-09-09, see §7.1.** It carried `PY_UEFI_MSVC_368_ENTRY` as well
+and had been on the switched path unvalidated until then.
 
 Reference commits: GCC **`dbc8416c`**, VS2022 **`4dec4edf`** / **`3568d02d`**.
 Pin: tag **`python312-unified-full-lab-2026-09-01`**.
@@ -611,5 +622,38 @@ defined only on the `MSFT:` flags line, so a GCC image prints **no `Python312 bo
 `switched stack` measurement**, and the `Py_FinalizeEx()` detach is not compiled into it. Do not read
 a missing trace line on GCC as a failure — see §1.1. The one remaining code difference is the GCC
 stack-alignment expression (deviations §11.8 #1), which is cosmetic and cannot fault.
+
+### 7.1 VS2022 MIN — swept and signed off 2026-09-09
+
+MIN had quietly accumulated **four** deltas validated only on FULL: `PY_UEFI_MSVC_368_ENTRY` removed
+(so MIN moved onto the 64 MB switched stack), `/DPY_UEFI_MSVC_IDT=1` added, the
+`edk2_alloc_environ()` leak fix, and the two `edk2_seh_*` defect fixes
+([`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) §2). This
+sweep closes all four on hardware.
+
+| Check | Result |
+|-------|--------|
+| §1.1 boot trace — `size=4000000` | **Pass.** 64 MB, so MIN really is on the switched stack, not the ~128 KB firmware stack |
+| §1.1 — `before py_install_idt` | **Pass.** Not `skipping py_install_idt (MSVC)`, so `PY_UEFI_MSVC_IDT` took effect on MIN as it did on FULL |
+| §2 — `-h`, `sys.version` → `3.12.13` | **Pass** |
+| §2 — `import os, sys, json`, `hashlib` digest | **Pass.** Builtin hashes still present |
+| §2 — `import ssl` / `import ctypes` | **Pass (must fail).** Failed on **`_ssl`** / **`_ctypes`** — FULL `lib` tree on the volume, binary lacks the extensions |
+| §4 — `-S`, `import json`, `exit()`, Shell `exit` | **Pass.** No hang, **no `MemoryError`** — the sequence that used to hang FULL |
+| §4 — relaunch | **Pass.** Covered by repeated launches across §2 and §4 |
+| §5.8 fault injection | **n/a on MIN** — no `ctypes` to build the bad pointer with. The IDT is proven by the trace line instead |
+
+**Measured depth: about 71 KB of 64 MB (0.11%).** From `min_rsp=648B71B8` against `limit=608CB038`,
+which puts the base at `0x608C9038` and the top at `0x648C9038`. Higher than FULL's 39.4 KB only
+because the sampled run was formatting an `ImportError` traceback; both are noise against 64 MB.
+
+**`min_rsp=0` on a `-h` run is not a defect** — `PyOS_CheckStack()` is called only from
+`PyObject_Repr`, `PyObject_Str` and `_Py_CheckRecursiveCall`, and `-h` prints usage from C without
+evaluating Python, so it reaches none of them. `edk2main.h` documents zero as "never sampled".
+
+The build also settled an open question from the `edk2_seh_*` fixes: `EnableInterrupts()` resolves
+without adding `BaseLib` to `[LibraryClasses]`, since it is already in the module's link closure via
+`UefiLib`/`DebugLib`.
+
+---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.
