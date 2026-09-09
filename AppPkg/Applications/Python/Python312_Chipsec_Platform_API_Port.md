@@ -314,17 +314,49 @@ place, exactly as it does `posixmodule.c`.
 
 ### 10.1 Build
 
-FULL, VS2022:
+Both builds run from an existing EDK2 console — the one where `edksetup` was run. The EDK2
+environment is per-shell, but nothing about this change needs new variables: `OPENSSL_ROOT`,
+`LIBFFI_INC` and `LIBFFI_MSVC_INC` are DSC/INF `DEFINE`s (`Python312.inf:17-21`), not environment
+variables. **`srcprep.py` does not need re-running** either: the INF compiles
+`PyMod-3.12.13/Modules/edk2module.c` in place, exactly as it does `posixmodule.c`, and no overlay
+header changed.
+
+FULL:
 
 ```
 build -t VS2022 -a X64 -b NOOPT -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312 -D BUILD_PYTHON312_FULL=TRUE
 ```
 
-**Then build MIN as well**, even though MIN gains no functionality. MIN is the configuration that
-can actually break here: `config.c` is shared between the two INFs, so if the
-`BUILD_PYTHON312_FULL` gate around either the extern or the inittab entry were wrong, MIN would
-fail to link with an unresolved `PyInit_edk2`. A clean MIN link *is* the test of the gate, and it
-costs one build to get.
+MIN — note that MIN is the **default**, so it is the *absence* of the FULL flag rather than
+`FALSE` (`AppPkg.dsc:32` defines `BUILD_PYTHON312_FULL = FALSE`, and `:136` selects the INF from
+it):
+
+```
+build -t VS2022 -a X64 -b NOOPT -p AppPkg/AppPkg.dsc -D BUILD_PYTHON312
+```
+
+**Build MIN even though it gains no functionality.** MIN is the configuration that can actually
+break here: `config.c` is shared between the two INFs, so if the `BUILD_PYTHON312_FULL` gate
+around either the extern or the inittab entry were wrong, MIN would fail to link with an
+unresolved `PyInit_edk2`. A clean MIN link *is* the test of the gate, and it costs one build.
+
+Incremental is expected to be enough — `Python312.inf` was edited, so AutoGen regenerates the
+module makefile and picks up the new `[Sources]` entry. If FULL instead fails to link on
+`PyInit_edk2`, that is a stale makefile rather than a real problem: delete that module's output
+directory under `Build\AppPkg\NOOPT_VS2022\X64\…\Python312\` and rebuild.
+
+### 10.1.1 Do not mix up the two images
+
+Both configurations produce a file called **`Python312.efi`**; only the directory differs.
+
+| Build | Path under `edk2\Build\AppPkg\NOOPT_VS2022\X64\edk2-libc-jp-vsfix\AppPkg\Applications\Python\Python-3.12.13\` |
+|---|---|
+| FULL | `Python312\DEBUG\Python312.efi` |
+| MIN | `Python312_MIN\DEBUG\Python312.efi` |
+
+This matters more than usual for this phase, because the FULL and MIN expectations are
+*opposites*: `import edk2` must succeed on one and raise `ModuleNotFoundError` on the other.
+Deploying the wrong file makes a pass look like a failure, or worse, the reverse.
 
 ### 10.2 On hardware — FULL
 
