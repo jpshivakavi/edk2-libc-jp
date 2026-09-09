@@ -180,6 +180,23 @@ Because this moves code on the verified fault path, the §5.9 smoke tests must b
 FULL configurations after the move — not because anything should change, but because that path is
 the one place in this project where a silent regression has real consequences.
 
+Two things were checked up front, both of which make the move genuinely behaviour-preserving
+rather than merely intended to be:
+
+- **`setjmp` resolves to the same implementation in the destination.** `edk2excep.c:1` already
+  includes `<setjmp.h>`, as does `edk2excep.h:4`, and `posixmodule.c` only sees `jmp_buf` through
+  that same header. So there is no second `setjmp` for the code to land on — this is EDK2's
+  `SetJump`/`LongJump` on both sides of the move, on both toolchains. The declaration also needs
+  no new includes in `edk2excep.h`: `EFI_SYSTEM_CONTEXT_X64` arrived with
+  `<Protocol/DebugSupport.h>` and `uint64_t` with `<stdint.h>`.
+- **Move the function whole. Never split it.** `setjmp` has to be called by the function that owns
+  the frame `longjmp` returns to, and in `uefi_guarded_access` the `setjmp`, the guarded load or
+  store, and the return are all in one frame by design. Relocating the entire function preserves
+  that. Refactoring it into a "set up the guard" helper plus a "do the access" helper would
+  compile cleanly, pass a casual read, and be wrong — the guard would be armed against a frame
+  that has already returned. If this function ever looks like it wants tidying, this is the reason
+  it is shaped the way it is.
+
 ## 6. Defects in the 3.6.8 reference — do not copy these
 
 The old module is a useful specification of *what* the APIs are, not of *how* to implement them.
