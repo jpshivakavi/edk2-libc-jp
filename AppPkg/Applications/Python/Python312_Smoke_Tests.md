@@ -703,15 +703,16 @@ reporting path survived the change on the toolchain where it was historically fr
 | **VS2022 MIN** | **Swept green** — §7.1, incl. boot trace and IDT trace line |
 | **GCC MIN** | **Swept green** — §7.2, §2 + §4 (no trace, §5.8 n/a) |
 | **GCC FULL** | **Swept green** — §7.3, incl. §5.8 fault reporting |
-| **VS2022 FULL** | **Not rebuilt since the `edk2_seh_*` fixes landed.** Last swept at `3ec592e1` (tag `python312-both-toolchains-idt-fault-report-2026-09-08`) |
+| **VS2022 FULL** | **Swept green** — rebuilt at this code state, §2/§3/§4 and §5.8 |
 
-**On the VS2022 FULL gap — small, and stated rather than assumed.** `edk2excep.c` compiles into both
-VS2022 INFs off the *same* `MSFT:` `CC_FLAGS`, and VS2022 MIN has run it (boot, operation, teardown),
-so compile, link and execution are all covered under MSVC. The modified lines are in the **dead**
-recovery path plus one conditional inside it; the *unhandled* branch that §5.8 exercises was **not
-touched**, and GCC FULL has just confirmed that branch with the fixes present. The residual risk is
-that FULL links more modules, which cannot affect this file. A VS2022 FULL rebuild plus §5.8 would
-close it outright and is cheap — do it before any release that ships FULL on VS2022.
+**All four configurations are green at one code state, on both toolchains — a first for this port.**
+Tag `python312-seh-fix-all-configs-2026-09-09`. Previous sign-offs covered FULL on both toolchains
+but never MIN on either, and the two MIN builds are shipped deliverables.
+
+**What that means for the `edk2_seh_*` fixes specifically:** they were verified on every
+configuration they compile into, and §5.8 confirmed on **both** FULL builds that the *unhandled*
+fault-reporting branch still works with them in. That is the branch the fixes did not touch but sit
+adjacent to, in the same function.
 
 ---
 
