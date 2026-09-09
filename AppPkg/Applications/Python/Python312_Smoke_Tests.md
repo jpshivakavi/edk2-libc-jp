@@ -531,7 +531,8 @@ Python312.efi -S
 | 8 | `exit()`, then Shell `exit` | Clean, no hang — the teardown route this port has spent the most time on |
 | 9 | Re-run §2, §3 and §4 | Unchanged. This must disturb nothing that already worked |
 
-**A successful `mem_write` is deliberately not in the list above, and needs `ctypes` (so FULL only):**
+**A successful `mem_write` is deliberately not in the list above, and needs `ctypes` (so FULL only).
+Verified on VS2022 FULL 2026-09-09, output exactly as shown:**
 
 ```text
 >>> import ctypes, uefi
@@ -539,6 +540,11 @@ Python312.efi -S
 >>> uefi.mem_write(a, 1, 65); print(b.raw[:1])
 b'A'
 ```
+
+Every other row proves the guard survives a **bad** address; this is the only one that proves a
+**good** one still does the ordinary thing. It is also read back through a completely independent
+path — `ctypes` reading its own buffer — so the value genuinely reached memory rather than the call
+merely returning without error.
 
 That is the only safe shape for it — a buffer this process owns. **Never pick a write address any
 other way.** The guard makes an *invalid* address survivable; it does nothing whatsoever about a
