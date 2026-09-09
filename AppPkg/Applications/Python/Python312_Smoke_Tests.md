@@ -77,6 +77,20 @@ teardown hung, so a run that stops at `Shell>` has **not** been validated.
 > investigating stack depth or an entry-path stop, not on every sweep. What remains unconditional on
 > a stock image is the error paths and the CPU-fault report (§5.8).
 
+**Confirming the reverse — that a stock image is silent —** is worth one command, because two boot
+lines were historically *not* behind the macro and each had to be gated by hand (migration status
+item 35). They live in the binary as **different encodings**, and checking only one of them is how
+the second survived a round of testing: `Python312: UefiMain` is a wide literal from `Print(L"…")`,
+`Python312: enter main` is narrow, from `fputs()` to stdout. Both must be absent:
+
+```powershell
+$b = [IO.File]::ReadAllBytes($p)      # $p = path to Python312.efi
+"UefiMain (wide)   : " + [Text.Encoding]::Unicode.GetString($b).Contains("Python312: UefiMain")
+"enter main (ascii): " + [Text.Encoding]::ASCII.GetString($b).Contains("Python312: enter main")
+```
+
+On hardware, `Python312.efi -S -c "print(1+1)"` should emit `2` and nothing else.
+
 Any run of a `PY_UEFI_BOOT_TRACE` image prints this on the way out of `UefiMain`:
 
 ```text
