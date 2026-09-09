@@ -421,21 +421,26 @@ These apply to **both** images built from the same branch (not MSVC-specific), b
 
 **Regression:** After changing NASM or **`rand_efi.c`**, re-smoke **VS2022** with **`import ssl; ssl.create_default_context(); print('ok')`** then Shell **`exit`**. **GCC** one-liner is cheap parity.
 
-### 11.8 Latent defects on the shared entry path — all fixed as of 2026-09-09
+### 11.8 Latent defects on the shared entry path — ALL FOUR CLOSED as of 2026-09-09
 
 Left deliberately unfixed when VS2022 moved onto the 64 MB stack, because all of them sat in code
 GCC had been signed off with. **#2, #3 and #4 are fixed and hardware-verified on both toolchains**
 (2026-09-08, tag `python312-both-toolchains-idt-fault-report-2026-09-08`, re-confirmed across all
 four configurations at `python312-seh-fix-all-configs-2026-09-09`).
 
-**#1 is fixed in code as of 2026-09-09 but its GCC re-test is still PENDING.** It is the only one
-whose fix changes what GCC executes — it moves the stack base — so until that re-test is green,
-treat the GCC entry path as carrying an unverified change. MSVC needs nothing: it already compiled
-the surviving expression.
+**#1 is CLOSED as of 2026-09-09, GCC re-test green.** It was the only one whose fix changes what GCC
+executes — it moves the stack base — so it needed a GCC run rather than an argument. Verified with
+the interactive REPL: `Python312.efi`, `import json`, `exit()`, then Shell `exit`, all clean with no
+hang. That is the right test because the entire risk was whether GCC still runs correctly on a base
+rounded 0–511 bytes higher, and a deep import at the prompt is the deepest stack use available.
+MSVC needed nothing: it already compiled the surviving expression.
+
+**With #1 closed, §11.8 is empty — all four latent defects on the shared entry path are fixed and
+verified on both toolchains.**
 
 | # | Defect | Where | Why it was left |
 |--:|--------|-------|-----------------|
-| 1 | **Stack alignment expression does not align.** **FIXED IN CODE 2026-09-09 — GCC re-test pending.** `stack + (stack % 512)` offset the base by an arbitrary 0–511 bytes instead of rounding it up, on the GCC branch only; MSVC already used `(base + 511) & ~511` because `edk2_switch_stack()` leaves `rsp` at `base+size-0x200` and a misaligned `rsp` faults MSVC's `movaps` spills. **The `#ifdef` is now gone and both toolchains round up.** | `edk2main.c`, formerly the `#ifdef _MSC_VER` alignment block | Was **unable to fault, by arithmetic** — see below — so it was the lowest-priority of the four and was left until everything else was green. Fixing it moves the address GCC runs its stack on, so it took a GCC re-test rather than being free |
+| 1 | ~~**Stack alignment expression does not align.**~~ **CLOSED 2026-09-09**, GCC re-test green. `stack + (stack % 512)` offset the base by an arbitrary 0–511 bytes instead of rounding it up, on the GCC branch only; MSVC already used `(base + 511) & ~511` because `edk2_switch_stack()` leaves `rsp` at `base+size-0x200` and a misaligned `rsp` faults MSVC's `movaps` spills. **The `#ifdef` is now gone and both toolchains round up.** | `edk2main.c`, formerly the `#ifdef _MSC_VER` alignment block | Was **unable to fault, by arithmetic** — see below — so it was the lowest-priority of the four and was left until everything else was green. Fixing it moves the address GCC runs its stack on, so it took a GCC re-test rather than being free |
 | 2 | **`edk2_alloc_environ()` is called twice**, once before the stack allocation and once after — and it was **not idempotent**, so the second call **leaked the first block**. | `edk2main.c` `:200` and `:212`; `efi/src/environ.c:25` | **FIXED 2026-09-08, awaiting a hardware re-test on both toolchains** — see below. The double call itself is retained deliberately |
 | 3 | ~~**No custom IDT under MSVC.**~~ **CLOSED 2026-09-08** — verified working, then made the **default** via `/DPY_UEFI_MSVC_IDT=1` in **both** INFs. MSVC now installs the IDT like GCC always has. | `edk2main.c` | Was off pending proof it worked; it does (see below). Enabling it alongside the #4 fix means **both toolchains now report a fault and then spin** — one entry path, one fault behaviour |
 
