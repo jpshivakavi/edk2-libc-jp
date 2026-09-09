@@ -160,19 +160,27 @@ the `os_fdstat` pattern already in the file: hand-written, no Argument Clinic, e
 `OS_MEM_*_METHODDEF` macros that expand to nothing off UEFI. Because `os.py` does `from uefi import
 *`, they are reachable as `os.mem_read` as well; `uefi.mem_read` is the documented spelling.
 
-**One unresolved question about the `UEFI_C_SOURCE` gate, recorded rather than guessed.**
-`UEFI_C_SOURCE` appears **only** on the `MSFT:*_*_*_CC_FLAGS` line of both INFs — not on the `GCC:`
-line, and nowhere in any `.dsc`, `.dec` or `pyconfig.h` in the tree. Taken at face value that would
-mean GCC images have no `uefi` module at all, which cannot be true: `config.c:114` registers
-`{"uefi", PyInit_uefi}` unconditionally so a GCC link would fail outright, and `os.py:91` requires
-`'uefi' in sys.builtin_module_names` before `from uefi import *`, yet GCC images import `os`
-(the `os.environ` canary in migration status item 28). So GCC must acquire the define by some
-mechanism outside these files — a WSL-local INF edit, or `tools_def.txt` in the WSL edk2 clone are
-the candidates — and the "`UEFI_C_SOURCE` is `MSFT:`-only" claim repeated in the deviations doc and
-the WSL build guide is at best incomplete. **This does not affect correctness of the change**: the
-new methods sit behind exactly the same gate as every other UEFI-only entry point in the file, so
-they exist wherever the `uefi` module exists, whatever defines it. It does mean the first GCC test
-should be the presence check in §6 test 0 rather than an assumption.
+**Where the `UEFI_C_SOURCE` gate comes from — RESOLVED 2026-09-09.** Worth recording because the
+answer is not in the INFs and the docs had it wrong. `UEFI_C_SOURCE` appears only on the
+`MSFT:*_*_*_CC_FLAGS` line of both INFs, which read literally would mean GCC images have no `uefi`
+module — impossible, since `config.c:114` registers `{"uefi", PyInit_uefi}` unconditionally (a GCC
+link would fail outright) and `os.py:91` requires `'uefi' in sys.builtin_module_names`. The define
+actually comes from a **package-wide `[BuildOptions]` block in `StdLib/StdLib.inc`**:
+
+```text
+StdLib/StdLib.inc:125    GCC:*_*_*_CC_FLAGS = -nostdinc -nostdlib -DUEFI_C_SOURCE
+StdLib/StdLib.inc:124   MSFT:*_*_*_CC_FLAGS = /X /Zc:wchar_t /D UEFI_C_SOURCE
+AppPkg/AppPkg.dsc:159   !include StdLib/StdLib.inc
+```
+
+Being DSC-level it reaches **every module in the package**, so it is set on both toolchains, the
+`/DUEFI_C_SOURCE` on the MSFT INF line is redundant, and **every `#ifdef UEFI_C_SOURCE` block is
+live on GCC as well** — meaning none of them is an MSFT-only deviation, which several documents
+claimed. Confirmed empirically before the mechanism was found: §6 test 0 returned `True` on a GCC
+5.3.1 image. **This is the second time a DSC-level `[BuildOptions]` entry has invalidated a
+conclusion drawn from the INFs alone**, the first being `PY_UEFI_BOOT_TRACE`; the general lesson is
+that `AppPkg.dsc` and everything it `!include`s count as much as the INF when asking whether a
+define reaches a module.
 
 *Tradeoff accepted:* hardware-poke primitives on the posix module is not a clean home. A separate
 `edk2seh` builtin would be tidier but costs `config.c` registration plus `[Sources]` in both INFs.
@@ -267,7 +275,7 @@ All on hardware; the fault-injection procedure and its result table are
 
 | # | Test | Expected |
 |--:|------|----------|
-| 0 | `import uefi; print(hasattr(uefi, "mem_read"), uefi.FaultError)` | `True` and the class. Run this **first on each toolchain** — it is also the answer to the `UEFI_C_SOURCE` question in §4, since a `False` on GCC would mean the gate excluded the methods there |
+| 0 | `import uefi; print(hasattr(uefi, "mem_read"), uefi.FaultError)` | `True` and the class. Run **first on each toolchain**. Green on GCC 5.3.1 2026-09-09, which is what settled the `UEFI_C_SOURCE` question in §4 |
 | 1 | `uefi.mem_read(0x800000000000, 8)` (non-canonical) | `FaultError` with `vector == 13`, **process survives** |
 | 2 | `uefi.mem_read` of a known-good address, e.g. the loaded image base | Correct value, no fault |
 | 3 | Test 1, then test 2 in the same process | Second call still correct — proves recovery left the interpreter usable |

@@ -520,7 +520,7 @@ Python312.efi -S
 
 | # | Command (at the `>>>` prompt unless shown otherwise) | Expected |
 |--:|------|----------|
-| 0 | the one-liner above | `True <class 'uefi.FaultError'>`. A `False` on **GCC** means the `UEFI_C_SOURCE` gate excluded the methods — see the design doc §4 note, and stop here on that toolchain |
+| 0 | the one-liner above | `True <class 'uefi.FaultError'>`. Verified on **both** toolchains 2026-09-09, GCC included — that run is what established `UEFI_C_SOURCE` is not `MSFT:`-only (§7 correction). A `False` would mean the gate excluded the methods; stop on that toolchain if so |
 | 1 | `uefi.mem_read(0x800000000000, 8)` | `uefi.FaultError: CPU exception 13 (rip=0x… cr2=0x…)` and **the prompt returns**. This is the whole feature in one line |
 | 2 | `e = sys.last_value; print(e.vector, hex(e.rip), hex(e.cr2), e.error_code)` | `13`, a plausible code address for `rip`, and integers. `cr2` is **meaningless for a #GP** — see §5.8 |
 | 3 | `print(uefi.mem_read(id(x), 8))` | A small positive integer (the refcount), no exception. **This is the test that matters**: it proves the recovery in 1 left the interpreter usable rather than merely appearing to |
@@ -726,8 +726,20 @@ Stack limits, recursion depth and fault reporting no longer differ.
 **Diagnostics no longer differ either, as of 2026-09-09: `PY_UEFI_BOOT_TRACE` is off in both INFs**,
 so a stock image of *either* toolchain prints no `Python312 boot:` ladder and no `switched stack`
 measurement. The asymmetry that used to make VS2022 the chattier toolchain is gone by removal rather
-than by adding the flag to GCC. `UEFI_C_SOURCE` is still `MSFT:`-only, so the `Py_FinalizeEx()`
-detach remains compiled into VS2022 alone. Re-enable the trace per §1.1 when investigating.
+than by adding the flag to GCC. Re-enable the trace per §1.1 when investigating.
+
+**Correction, 2026-09-09: `UEFI_C_SOURCE` is *not* `MSFT:`-only, and this document said otherwise.**
+It is set for **both** toolchains by a package-wide `[BuildOptions]` block in `StdLib/StdLib.inc`
+(`GCC:*_*_*_CC_FLAGS = -nostdinc -nostdlib -DUEFI_C_SOURCE` at line 125, `MSFT:` equivalently at
+124), which `AppPkg.dsc:159` `!include`s — so it reaches every module in the package, Python312
+included, and the `/DUEFI_C_SOURCE` on the MSFT `CC_FLAGS` line of both INFs is **redundant
+duplication**. The visible consequence: **the `Py_FinalizeEx()` detach is compiled into GCC images
+too**, not VS2022 alone as previously stated here. Proved empirically by §5.9 test 0 returning
+`True` on a GCC 5.3.1 image — `PyInit_uefi` and `mem_read` exist only behind that gate, so the
+module could not have loaded otherwise. **This is the second time a DSC-level `[BuildOptions]` entry
+has invalidated a claim based on reading the INFs alone** (the first was `PY_UEFI_BOOT_TRACE`,
+§1.1): when asking whether a define reaches a module, `AppPkg.dsc` and everything it `!include`s
+count as much as the INF.
 
 **The last code difference, the GCC stack-alignment expression, is also gone** — deviations §11.8 #1
 was unified on 2026-09-09 so both toolchains round the stack base up.
@@ -887,8 +899,37 @@ state for a non-unwinding `longjmp` to disturb. Green here plus green on MIN mea
 not depend on how much else is loaded. FULL is also the shipping configuration, so the §2/§3/§4
 regression is the check that the new module surface disturbed nothing that already worked.
 
-Still to run at this code state: **GCC FULL** (test 0 first — it also answers the
-`UEFI_C_SOURCE` question in the design doc §4) and **GCC MIN**.
+### 7.7 GCC FULL — §5.9 green, and the `UEFI_C_SOURCE` question answered, 2026-09-09
+
+**§5.9 tests 0–8 and the `ctypes` write row all green on GCC FULL**, banner
+`Python 3.12.13 (main, Sep 9 2026, 15:58:52) [GCC 5.3.1 20160413] on uefi`:
+
+```text
+uefi.FaultError: CPU exception 13 (rip=0x64aee83a cr2=0x0)
+13 0x64aee83a 0x0 0        <-- vector, rip, cr2, error_code
+1                          <-- refcount read after the fault
+2.0                        <-- timer still live
+False True                 <-- probe bad / good
+0                          <-- 200 recovered faults
+1                          <-- refcount unchanged after them
+ValueError: size must be 1, 2, 4 or 8, not 3
+OverflowError: value does not fit in 1 byte(s)
+b'A'                       <-- ctypes write path
+```
+
+`exit()` → Shell `exit` clean, no hang.
+
+**Cross-toolchain reading of this:** the numbers are identical to VS2022 (§7.5, §7.6) apart from
+`rip`, which differs only because the images differ. That matters more here than elsewhere, because
+`setjmp`/`longjmp` on this platform is **EDK2's `SetJump`/`LongJump`**, not a libc implementation —
+identical assembly on both toolchains, with no SEH-based unwinding on either. Matching behaviour is
+what that predicts, and this is the run that confirms it rather than assuming it.
+
+**Test 0 on this image is also what settled the `UEFI_C_SOURCE` question** — see the correction at
+the top of §7. `mem_read` existing on a GCC image proved the define reaches GCC, and the mechanism
+turned out to be `StdLib/StdLib.inc`, not the INFs.
+
+Still to run at this code state: **GCC MIN**.
 
 ---
 

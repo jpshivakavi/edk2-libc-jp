@@ -513,12 +513,22 @@ Then §7 (`build`), §9 (`create_python_pkg.sh`) and the full sweep in
 set. Any `MemoryError` is a fail: `PyOS_CheckStack()` trips at `base + PY_UEFI_STACK_MARGIN` (8 KB),
 which on a 64 MB stack with ~40 KB of measured use should be unreachable.
 
-**There is no boot trace on GCC.** `UEFI_C_SOURCE` and `PY_UEFI_BOOT_TRACE` are defined only on the
+**There is no boot trace on GCC.** `PY_UEFI_BOOT_TRACE` is defined only on the
 `MSFT:*_*_*_CC_FLAGS` line, so a stock GCC image prints no `Python312 boot:` lines and no
 `switched stack min_rsp=…` measurement — do not treat their absence as a failure. To measure GCC
 stack depth, add `-DPY_UEFI_BOOT_TRACE=1` to `GCC:*_*_*_CC_FLAGS` in `Python312.inf` for a throwaway
-build and revert it before committing; `py312boot.h` is included unconditionally by `edk2main.c`, so
-this works without `UEFI_C_SOURCE`.
+build and revert it before committing. **As of 2026-09-09 the DSC-level block in `AppPkg.dsc` must
+be uncommented as well** — see the smoke doc §1.1; either edit alone leaves the traces off.
+
+**`UEFI_C_SOURCE`, by contrast, *is* defined on GCC — this guide previously said it was not.** It
+comes from a package-wide `[BuildOptions]` block in `StdLib/StdLib.inc`
+(`GCC:*_*_*_CC_FLAGS = -nostdinc -nostdlib -DUEFI_C_SOURCE`, line 125) that `AppPkg.dsc:159`
+`!include`s, so it reaches every module in the package rather than coming from the INF. That is why
+GCC images have the builtin **`uefi`** module at all: `config.c` registers `PyInit_uefi`
+unconditionally and `os.py` requires `'uefi' in sys.builtin_module_names`, both of which would fail
+on a GCC build if the define really were `MSFT:`-only. Confirmed empirically 2026-09-09 by
+`uefi.mem_read` existing on a GCC 5.3.1 image (smoke §5.9 test 0). **Nothing needs adding to the
+`GCC:` line for it, and no WSL-local edit is involved** — a clean clone of this branch builds.
 
 **Signed off:** 2026-09-08 at `9db93ae1`, tag `python312-gcc-full-parity-2026-09-08` — full sweep
 green, matching VS2022. Details:
