@@ -2,11 +2,15 @@
 
 **Status: §2.1 and §2.2 defect fixes APPLIED, BUILT and SWEPT 2026-09-09 on all four configurations
 ([`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.1–§7.4). The §4 API is now IMPLEMENTED
-IN CODE 2026-09-09 and is UNTESTED ON HARDWARE — `mem_read` / `mem_write` / `mem_probe` /
+IN CODE 2026-09-09 and VERIFIED ON HARDWARE on VS2022 MIN — `mem_read` / `mem_write` / `mem_probe` /
 `FaultError` are in `PyMod-3.12.13/Modules/posixmodule.c` under `UEFI_C_SOURCE`, with the guarded
-core in `uefi_guarded_access()`. §6 is the acceptance plan and none of it has been run yet.** This
-is the first caller the `edk2_seh_*` recovery path has ever had, so the whole mechanism below moves
-from dead code to live code with this change. Decision recorded 2026-09-09: implement guarded memory
+core in `uefi_guarded_access()`. §6 tests 0–8 all passed
+([`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.5); VS2022 FULL, GCC FULL and GCC MIN
+are still to run.** This is the first caller the `edk2_seh_*` recovery path has ever had, so the
+whole mechanism below moved from dead code to live code with this change — and as of the VS2022 MIN
+run it is **known to work**, rather than merely written. Test 4 in particular confirms the §2.1
+interrupt fix by observation: `time.sleep(2)` needs the firmware timer, which the `longjmp` would
+otherwise have left masked. Decision recorded 2026-09-09: implement guarded memory
 primitives on the existing builtin **`uefi`** module. The two defect fixes were taken first and independently, because
 they are wrong regardless of whether the API is ever built; they land in a **dead path**, so they
 change no observable behaviour and ride along with the next MIN rebuild rather than needing a sweep

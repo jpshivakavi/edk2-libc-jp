@@ -807,6 +807,30 @@ configuration they compile into, and §5.8 confirmed on **both** FULL builds tha
 fault-reporting branch still works with them in. That is the branch the fixes did not touch but sit
 adjacent to, in the same function.
 
+### 7.5 VS2022 MIN — §5.9 guarded primitives green 2026-09-09 (first hardware run)
+
+**The `edk2_seh_*` recovery path executed successfully for the first time in this port.** Every row
+of §5.9 tests 0–8 matched on **VS2022 MIN**: `FaultError` raised with `vector == 13` and the prompt
+returned, the refcount read afterwards worked, `time.sleep(2)` took ~2 s, `mem_probe` gave
+`False`/`True`, 200 consecutive recovered faults left the guard stack balanced, both argument
+rejections fired before the guard, and `exit()` → Shell `exit` stayed clean.
+
+**Three things this establishes that no earlier sweep could:**
+
+1. **Recovery works, not merely reporting.** Until now `g_context_index` was permanently `-1` and
+   the recovery branch of `py_handle_exception()` was dead code (design doc §1). A returned prompt
+   after a #GP is that branch running.
+2. **The §2.1 interrupt fix is confirmed by observation rather than by argument.** `time.sleep(2)`
+   depends on the firmware timer, which stops if `RFLAGS.IF` is left clear by the `longjmp` that
+   skips `iretq`. Before that fix this row would hang or return instantly.
+3. **MIN's fault routing is now directly observable, closing the gap recorded in migration status
+   item 30 as unclosable.** §5.8 needs `ctypes` to dereference an address and MIN has no `_ctypes`,
+   so MIN could previously show only that `py_install_idt()` *ran*. A `FaultError` carrying
+   `vector == 13` proves the IDT entry is live and the vector reaches our handler.
+
+Still to run at this code state: **VS2022 FULL**, **GCC FULL** (test 0 first — it also answers the
+`UEFI_C_SOURCE` question in the design doc §4) and **GCC MIN**.
+
 ---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.
