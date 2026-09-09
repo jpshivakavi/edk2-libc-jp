@@ -874,7 +874,20 @@ Note `cr2=0x0` and `error_code=0`: correct for a #GP, where neither carries the 
    so MIN could previously show only that `py_install_idt()` *ran*. A `FaultError` carrying
    `vector == 13` proves the IDT entry is live and the vector reaches our handler.
 
-Still to run at this code state: **VS2022 FULL**, **GCC FULL** (test 0 first — it also answers the
+### 7.6 VS2022 FULL — §5.9 green plus the write path and the §2/§3/§4 regression, 2026-09-09
+
+**§5.9 tests 0–8 green on FULL as well, the `ctypes` write path verified (`b'A'`), and §2/§3/§4
+re-run clean** — `sys.version`, `phase8 ok`, `ctypes.sizeof(c_void_p)` → `8`, the `logging` deep
+import, and a REPL `import json` → `exit()` → Shell `exit`.
+
+**Why repeating §5.9 on FULL was not redundant.** The primitives are identical code, so what FULL
+could change is not their behaviour but their *surroundings*: it links OpenSSL, zlib and `_ctypes`,
+which moves where a fault lands relative to everything else in the image and adds a great deal of
+state for a non-unwinding `longjmp` to disturb. Green here plus green on MIN means the mechanism does
+not depend on how much else is loaded. FULL is also the shipping configuration, so the §2/§3/§4
+regression is the check that the new module surface disturbed nothing that already worked.
+
+Still to run at this code state: **GCC FULL** (test 0 first — it also answers the
 `UEFI_C_SOURCE` question in the design doc §4) and **GCC MIN**.
 
 ---
