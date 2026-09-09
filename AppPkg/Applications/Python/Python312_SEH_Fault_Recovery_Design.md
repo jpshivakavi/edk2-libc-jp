@@ -4,9 +4,10 @@
 ([`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.1–§7.4). The §4 API is now IMPLEMENTED
 IN CODE 2026-09-09 and VERIFIED ON HARDWARE on VS2022 MIN — `mem_read` / `mem_write` / `mem_probe` /
 `FaultError` are in `PyMod-3.12.13/Modules/posixmodule.c` under `UEFI_C_SOURCE`, with the guarded
-core in `uefi_guarded_access()`. §6 tests 0–8 all passed
-([`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.5); VS2022 FULL, GCC FULL and GCC MIN
-are still to run.** This is the first caller the `edk2_seh_*` recovery path has ever had, so the
+core in `uefi_guarded_access()`. §6 tests 0–8 passed on VS2022 MIN, VS2022 FULL and GCC FULL, the
+`ctypes` write row on both FULL builds, and GCC MIN is compile-verified with its runtime inferred by
+decision — [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.5–§7.8. Tag
+`python312-survivable-cpu-faults-2026-09-09`.** This is the first caller the `edk2_seh_*` recovery path has ever had, so the
 whole mechanism below moved from dead code to live code with this change — and as of the VS2022 MIN
 run it is **known to work**, rather than merely written. Test 4 in particular confirms the §2.1
 interrupt fix by observation: `time.sleep(2)` needs the firmware timer, which the `longjmp` would

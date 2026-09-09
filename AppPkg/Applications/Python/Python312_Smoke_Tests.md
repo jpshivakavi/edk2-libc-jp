@@ -929,7 +929,32 @@ what that predicts, and this is the run that confirms it rather than assuming it
 the top of §7. `mem_read` existing on a GCC image proved the define reaches GCC, and the mechanism
 turned out to be `StdLib/StdLib.inc`, not the INFs.
 
-Still to run at this code state: **GCC MIN**.
+### 7.8 GCC MIN — compile-verified 2026-09-09, runtime deliberately inferred
+
+**Built clean; §5.9 was NOT run on this image, by decision rather than omission.** What the build
+establishes is the part that could plausibly have failed: `PyInit_uefi` resolves and nothing in the
+primitives needs a FULL-only symbol under the GCC linker.
+
+**Why the sweep was judged to add almost nothing.** The matrix is toolchain × module set, and the
+other three cells are observed:
+
+| | MIN | FULL |
+|---|---|---|
+| **VS2022** | §7.5 — tests 0–8 | §7.6 — tests 0–8 + write + §2/§3/§4 |
+| **GCC** | **this section — build only** | §7.7 — tests 0–8 + write |
+
+GCC FULL against VS2022 FULL varied the **toolchain** and produced identical results; VS2022 MIN
+against VS2022 FULL varied the **module set** and did the same. GCC MIN is the intersection of two
+axes each already varied against the other. For it to fail alone, something in the primitives would
+have to depend on a FULL-only define or symbol — nothing does, `edk2excep.c` is in MIN's
+`[Sources]`, and `SetJump`/`LongJump` is the same EDK2 assembly on both toolchains.
+
+**The gap, stated rather than glossed:** MIN is the configuration where §5.9 is the *only* fault-path
+test that exists, since §5.8 needs `_ctypes` to dereference an address. So fault **routing on this
+particular image** is inferred, not observed. That is the same gap migration status item 30
+recorded for GCC MIN, now narrowed from "the whole configuration is unexercised" to "one cell of
+four is compile-verified". Run §5.9 tests 0 and 1 if a GCC MIN image goes on hardware for any other
+reason — two lines, and it closes this outright.
 
 ---
 
