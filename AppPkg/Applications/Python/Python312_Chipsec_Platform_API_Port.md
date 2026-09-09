@@ -379,19 +379,24 @@ Deploying the wrong file makes a pass look like a failure, or worse, the reverse
 
 | # | Command | Expected |
 |---|---------|----------|
-| 1 | `Python312.efi -S -c "import edk2; print(edk2)"` | `<module 'edk2' (built-in)>` |
+| 1 | `Python312.efi -S -c "import sys; print('edk2' in sys.modules)"` | **`False`** |
 | 2 | `Python312.efi -S -c "import sys; print('edk2' in sys.builtin_module_names)"` | `True` |
-| 3 | `Python312.efi -S -c "print(1+1)"` | `2` and nothing else — boot still silent |
-| 4 | `Python312.efi -S -c "import sys; print(len(sys.modules))"` | **unchanged from the pre-change image** |
+| 3 | `Python312.efi -S -c "import edk2; print(edk2)"` | `<module 'edk2' (built-in)>` |
+| 4 | `Python312.efi -S -c "print(1+1)"` | `2` and nothing else — boot still silent |
 | 5 | `import edk2` → `exit()` → Shell `exit` | no hang, returns to firmware |
+| 6 | `Python312.efi -S -c "import sys; print(len(sys.modules))"` | recorded, not asserted |
 
-**Test 4 is the one that matters** and is worth running deliberately rather than skimming. It is
-the direct evidence for §5.1: if `edk2` were being pulled in during interpreter startup the count
-would go up by one, and if it is genuinely inert the count is identical. Run the command on the
-**currently deployed image first**, note the number, then deploy the new image and run it again —
-a same-day before/after is the honest comparison, because the count drifts as modules are added.
-For reference the historically observed value on VS2022 FULL was **23**, but treat that as a
-sanity bound rather than the expected answer.
+**Tests 1 and 2 together are the whole proof, and they are worth reading as a pair**: the module
+is *registered* (2) but *not loaded* (1). That is precisely the property §5.1 claims — an inittab
+entry that costs nothing until something imports it — stated as a direct observation.
+
+An earlier revision of this section instead asked for `len(sys.modules)` before and after the
+change, on the theory that the count would rise by one if `edk2` were being pulled in at startup.
+That works, but it is a proxy measurement dressed up as a proof: it needs a same-day baseline from
+the outgoing image, and the count drifts for unrelated reasons as modules are added, so a
+mismatch would be ambiguous rather than informative. Test 1 measures the thing itself. Test 6 is
+kept only as a recorded data point for future comparison — the historically observed value on
+VS2022 FULL was **23** — and nothing is asserted about it.
 
 ### 10.3 On hardware — MIN
 
