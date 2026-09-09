@@ -1025,11 +1025,29 @@ handled branch, which is the part that moved.
 
 **VS2022 MIN and GCC MIN both build and link clean** (2026-09-09), which is the whole of what was
 asked of them — they compile the changed `posixmodule.c` and `edk2excep.c` but gain no
-functionality, so "did not break" is the entire result. **Outstanding for phase 2: GCC FULL**,
-build plus a §5.9 re-run against the §7.7 values. That is the run carrying real information, since
-it varies the *toolchain* across the move: `SetJump`/`LongJump` is the same EDK2 assembly on both
-sides, but how each compiler lays out the frame `setjmp` captures is not, so a relocation problem
-is likelier to look different there than to look identical.
+functionality, so "did not break" is the entire result.
+
+### 7.10 GCC FULL — phase 2 re-verified, which closes it on all four configurations, 2026-09-09
+
+**§5.9 tests 0–8, the `ctypes` write row and the three `edk2` module checks all green, matching
+VS2022 FULL row for row.** With this, the guarded fault path has been exercised after the move on
+both toolchains in FULL and compiled clean in both MINs, so **CHIPSEC port phase 2 is closed**.
+
+This was the run in the phase that carried real information, and it is worth recording why rather
+than filing it as one more green column. Every other check in phase 2 varied nothing that could
+plausibly break: the two MIN builds are compile-only, and the VS2022 FULL re-run (§7.9) used the
+same compiler that had already been proven on the code in its old location. Moving
+`uefi_guarded_access` into `efi/src/edk2excep.c` changes which translation unit owns the frame that
+`setjmp` captures and `longjmp` returns to. `SetJump`/`LongJump` is the same EDK2 assembly on both
+sides, but **how each compiler lays out that frame is not** — MSVC and GCC differ on what lands in
+registers versus the stack, and on what the optimiser is entitled to keep live across a call that
+can return twice. A relocation problem was therefore more likely to appear on one toolchain than on
+both, which is exactly why matching §7.7's values on GCC is the result that closes the phase rather
+than merely agreeing with it.
+
+The rows that would have shown it are the same four named in §7.9 — row 1 (fault raises *and* the
+prompt returns), row 3 (a read after the fault), row 4 (the `2.0` sleep, i.e. `RFLAGS.IF`), row 6
+(200 faults then a read). All four green here too.
 
 ---
 

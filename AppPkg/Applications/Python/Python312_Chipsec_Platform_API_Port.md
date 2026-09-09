@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phase 1 closed** (§10). **Phase 2 green on VS2022 FULL** (§11); GCC FULL and the two MIN
-builds outstanding. 2026-09-09.
+Status: **Phases 1 and 2 closed** — phase 2 verified on VS2022 FULL and GCC FULL and compiled
+clean in both MINs (§11). **Phase 3 written, not yet built or tested** (§12). 2026-09-09.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -429,12 +429,16 @@ already known good.
 
 ## 11. Phase 2 acceptance — the refactor
 
-**Status: VS2022 FULL green and both MIN builds clean, 2026-09-09.** FULL covered §5.9 tests 0-8,
-the `ctypes` write row, §2/§3/§4, and the whole `edk2` surface (§11.3, §11.3.1, §11.3.2) — recorded
-in `Python312_Smoke_Tests.md` §7.9. **VS2022 MIN and GCC MIN both build and link clean**, which is
-all that was asked of them: they compile the changed `posixmodule.c` and `edk2excep.c` but gain no
-functionality. **Outstanding: GCC FULL** — build plus a §5.9 re-run, the last item before phase 2
-closes.
+**Status: CLOSED 2026-09-09 — green on both FULL toolchains, clean in both MINs.** VS2022 FULL
+covered §5.9 tests 0-8, the `ctypes` write row, §2/§3/§4, and the whole `edk2` surface (§11.3,
+§11.3.1, §11.3.2), recorded in `Python312_Smoke_Tests.md` §7.9; **GCC FULL then matched it row for
+row** (§7.10). **VS2022 MIN and GCC MIN build and link clean**, which is all that was asked of
+them: they compile the changed `posixmodule.c` and `edk2excep.c` but gain no functionality.
+
+GCC FULL was the run that carried information, for the reason in §11.4: the move changes which
+translation unit owns the frame `setjmp` captures, and while `SetJump`/`LongJump` is identical EDK2
+assembly on both toolchains, the frame layout around it is not — so a relocation problem was
+likelier to show on one compiler than on both.
 
 Four files. Nothing gains a new capability; one attribute appears.
 
