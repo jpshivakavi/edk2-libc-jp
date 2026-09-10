@@ -1160,7 +1160,7 @@ edk2.rdmsr_ex(99999, 0)   # ValueError
 
 Tag: **`python312-chipsec-phase9-mp-ex-2026-09-10`** — **19/19 CHIPSEC APIs complete.**
 
-### 7.14 `help()` works without a pager — after the `pydoc` fix, 2026-09-10
+### 7.14 `help()` works without a pager — CLOSED on hardware, 2026-09-10
 
 Stock `pydoc` picked `less` through `subprocess` and raised
 **`PermissionError: [Errno 1] Operation not permitted`** on every `help()` call; the UEFI override
@@ -1168,6 +1168,11 @@ Stock `pydoc` picked `less` through `subprocess` and raised
 instead. Details and the in-session workaround: runtime notes §10.6.
 
 **No rebuild needed** — `pydoc` is staged on the ESP, so repackage (or copy the single file) and:
+
+| Toolchain | Observed |
+|---|---|
+| **GCC FULL** | **Green** — same lab session as §7.15; `help(edk2)`, `help(edk2.rdmsr)`, `help(uefi)` print docs and return to `>>>` with no `'(less)'` line or **`PermissionError`** |
+| **VS2022 FULL** | Staged **`pydoc.py`** same as GCC; run §7.14 lines when image is on hardware |
 
 ```text
 Python312.efi -S
@@ -1177,7 +1182,7 @@ Python312.efi -S
 ```
 
 Both must print the doc text and return to `>>>` with no traceback and no
-`'(less)' is not recognized` line.
+`'(less)' is not recognized` line. Code fix: **`5443eb71`**+ staged lib from **`create_python_pkg`**.
 
 ---
 

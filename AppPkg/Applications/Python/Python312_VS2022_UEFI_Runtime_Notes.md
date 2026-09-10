@@ -469,6 +469,9 @@ falls back to `plainpager` rather than raising if called directly.
 **`pydoc` is not frozen** — it loads from `EFI\lib\python3.12\pydoc.py` — so this needs **no
 rebuild**: re-run the packaging script (or copy that one file onto the ESP) and `help()` works.
 
+**Hardware (2026-09-10):** verified on **GCC FULL** lab image (same session as CHIPSEC §7.15) —
+`help(edk2)`, `help(edk2.rdmsr)`, and `help(uefi)` complete without pager errors. Smoke §7.14.
+
 **In-session workaround on an unpatched image:**
 
 ```text
