@@ -1,9 +1,9 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-4 green on VS2022 FULL.** Phase 2 additionally verified on GCC FULL and compiled
+Status: **Phases 1-5 green on VS2022 FULL.** Phase 2 additionally verified on GCC FULL and compiled
 clean in both MINs (§11); the GCC runs for phases 3 and 4 were skipped by decision, with the
-reasoning and residual gap in §12.8. **Phase 5 written, not yet built or tested** (§14) — and it is
-the first phase since 2 to touch code MIN compiles, so both MIN builds are back in scope.
+reasoning and residual gap in §12.8. **Phase 5 is the first phase since 2 to touch code MIN
+compiles**, so GCC FULL and both MIN builds are back in scope and are not skippable (§14.7).
 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
@@ -298,9 +298,9 @@ the ordering is about getting verified ground under the port early, not about wh
 4. **PCI**: `readpci`, `writepci`. Adds `PciLib` — **green on VS2022 FULL.** Acceptance in §13,
    cross-checked against both the Shell's `pci` command and phase 3's manual CF8 read.
 5. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword` on the shared path
-   from phase 2, keeping the split `(lo32, hi32)` signature — **WRITTEN, not yet built or tested.**
-   Acceptance in §14. The one phase where a fault used to end the session, so the guard is the
-   deliverable rather than a safety net.
+   from phase 2, keeping the split `(lo32, hi32)` signature — **green on VS2022 FULL.** Acceptance
+   in §14. The one phase where a fault used to end the session, so the guard is the deliverable
+   rather than a safety net.
 6. **`swsmi`**: C wrapper over the `_swsmi` already in the image. Widen the arguments to 64-bit
    (`"K"`), since the asm takes `UINT64` and 3.6.8's `"(IIIIIII)"` narrowed them to 32.
    Needs care in testing — it triggers a real SMI.
@@ -931,8 +931,12 @@ rather than continuing.
 
 ## 14. Phase 5 acceptance — physical memory, and the point of the whole exercise
 
-**Status: WRITTEN, not yet built or tested.** FULL only for the API, but **both MIN builds are
-required this time** — see §14.7.
+**Status: PASSED on VS2022 FULL, 2026-09-10 — all of §14.2 through §14.6.** GCC FULL and both MIN
+builds outstanding, and unlike phases 3 and 4 they are **not** skippable — see §14.7.
+
+One defect found and fixed during the run: `writemem` raised
+`SystemError: PY_SSIZE_T_CLEAN macro must be defined for '#' formats`. Fixed in `df704dfc` and
+re-verified. See §14.1 for why it survived to hardware.
 
 `readmem`, `readmem_dword`, `writemem`, `writemem_dword`. These are the functions phases 1 and 2
 existed to make safe: in 3.6.8, `readmem` dereferenced a caller-supplied address byte by byte with
