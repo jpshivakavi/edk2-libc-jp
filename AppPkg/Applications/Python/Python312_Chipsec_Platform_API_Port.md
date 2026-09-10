@@ -1,10 +1,9 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-5 green on VS2022 FULL.** Phase 2 additionally verified on GCC FULL and compiled
-clean in both MINs (§11); the GCC runs for phases 3 and 4 were skipped by decision, with the
-reasoning and residual gap in §12.8. **Phase 5 is the first phase since 2 to touch code MIN
-compiles**, so GCC FULL and both MIN builds are back in scope and are not skippable (§14.7).
-2026-09-10.
+Status: **Phases 1-5 green on VS2022 FULL; phases 1, 2 and 5 additionally green on GCC FULL.** The
+GCC *runtime* runs for phases 3 and 4 were skipped by decision (§12.8), but the phase 5 GCC build
+compiled `edk2module.c` clean, which closes the only real gap that skipping left. Outstanding:
+§5.9 on GCC FULL, and both MIN builds (§14.7). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -588,6 +587,13 @@ warnings as errors. Any such problem is a *build* failure, not a runtime one, so
 the moment a GCC FULL build is done for any later phase and cannot escape into a shipped image
 unnoticed. That is the whole reason skipping it here is safe: a compile error cannot hide.
 
+**CLOSED 2026-09-10.** The phase 5 GCC FULL build compiled `edk2module.c` clean with
+warnings-as-errors, which was the entire residual gap — and it covers phases 3, 4 and 5 at once,
+since all three live in that one file. The prediction above held exactly: the gap closed as a
+side effect of the next GCC build rather than needing a run of its own. The runtime behaviour of
+the phase 3 and 4 functions on GCC is still unobserved and remains deliberately so; they are
+straight-line library calls with no toolchain-sensitive construct in them.
+
 `rdmsr`, `wrmsr`, `cpuid`, `readio` and `writeio` are in
 `PyMod-3.12.13/Modules/edk2module.c`. The only build-system change is `IoLib` added to
 `Python312.inf`'s `[LibraryClasses]`; `BaseLib` needs no entry because it is already in
@@ -931,12 +937,25 @@ rather than continuing.
 
 ## 14. Phase 5 acceptance — physical memory, and the point of the whole exercise
 
-**Status: PASSED on VS2022 FULL, 2026-09-10 — all of §14.2 through §14.6.** GCC FULL and both MIN
-builds outstanding, and unlike phases 3 and 4 they are **not** skippable — see §14.7.
+**Status: PASSED on VS2022 FULL and GCC FULL, 2026-09-10 — all of §14.2 through §14.6, row for
+row.** Outstanding: §5.9 re-run on GCC FULL, and both MIN builds (§14.7).
 
-One defect found and fixed during the run: `writemem` raised
+One defect found and fixed during the VS2022 run: `writemem` raised
 `SystemError: PY_SSIZE_T_CLEAN macro must be defined for '#' formats`. Fixed in `df704dfc` and
-re-verified. See §14.1 for why it survived to hardware.
+re-verified on both toolchains. See §14.1 for why it survived to hardware.
+
+**The GCC run was the one that could have failed**, for the phase 2 reason (§11.4):
+`edk2_guarded_copy` is a *new* `setjmp` frame, `SetJump`/`LongJump` is identical EDK2 assembly on
+both toolchains but the frame around it is not, and the two compilers disagree about what they keep
+live across a call that can return twice. Two observations from it worth keeping:
+
+- **`rip` was identical across all three repeated faulting reads** (`0x6461f233`). The fault is
+  taken at the same instruction inside the copy loop every time and the guard returns to the same
+  state, so recovery is not drifting. A leaking guard slot would instead have surfaced as
+  `RuntimeError: fault guard nesting depth exceeded` on the second or third attempt, which is why
+  the call is repeated rather than made once.
+- **`cr2=0x0` with vector 13 is correct, not a missing value.** A non-canonical address raises #GP,
+  not #PF, and CR2 is only meaningful for the latter. Both toolchains agree.
 
 `readmem`, `readmem_dword`, `writemem`, `writemem_dword`. These are the functions phases 1 and 2
 existed to make safe: in 3.6.8, `readmem` dereferenced a caller-supplied address byte by byte with
