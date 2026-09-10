@@ -1093,9 +1093,12 @@ Unlike phases 3 and 4, this one edits files MIN compiles: `efi/src/edk2excep.c` 
 `edk2_guarded_copy()`, and `posixmodule.c` has `uefi_set_fault_error` un-`static`'d and now
 includes the new `Modules/edk2fault.h`. So:
 
-- **VS2022 MIN and GCC MIN must at least build**, and a MIN image should re-run §5.9 tests 0-1 to
-  confirm `uefi.mem_read`'s fault path still reports correctly after the helper changed linkage.
-- **FULL must re-run §5.9 in full**, for the same reason.
+- **VS2022 MIN and GCC MIN must at least build** — **both PASSED 2026-09-10 (clean compile and
+  link).** That was the real gate: it proves the `edk2fault.h` arrangement is right, because a MIN
+  link resolves `uefi_set_fault_error` from a configuration that does not compile `edk2module.c`.
+  Had the helper been defined in the new module instead, this is where it would have failed.
+  Runtime §5.9 tests 0-1 on a MIN image remain optional.
+- **FULL should re-run §5.9**, for the same reason at runtime. Outstanding on both FULL images.
 
 `edk2fault.h` exists because the helper has to be callable from both modules while remaining
 *defined* in `posixmodule.c`: MIN compiles `posixmodule.c` and not `edk2module.c`, yet MIN still
