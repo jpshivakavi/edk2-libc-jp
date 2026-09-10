@@ -38,6 +38,8 @@
 #include "Python.h"
 
 #include <Uefi.h>
+#include <Pi/PiDxeCis.h>
+#include <Protocol/MpService.h>
 #include <Library/BaseLib.h>
 #include <Library/IoLib.h>
 #include <Library/PciLib.h>
@@ -64,6 +66,8 @@ firmware primitives is in the right place.\n\
 Guarded memory access raises uefi.FaultError, re-exposed here as\n\
 edk2.FaultError, when an access takes a CPU fault that would otherwise have\n\
 stopped the machine.");
+
+static int edk2_check_bs(void);
 
 /* ---------------------------------------------------------------------------
  * MSR and CPUID
@@ -145,6 +149,247 @@ edk2_cpuid(PyObject *self, PyObject *args)
     return Py_BuildValue("(IIII)",
                          (unsigned int)eax, (unsigned int)ebx,
                          (unsigned int)ecx, (unsigned int)edx);
+}
+
+/* ---------------------------------------------------------------------------
+ * MP Services — lazy locate (§6.1). Used only by rdmsr_ex / wrmsr_ex / cpuid_ex.
+ * ------------------------------------------------------------------------- */
+
+#define EDK2_AP_FUNCTION_TIMEOUT_US  5000000
+
+typedef struct {
+    UINT32 msr;
+    UINT64 data;
+} edk2_ap_msr_args;
+
+typedef struct {
+    UINT32 eax;
+    UINT32 ecx;
+    UINT32 rax_value;
+    UINT32 rbx_value;
+    UINT32 rcx_value;
+    UINT32 rdx_value;
+} edk2_ap_cpuid_args;
+
+static EFI_MP_SERVICES_PROTOCOL *edk2_mp;
+static UINTN edk2_mp_bsp;
+static UINTN edk2_mp_num_procs;
+/* 0 = not yet looked up, 1 = available, -1 = absent */
+static int edk2_mp_ready;
+
+static VOID EFIAPI
+edk2_ap_msr_read(IN VOID *context)
+{
+    edk2_ap_msr_args *args = (edk2_ap_msr_args *)context;
+
+    args->data = AsmReadMsr64(args->msr);
+}
+
+static VOID EFIAPI
+edk2_ap_msr_write(IN VOID *context)
+{
+    edk2_ap_msr_args *args = (edk2_ap_msr_args *)context;
+
+    AsmWriteMsr64(args->msr, args->data);
+}
+
+static VOID EFIAPI
+edk2_ap_cpuid(IN VOID *context)
+{
+    edk2_ap_cpuid_args *args = (edk2_ap_cpuid_args *)context;
+
+    AsmCpuidEx(args->eax, args->ecx,
+               &args->rax_value, &args->rbx_value,
+               &args->rcx_value, &args->rdx_value);
+}
+
+static int
+edk2_mp_ensure(void)
+{
+    EFI_STATUS status;
+    UINTN enabled;
+
+    if (edk2_mp_ready < 0) {
+        PyErr_SetString(PyExc_OSError,
+                        "EFI MP Services protocol is not available");
+        return -1;
+    }
+    if (edk2_mp_ready > 0)
+        return 0;
+    if (edk2_check_bs() < 0)
+        return -1;
+
+    status = gBS->LocateProtocol(&gEfiMpServiceProtocolGuid,
+                                 NULL,
+                                 (VOID **)&edk2_mp);
+    if (EFI_ERROR(status)) {
+        edk2_mp_ready = -1;
+        PyErr_SetString(PyExc_OSError,
+                        "EFI MP Services protocol is not available");
+        return -1;
+    }
+
+    status = edk2_mp->WhoAmI(edk2_mp, &edk2_mp_bsp);
+    if (EFI_ERROR(status)) {
+        edk2_mp = NULL;
+        edk2_mp_ready = -1;
+        PyErr_SetString(PyExc_OSError,
+                        "EFI MP Services WhoAmI failed");
+        return -1;
+    }
+
+    status = edk2_mp->GetNumberOfProcessors(edk2_mp,
+                                            &edk2_mp_num_procs,
+                                            &enabled);
+    if (EFI_ERROR(status)) {
+        edk2_mp = NULL;
+        edk2_mp_ready = -1;
+        PyErr_SetString(PyExc_OSError,
+                        "EFI MP Services GetNumberOfProcessors failed");
+        return -1;
+    }
+
+    edk2_mp_ready = 1;
+    return 0;
+}
+
+static int
+edk2_mp_startup_ap(EFI_AP_PROCEDURE procedure,
+                   UINTN processor_number,
+                   VOID *context)
+{
+    EFI_STATUS status;
+    BOOLEAN finished;
+
+    finished = FALSE;
+    status = edk2_mp->StartupThisAP(edk2_mp,
+                                    procedure,
+                                    processor_number,
+                                    NULL,
+                                    EDK2_AP_FUNCTION_TIMEOUT_US,
+                                    context,
+                                    &finished);
+    if (EFI_ERROR(status)) {
+        PyErr_SetString(PyExc_OSError, "Could not start the requested cpu");
+        return -1;
+    }
+    if (!finished) {
+        PyErr_SetString(PyExc_OSError,
+                        "Timeout while running the function on the given cpu");
+        return -1;
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(edk2_rdmsr_ex__doc__,
+"rdmsr_ex(cpu, msr) -> (lower_32bits, higher_32bits)\n\
+\n\
+Read the given MSR on processor cpu. cpu must be less than the number of\n\
+processors reported by MP Services. On the current BSP, the read runs locally;\n\
+on other processors StartupThisAP is used.");
+
+static PyObject *
+edk2_rdmsr_ex(PyObject *self, PyObject *args)
+{
+    unsigned int cpu, msr;
+    UINT64 data;
+    edk2_ap_msr_args ap_args;
+
+    if (!PyArg_ParseTuple(args, "II:rdmsr_ex", &cpu, &msr))
+        return NULL;
+    if (edk2_mp_ensure() < 0)
+        return NULL;
+
+    if (cpu >= edk2_mp_num_procs) {
+        PyErr_SetString(PyExc_ValueError, "Invalid cpu number provided");
+        return NULL;
+    }
+
+    if ((UINTN)cpu == edk2_mp_bsp) {
+        data = AsmReadMsr64(msr);
+    } else {
+        ap_args.msr = msr;
+        ap_args.data = 0;
+        if (edk2_mp_startup_ap(edk2_ap_msr_read, (UINTN)cpu, &ap_args) < 0)
+            return NULL;
+        data = ap_args.data;
+    }
+
+    return Py_BuildValue("(II)",
+                         (unsigned int)(data & 0xFFFFFFFFu),
+                         (unsigned int)(data >> 32));
+}
+
+PyDoc_STRVAR(edk2_wrmsr_ex__doc__,
+"wrmsr_ex(cpu, msr, lower_32bits, higher_32bits) -> None\n\
+\n\
+Write to the given MSR on processor cpu. Same cpu validation as rdmsr_ex.");
+
+static PyObject *
+edk2_wrmsr_ex(PyObject *self, PyObject *args)
+{
+    unsigned int cpu, msr, eax, edx;
+    edk2_ap_msr_args ap_args;
+
+    if (!PyArg_ParseTuple(args, "IIII:wrmsr_ex", &cpu, &msr, &eax, &edx))
+        return NULL;
+    if (edk2_mp_ensure() < 0)
+        return NULL;
+
+    if (cpu >= edk2_mp_num_procs) {
+        PyErr_SetString(PyExc_ValueError, "Invalid cpu number provided");
+        return NULL;
+    }
+
+    ap_args.msr = msr;
+    ap_args.data = ((UINT64)edx << 32) | (UINT64)eax;
+
+    if ((UINTN)cpu == edk2_mp_bsp)
+        AsmWriteMsr64(msr, ap_args.data);
+    else if (edk2_mp_startup_ap(edk2_ap_msr_write, (UINTN)cpu, &ap_args) < 0)
+        return NULL;
+
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(edk2_cpuid_ex__doc__,
+"cpuid_ex(cpu, eax, ecx) -> (eax, ebx, ecx, edx)\n\
+\n\
+Execute CPUID on processor cpu with the given leaf and subleaf.");
+
+static PyObject *
+edk2_cpuid_ex(PyObject *self, PyObject *args)
+{
+    unsigned int cpu, leaf, subleaf;
+    edk2_ap_cpuid_args ap_args;
+
+    if (!PyArg_ParseTuple(args, "III:cpuid_ex", &cpu, &leaf, &subleaf))
+        return NULL;
+    if (edk2_mp_ensure() < 0)
+        return NULL;
+
+    if (cpu >= edk2_mp_num_procs) {
+        PyErr_SetString(PyExc_ValueError, "Invalid cpu number provided");
+        return NULL;
+    }
+
+    ap_args.eax = leaf;
+    ap_args.ecx = subleaf;
+    ap_args.rax_value = 0;
+    ap_args.rbx_value = 0;
+    ap_args.rcx_value = 0;
+    ap_args.rdx_value = 0;
+
+    if ((UINTN)cpu == edk2_mp_bsp)
+        edk2_ap_cpuid(&ap_args);
+    else if (edk2_mp_startup_ap(edk2_ap_cpuid, (UINTN)cpu, &ap_args) < 0)
+        return NULL;
+
+    return Py_BuildValue("(IIII)",
+                         (unsigned int)ap_args.rax_value,
+                         (unsigned int)ap_args.rbx_value,
+                         (unsigned int)ap_args.rcx_value,
+                         (unsigned int)ap_args.rdx_value);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1088,14 +1333,17 @@ static PyMethodDef edk2_methods[] = {
      edk2_SetVariable__doc__},
     {"allocphysmem",   edk2_allocphysmem,   METH_VARARGS, edk2_allocphysmem__doc__},
     {"cpuid",          edk2_cpuid,          METH_VARARGS, edk2_cpuid__doc__},
+    {"cpuid_ex",       edk2_cpuid_ex,       METH_VARARGS, edk2_cpuid_ex__doc__},
     {"freephysmem",    edk2_freephysmem,    METH_VARARGS, edk2_freephysmem__doc__},
     {"rdmsr",          edk2_rdmsr,          METH_VARARGS, edk2_rdmsr__doc__},
+    {"rdmsr_ex",       edk2_rdmsr_ex,       METH_VARARGS, edk2_rdmsr_ex__doc__},
     {"readio",         edk2_readio,         METH_VARARGS, edk2_readio__doc__},
     {"readmem",        edk2_readmem,        METH_VARARGS, edk2_readmem__doc__},
     {"readmem_dword",  edk2_readmem_dword,  METH_VARARGS, edk2_readmem_dword__doc__},
     {"readpci",        edk2_readpci,        METH_VARARGS, edk2_readpci__doc__},
     {"swsmi",          edk2_swsmi,          METH_VARARGS, edk2_swsmi__doc__},
     {"wrmsr",          edk2_wrmsr,          METH_VARARGS, edk2_wrmsr__doc__},
+    {"wrmsr_ex",       edk2_wrmsr_ex,       METH_VARARGS, edk2_wrmsr_ex__doc__},
     {"writeio",        edk2_writeio,        METH_VARARGS, edk2_writeio__doc__},
     {"writemem",       edk2_writemem,       METH_VARARGS, edk2_writemem__doc__},
     {"writemem_dword", edk2_writemem_dword, METH_VARARGS, edk2_writemem_dword__doc__},

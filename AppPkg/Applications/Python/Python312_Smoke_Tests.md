@@ -1101,6 +1101,17 @@ edk2.allocphysmem(0, 0xFFFFFFFF)   # ValueError
 
 Tag: **`python312-chipsec-phase8-allocphysmem-2026-09-10`**.
 
+### 7.13 Phase 9 `_ex` + MP Services (§18) — not yet run, 2026-09-10
+
+Matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §18.
+Expect **`len([n for n in dir(edk2) if not n.startswith('_')]) == 21`**.
+
+```text
+import edk2
+edk2.cpuid(0, 0) == edk2.cpuid_ex(0, 0, 0)
+edk2.rdmsr_ex(99999, 0)   # ValueError
+```
+
 ---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.

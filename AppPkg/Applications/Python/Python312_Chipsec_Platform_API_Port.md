@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-8 closed** (tag `python312-chipsec-phase8-allocphysmem-2026-09-10`). Phase 9 not
-started (`_ex` + MP Services). 2026-09-10.
+Status: **Phases 1-8 closed** (tag `python312-chipsec-phase8-allocphysmem-2026-09-10`). **Phase 9 written,
+not yet built or tested** (§18). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -305,7 +305,7 @@ the ordering is about getting verified ground under the port early, not about wh
 8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
    plus **`freephysmem`** for release — **green on VS2022 FULL and GCC FULL** (§17).
 9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
-   per §6.1. Last because it is the highest-risk phase; by then everything else is verified.
+   per §6.1 — **WRITTEN, not yet built or tested** (§18). Last phase; completes all 19 names.
 
 ## 9. Decisions taken
 
@@ -1340,5 +1340,65 @@ ValueError: length must be greater than zero
 ```
 
 ### 17.5 MIN builds
+
+No `edk2module.c` in MIN — **compile not required** on MIN for this phase.
+
+---
+
+## 18. Phase 9 acceptance — MP Services `_ex` APIs
+
+**Status: WRITTEN, not yet built or tested.** FULL only. Adds `gEfiMpServiceProtocolGuid` to
+`Python312.inf` `[Protocols]`. MP Services is located **on first `_ex` call**, not at `import edk2`
+(§6.1).
+
+### 18.1 What changed from 3.6.8
+
+| Topic | 3.6.8 | Here |
+|---|---|---|
+| MP locate | module init — import fails without protocol | lazy in `_ex` only; `import edk2` always works |
+| Error returns | `PyErr_SetString` then **`return Py_None`** (broken) | **`return NULL`** after setting exception |
+| `Py_BEGIN_ALLOW_THREADS` | present | omitted |
+
+### 18.2 Surface inventory — twenty-one names
+
+All **19** CHIPSEC APIs plus **`freephysmem`** and **`FaultError`**:
+
+```text
+Python312.efi -S -c "import edk2; print(len([n for n in dir(edk2) if not n.startswith('_')]))"
+```
+
+Expect **21**. Spot-check: `'rdmsr_ex' in dir(edk2) and 'cpuid_ex' in dir(edk2)`.
+
+### 18.3 BSP parity — safe leaf only
+
+**Do not** pass a reserved MSR in the default matrix (#GP is not catchable). Use CPUID leaf **0**
+and a known-safe MSR only if you accept platform risk (skip MSR in default matrix).
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> a = edk2.cpuid(0, 0)
+>>> b = edk2.cpuid_ex(0, 0, 0)
+>>> a == b
+True
+```
+
+If BSP is not processor **0**, adjust the cpu argument after one successful `rdmsr_ex(0, …)` vs
+`rdmsr(…)` comparison on your platform, or compare `cpuid_ex` only on cpu **0** when
+`StartupThisAP(0, …)` matches local `cpuid` on single-socket firmware that maps AP 0 to the boot
+processor.
+
+```text
+>>> edk2.rdmsr_ex(99999, 0)
+ValueError: Invalid cpu number provided
+```
+
+### 18.4 MP Services absent (optional)
+
+On a platform **without** MP Services, `import edk2` must still succeed; the first `_ex` call
+raises **`OSError: EFI MP Services protocol is not available`**. Not required for sign-off on
+typical multi-processor lab hardware.
+
+### 18.5 MIN builds
 
 No `edk2module.c` in MIN — **compile not required** on MIN for this phase.

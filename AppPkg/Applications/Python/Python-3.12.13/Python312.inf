@@ -62,6 +62,7 @@
   gEfiSimpleTextInputExProtocolGuid
   gEfiRngProtocolGuid
   gEfiShellProtocolGuid
+  gEfiMpServiceProtocolGuid           ## CONSUMES
 
 [FixedPcd]
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x0F
