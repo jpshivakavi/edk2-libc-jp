@@ -612,10 +612,13 @@ Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.sta
 ```
 
 ```text
-['FaultError', 'cpuid', 'rdmsr', 'readio', 'wrmsr', 'writeio']
+['FaultError', 'cpuid', 'rdmsr', 'readio', 'writeio', 'wrmsr']
 ```
 
 Exactly five names more than phase 2, which is the whole of what phase 3 adds.
+
+`wrmsr` sorts **last**, after `writeio`: the comparison reaches `'i'` versus `'m'` at the third
+character. Worth stating because the intuitive reading puts the two MSR functions together.
 
 ### 12.3 CPUID — self-validating, needs no knowledge of the platform
 
@@ -692,7 +695,7 @@ Python312.efi -S
 >>> edk2.readio(0x81, 2)
 >>> edk2.readio(0x10000, 1)
 >>> edk2.readio(0x80, 3)
->>> edk2.writeio(0x80, 1, 256)
+>>> edk2.writeio(0x80, 1, 0xFFFF)
 ```
 
 | Call | Expected |
@@ -700,7 +703,14 @@ Python312.efi -S
 | `readio(0x81, 2)` | `ValueError: port 0x81 is not 2-byte aligned; ...` |
 | `readio(0x10000, 1)` | `ValueError: I/O port must be 0x0000-0xFFFF, not 0x10000` |
 | `readio(0x80, 3)` | `ValueError: size must be 1, 2 or 4, not 3` |
-| `writeio(0x80, 1, 256)` | `OverflowError: value does not fit in 1 byte(s)` |
+| `writeio(0x80, 1, 0xFFFF)` | `OverflowError: value does not fit in 1 byte(s)` |
+
+**`0xFFFF` rather than the obvious `0x100`, and the reason generalises to every overflow test in
+this document.** The UEFI console drops characters intermittently, and a dropped digit in `0x100`
+gives `0x10`, which fits in a byte and so *correctly* does not raise — yielding a failure report
+against working code, which is exactly what happened once on the phase 4 equivalent of this row.
+Every single-character deletion of `0xFFFF` still exceeds 0xFF, so the test cannot be turned into
+a false negative that way. Choose overflow values with that property.
 
 **Every one of these must raise before touching the port.** That is the entire point of the row:
 the first would have stopped the machine on 3.6.8, and the interpreter surviving all four with
@@ -797,8 +807,10 @@ Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.sta
 ```
 
 ```text
-['FaultError', 'cpuid', 'rdmsr', 'readio', 'readpci', 'wrmsr', 'writeio', 'writepci']
+['FaultError', 'cpuid', 'rdmsr', 'readio', 'readpci', 'writeio', 'writepci', 'wrmsr']
 ```
+
+Note `wrmsr` last, for the reason in §12.2 — `'i' < 'm'` puts both `write*` names ahead of it.
 
 ### 13.4 readpci cross-checked against two independent sources
 
@@ -831,8 +843,10 @@ Anything that ignored the offset would return the vendor ID again.
 
 ### 13.5 An absent device — how probing is meant to work
 
-Pick a bus:dev.func that `pci` does **not** list (run `pci` first; do not assume 00:1F.7 is
-empty, it often is not):
+Pick a bus:dev.func that `pci` does **not** list, and **read back the same b/d/f you wrote**, not a
+neighbouring one. Run `pci` first; do not assume 00:1F.7 is empty, and note that 00:1F.0 is the LPC
+controller on most Intel platforms and is very much present — a read of `(0,31,0)` returning a real
+vendor ID says nothing about whether `(0,31,7)` is empty:
 
 ```text
 >>> hex(edk2.readpci(0, 31, 7, 0, 4))
@@ -851,7 +865,7 @@ access to nothing does not fault, so this is the only signal available.
 >>> edk2.readpci(0, 32, 0, 0, 4)
 >>> edk2.readpci(0, 0, 8, 0, 4)
 >>> edk2.readpci(0, 0, 0, 0, 3)
->>> edk2.writepci(0, 0, 0, 0, 0x10000, 2)
+>>> edk2.writepci(0, 0, 0, 0, 0xFFFFFF, 2)
 >>> print(1+1)
 >>> exit()
 ```
@@ -863,11 +877,16 @@ access to nothing does not fault, so this is the only signal available.
 | `readpci(0,32,0,0,4)` | `ValueError: bus/device/function 0/32/0 out of range (max 255/31/7); ...` |
 | `readpci(0,0,8,0,4)` | `ValueError: bus/device/function 0/0/8 out of range ...` |
 | `readpci(0,0,0,0,3)` | `ValueError: size must be 1, 2 or 4, not 3` |
-| `writepci(0,0,0,0,0x10000,2)` | `OverflowError: value does not fit in 2 byte(s)` |
+| `writepci(0,0,0,0,0xFFFFFF,2)` | `OverflowError: value does not fit in 2 byte(s)` |
 
 **The second row is the one to watch:** on 3.6.8 that exact call trips the alignment `ASSERT` in
 `BasePciCf8Lib` and stops the machine. Surviving all six with a live prompt afterwards is the
 result, same as §12.6.
+
+**The last row was originally written as `0x10000` and that was a mistake — see §12.6.** The
+console dropped a zero, the call became `0x1000`, which fits in two bytes and so correctly did not
+raise, and it was reported as a defect in working code. `0xFFFFFF` survives any single dropped
+character.
 
 ### 13.7 writepci — a write that is safe because nothing is listening
 

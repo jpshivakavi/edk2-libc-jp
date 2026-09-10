@@ -383,8 +383,10 @@ edk2_writepci(PyObject *self, PyObject *args)
  * one interpreter and no subinterpreter support, so per-module state buys
  * nothing over file statics here.
  *
- * Kept alphabetical, so that the sorted dir() inventory used as a per-phase
- * acceptance check reads in the same order as this table. */
+ * Kept alphabetical for reading. Note this is not the order sorted(dir(edk2))
+ * produces -- Python compares character by character, so wrmsr sorts after
+ * writeio and writepci ('i' < 'm'). Do not "correct" the acceptance lists in
+ * Python312_Chipsec_Platform_API_Port.md to match this table. */
 static PyMethodDef edk2_methods[] = {
     {"cpuid",    edk2_cpuid,    METH_VARARGS, edk2_cpuid__doc__},
     {"rdmsr",    edk2_rdmsr,    METH_VARARGS, edk2_rdmsr__doc__},
