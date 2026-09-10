@@ -1119,6 +1119,25 @@ edk2.rdmsr_ex(99999, 0)   # ValueError
 
 Tag: **`python312-chipsec-phase9-mp-ex-2026-09-10`** — **19/19 CHIPSEC APIs complete.**
 
+### 7.14 `help()` works without a pager — after the `pydoc` fix, 2026-09-10
+
+Stock `pydoc` picked `less` through `subprocess` and raised
+**`PermissionError: [Errno 1] Operation not permitted`** on every `help()` call; the UEFI override
+[`PyMod-3.12.13/Lib/pydoc.py`](./Python-3.12.13/PyMod-3.12.13/Lib/pydoc.py) returns `plainpager`
+instead. Details and the in-session workaround: runtime notes §10.6.
+
+**No rebuild needed** — `pydoc` is staged on the ESP, so repackage (or copy the single file) and:
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> help(edk2.rdmsr)
+>>> help(edk2)
+```
+
+Both must print the doc text and return to `>>>` with no traceback and no
+`'(less)' is not recognized` line.
+
 ---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.

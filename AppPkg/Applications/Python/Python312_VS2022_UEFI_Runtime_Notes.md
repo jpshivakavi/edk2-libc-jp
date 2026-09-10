@@ -440,6 +440,43 @@ If boot hangs at **`before ShellCEntryLib`**, check that **`MSFT:*_*_*_NASM_FLAG
 
 ---
 
+## 10.6 `help()` → **`PermissionError: [Errno 1]`** (pydoc pager, 2026-09-10)
+
+**Symptom** (both toolchains, FULL and MIN, any object):
+
+```text
+>>> help(uefi)
+'(less)' is not recognized as an internal or external command...
+Traceback (most recent call last):
+  ...
+  File "FS1:\EFI\lib\python3.12\pydoc.py", line 1695, in pipepager
+    proc = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+  File "FS1:\EFI\lib\python3.12\subprocess.py", line 1885, in _execute_child
+    self.pid = _fork_exec(
+PermissionError: [Errno 1] Operation not permitted
+```
+
+**Cause:** stock `pydoc.getpager()` probes for a pager with `os.system('(less) 2>/dev/null')`. On
+UEFI that reaches the Shell, which prints "not recognized" but **still exits 0**, so pydoc selects
+`pipepager(text, 'less')` — and `subprocess` cannot fork on UEFI. 3.6.8 patched `pydoc` for this
+(`PyMod-3.6.8/Lib/pydoc.py`); the 3.12.13 port shipped the file unpatched until now.
+
+**Fix:** [`PyMod-3.12.13/Lib/pydoc.py`](./Python-3.12.13/PyMod-3.12.13/Lib/pydoc.py) returns
+`plainpager` on `sys.platform == 'uefi'`, placed beside the existing `emscripten` check and
+**before** the `less` probe, so the console noise disappears with the exception. `pipepager` also
+falls back to `plainpager` rather than raising if called directly.
+
+**`pydoc` is not frozen** — it loads from `EFI\lib\python3.12\pydoc.py` — so this needs **no
+rebuild**: re-run the packaging script (or copy that one file onto the ESP) and `help()` works.
+
+**In-session workaround on an unpatched image:**
+
+```text
+>>> import pydoc; pydoc.pager = pydoc.plainpager
+```
+
+---
+
 ## 11. Recommended smoke order (VS2022)
 
 > **Runnable procedure:** [`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) consolidates MIN / FULL / REPL for **both** toolchains with expected values and failure signatures. This section remains the source for **ordering and rationale**.
@@ -495,6 +532,7 @@ Confirm REPL teardown and relaunch again (no regression vs MIN).
 | [`Python-3.12.13/Python312.inf`](./Python-3.12.13/Python312.inf) | FULL Phase 8 |
 | [`PyMod-3.12.13/Modules/readline/readline.py`](./Python-3.12.13/PyMod-3.12.13/Modules/readline/readline.py) | UEFI stub unless **`PY_UEFI_READLINE`** |
 | [`Lib/site.py`](./Python-3.12.13/Lib/site.py) | UEFI: skip **`enablerlcompleter`** |
+| [`PyMod-3.12.13/Lib/pydoc.py`](./Python-3.12.13/PyMod-3.12.13/Lib/pydoc.py) | UEFI: **`plainpager`** for `help()` — no `subprocess` pager (§10.6) |
 | [`PyMod-3.12.13/efi/src/edk2console.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2console.c) | Detach readline; ConIn **`CloseProtocol`** |
 | [`Modules/main.c`](./Python-3.12.13/Modules/main.c) | UEFI: detach readline before **`Py_FinalizeEx`** |
 | [`PyMod-3.12.13/efi/src/edk2main.c`](./Python-3.12.13/PyMod-3.12.13/efi/src/edk2main.c) | **`UefiMain`**, stack switch, **`PyOS_CheckStack`** |
