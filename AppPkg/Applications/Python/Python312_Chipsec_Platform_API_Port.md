@@ -2,8 +2,9 @@
 
 Status: **Phases 1-5 green on VS2022 FULL; phases 1, 2 and 5 additionally green on GCC FULL.** The
 GCC *runtime* runs for phases 3 and 4 were skipped by decision (§12.8), but the phase 5 GCC build
-compiled `edk2module.c` clean, which closes the only real gap that skipping left. Outstanding:
-§5.9 on GCC FULL, and both MIN builds (§14.7). 2026-09-10.
+compiled `edk2module.c` clean, which closes the only real gap that skipping left. **§5.9 tests 0–3
+green on GCC FULL** after the linkage change; VS2022 FULL same four lines outstanding unless already
+run. Both MIN builds clean (§14.7). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -1098,7 +1099,12 @@ includes the new `Modules/edk2fault.h`. So:
   link resolves `uefi_set_fault_error` from a configuration that does not compile `edk2module.c`.
   Had the helper been defined in the new module instead, this is where it would have failed.
   Runtime §5.9 tests 0-1 on a MIN image remain optional.
-- **FULL should re-run §5.9**, for the same reason at runtime. Outstanding on both FULL images.
+- **FULL should re-run §5.9**, for the same reason at runtime. **§5.9 tests 0–3 PASSED
+  2026-09-10** on the GCC FULL image (`True` / `uefi.FaultError`; faulting read → vector 13 with
+  `rip` populated; `mem_probe` → `False True`; clean `exit()`). That is the row that exercises
+  `uefi_set_fault_error` after the linkage change — the helper body is unchanged, only no longer
+  `static`. VS2022 FULL re-run of the same four lines is still outstanding if not yet done on
+  that image.
 
 `edk2fault.h` exists because the helper has to be callable from both modules while remaining
 *defined* in `posixmodule.c`: MIN compiles `posixmodule.c` and not `edk2module.c`, yet MIN still
