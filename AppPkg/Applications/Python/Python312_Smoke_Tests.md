@@ -1049,19 +1049,18 @@ The rows that would have shown it are the same four named in §7.9 — row 1 (fa
 prompt returns), row 3 (a read after the fault), row 4 (the `2.0` sleep, i.e. `RFLAGS.IF`), row 6
 (200 faults then a read). All four green here too.
 
-### 7.11 Phase 7 UEFI variables (§16) — re-run needed after the CHIPSEC audit, 2026-09-10
+### 7.11 Phase 7 UEFI variables (§16) — CLOSED at `294be095`+; optional `uefi var-list` per image
 
-**Code:** `6fe11059` or later (`PrintLib.h` in `c4672f8b`; `Py_BuildValue` fix required for
-enumerate). Matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §16.
-
-The rows below were green, but `GetNextVariableName` has since changed to CHIPSEC's actual
-contract — **Name before NameSize**, and `bytes` accepted for name and GUID (§19). Re-run the
-enumerate lines on both toolchains to re-close.
+**Code:** **`294be095`** or later (§19 audit fix for `GetNextVariableName`). Earlier **`6fe11059`**
+still required the `Py_BuildValue` `)` fix. Matrix:
+[`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §16.
 
 | Toolchain | Observed |
 |---|---|
-| **VS2022 FULL** | `PlatformLang` read (`st=0`); §16.5 validation errors; enumerate after `6fe11059` |
-| **GCC FULL** | Same session green — banner `[GCC 5.3.1 ...] on uefi`, read + enumerate + validation |
+| **VS2022 FULL** | `PlatformLang` read (`st=0`); §16.5 validation; enumerate before audit fix |
+| **GCC FULL** | Same edk2 matrix + **2026-09-10** hardware **`chipsec_util msr 0x0`** with **EfiHelper** (§7.15) |
+
+Return order is **`(Status, Name, NameSize, GUID)`**; CHIPSEC bytes spelling in §7.11 interactive block.
 
 Default run is **read-only** plus `SetVariable` argument validation — no firmware write.
 
@@ -1096,7 +1095,31 @@ Python312.efi -S -c "import sys, platform; print(sys.platform, '|', platform.sys
 Both values must start with `uefi`, or `OsHelper.is_efi()` returns False and CHIPSEC falls back
 to `NoneHelper`.
 
-Tag: **`python312-chipsec-phase7-uefi-vars-2026-09-10`**.
+Tag: **`python312-chipsec-uefi-parity-2026-09-10`** (port §20).
+
+### 7.15 CHIPSEC on UEFI — 3.12 vs 3.6.8 parity sign-off, 2026-09-10
+
+Reference: internal/PythonEFI CHIPSEC under **`EFI\chipsec\`** (repo root). Port doc §20.
+
+| Toolchain | Observed |
+|---|---|
+| **GCC FULL** | **Green** — lab hardware; **`chipsec_util.py msr 0x0`**: Python **3.12.13**, **EfiHelper**, **uefi X86_64** |
+| **VS2022 FULL** | Same **`edk2`** / helper code — run §7.15 rows when image is on hardware |
+
+Layout: cwd **`FSn:\EFI\chipsec`**; **`..\bin\Python312.efi -S`**.
+
+```text
+..\bin\Python312.efi -S -c "import sys, platform; print(sys.platform, '|', platform.system())"
+..\bin\Python312.efi -S -c "from chipsec.helper.oshelper import helper; print(helper().helper.name)"
+..\bin\Python312.efi -S chipsec_util.py msr 0x0
+..\bin\Python312.efi -S chipsec_util.py uefi var-list
+```
+
+**`helper()`** must be **called** — `helper` alone is a function (no `.name`). **Unrecognized
+Platform** in the banner is missing CHIPSEC platform XML, not a 3.12 gap.
+
+Optional: **`cpuid`**, **`pci enumerate`**. Tag with §20:
+**`python312-chipsec-uefi-parity-2026-09-10`**.
 
 ### 7.12 Phase 8 `allocphysmem` / `freephysmem` (§17) — CLOSED VS2022 + GCC FULL, 2026-09-10
 
