@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-5 closed** (tag `python312-chipsec-phase5-guarded-mem-2026-09-10`). **Phase 6
-written, not yet built or tested** (§15). 2026-09-10.
+Status: **Phases 1-5 closed** (tag `python312-chipsec-phase5-guarded-mem-2026-09-10`). **Phase 6 green
+on VS2022 FULL** (§15). Phase 7 not started. 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -298,9 +298,8 @@ the ordering is about getting verified ground under the port early, not about wh
    from phase 2, keeping the split `(lo32, hi32)` signature — **green on VS2022 FULL.** Acceptance
    in §14. The one phase where a fault used to end the session, so the guard is the deliverable
    rather than a safety net.
-6. **`swsmi`**: C wrapper over the `_swsmi` already in the image — **WRITTEN, not yet built or
-   tested.** Widen the arguments to 64-bit (`K`); GCC `ms_abi` on the extern. Acceptance in §15
-   (arity/validation only by default — no guessed SMI).
+6. **`swsmi`**: C wrapper over the `_swsmi` already in the image — **green on VS2022 FULL** (§15.3).
+   GCC `ms_abi` on the extern; GCC FULL optional for a live call.
 7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable`. Straightforward `gRT`
    calls, but the 3.6.8 argument parsing (`"uu#K"`) uses formats that changed in Python 3 and must
    be rewritten, not copied.
@@ -1116,8 +1115,8 @@ module and is imported during startup, so it must not depend on a module that ma
 
 ## 15. Phase 6 acceptance — `swsmi`
 
-**Status: WRITTEN, not yet built or tested.** FULL only. No INF change — `_swsmi` is already in
-`cpu.nasm` / `cpu_gcc.s`.
+**Status: PASSED on VS2022 FULL, 2026-09-10 — §15.2–§15.3 (arity and 16-bit check).** No live SMI
+in default acceptance. GCC FULL optional for `ms_abi` proof (§15.5).
 
 ### 15.1 What changed from 3.6.8
 
@@ -1165,6 +1164,11 @@ Python312.efi -S
 A successful **link** of FULL on both toolchains is also part of acceptance: if `_swsmi` were
 missing from the image, the module would fail at import with `ImportError`, which the inventory
 row catches indirectly.
+
+**Console truncation:** a one-line `print(sorted(dir(edk2)...))` may show shortened names (`re`
+instead of `readpci`) or drop entries when the UEFI console drops characters. The reliable check is
+`'swsmi' in dir(edk2)` → `True` (and calling `edk2.swsmi()` must raise `TypeError`, not
+`AttributeError`).
 
 ### 15.4 Optional — only with a platform-known-safe SMI
 
