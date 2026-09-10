@@ -27,6 +27,14 @@
  * defects that are deliberately not reproduced here, and the phase ordering.
  */
 
+/* Required before Python.h for the y# in writemem: since 3.10 a '#' format
+ * without this is a SystemError at call time rather than a compile error, so it
+ * is invisible until the function is actually used. Every other module in this
+ * tree that uses a '#' format does the same. Historically it selected between
+ * int and Py_ssize_t lengths, which is the same ambiguity that made 3.6.8's
+ * writemem parse s# into an `int len` and corrupt its stack frame. */
+#define PY_SSIZE_T_CLEAN
+
 #include "Python.h"
 
 #include <Uefi.h>

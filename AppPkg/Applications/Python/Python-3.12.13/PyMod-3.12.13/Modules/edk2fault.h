@@ -18,6 +18,9 @@
 #ifndef EDK2FAULT_H
 #define EDK2FAULT_H
 
+/* Include this after Python.h, not before: a translation unit that needs
+ * PY_SSIZE_T_CLEAN must define it ahead of the first Python.h, and it cannot do
+ * that if this header pulled Python.h in first. */
 #include "Python.h"
 #include <efi/edk2excep.h>
 

@@ -949,6 +949,14 @@ back.
 | `readmem` takes `int len`; a negative length makes `while(index--)` run about four billion times **writing memory** | `Py_ssize_t`, negative is `ValueError` |
 | `writemem` parses `s#`, so it accepts `str` and writes its UTF-8 encoding — a different byte count than the string has characters, the moment one is non-ASCII | `y#`: bytes only, `TypeError` for `str` |
 
+**`PY_SSIZE_T_CLEAN` must be defined before `Python.h` for that `y#`,** and getting it wrong is
+worth knowing about because of *when* it fails. Since Python 3.10 a `#` format without it is a
+`SystemError` raised **at call time**, not a compile error — so the module builds, imports, and
+every other function works, and only `writemem` fails, the first time anyone calls it. It was
+missed on the first pass here for exactly that reason. The same macro historically selected
+between `int` and `Py_ssize_t` lengths, which is the ambiguity that let 3.6.8 parse `s#` into an
+`int len` and corrupt its stack frame; the modern runtime refuses to guess.
+
 Two new C primitives back these: `edk2_guarded_copy()` in `efi/src/edk2excep.c` for the
 variable-length pair, and the existing `edk2_guarded_access()` for the `_dword` pair. The copy uses
 **one `setjmp` for the whole block** rather than one per byte — a fault anywhere fails the whole
