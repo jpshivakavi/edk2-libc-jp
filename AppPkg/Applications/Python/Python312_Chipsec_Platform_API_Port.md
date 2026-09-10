@@ -62,7 +62,7 @@ they must be preserved even where a 64-bit return would be nicer.
 | `swsmi` | `swsmi(smi_code_data, rax, rbx, rcx, rdx, rsi, rdi) -> None` | `_swsmi` in `cpu.nasm` | **asm (already present, §4)** |
 | `allocphysmem` | `allocphysmem(length, max_pa) -> (va,)` | `gBS->AllocatePages` / `AllocateMaxAddress`; `freephysmem` companion | Boot Services |
 | `GetVariable` | `(Status, Attributes, Data, DataSize) = GetVariable(name, guid, size)` | `gRT->GetVariable` | Runtime Services |
-| `GetNextVariableName` | `(Status, NameSize, Name, Guid) = GetNextVariableName(sz, name, guid)` | `gRT->GetNextVariableName` | Runtime Services |
+| `GetNextVariableName` | `(Status, Name, NameSize, Guid) = GetNextVariableName(sz, name, guid)` | `gRT->GetNextVariableName` | Runtime Services |
 | `SetVariable` | `(Status, DataSize, Guid) = SetVariable(name, guid, attrs, data, size)` | `gRT->SetVariable` | Runtime Services |
 
 Note the address convention: memory addresses are passed as a **split `(lo32, hi32)` pair**, then
@@ -1191,7 +1191,11 @@ wrong SMI must not be used as a shortcut.
 
 ## 16. Phase 7 acceptance — UEFI variables
 
-**Status: CLOSED on VS2022 FULL and GCC FULL (2026-09-10).** FULL only. Adds
+**Status: REOPENED 2026-09-10 after the CHIPSEC v3.10.3 call-site audit (§19).**
+`GetNextVariableName` was returning `(Status, NameSize, Name, GUID)` and accepting only `str`;
+CHIPSEC unpacks `(Status, Name, NameSize, GUID)` and passes **bytes** for both name and GUID.
+Fixed; re-run §16.4 on VS2022 FULL and GCC FULL to re-close. Everything else in this section
+(VS2022 FULL and GCC FULL, 2026-09-10) still stands. FULL only. Adds
 `UefiRuntimeServicesTableLib` to `Python312.inf`. Runtime builds need **`6fe11059`** or later
 (closing `)` on `Py_BuildValue` for `GetNextVariableName` / `SetVariable`; earlier images raise
 `SystemError: unmatched paren in format` on enumerate).
@@ -1200,14 +1204,26 @@ wrong SMI must not be used as a shortcut.
 
 | Topic | 3.6.8 | Here |
 |---|---|---|
-| Parse API | `"uu#K"`, `"Ky#s#"`, `"uu#Is#I"` (Python 2 / broken combos) | `"UUk"`, `"kUU"`, `"UUiy#k"` |
-| GUID on input | Unicode / raw bytes | **str**, `AsciiStrToGuid` |
-| `GetNextVariableName` | Unallocated `VariableName`, binary GUID `s#` | Proper name buffer; GUID str in/out |
+| Parse API | `"uu#K"`, `"Ky#s#"`, `"uu#Is#I"` (Python 2 / broken combos) | `"OOK"`, `"KOO"`, `"OOIy*K"` |
+| Name on input | `u` (str) or raw `y#` bytes depending on the call | **str or UTF-16LE bytes**, either call |
+| GUID on input | Unicode string, or 16 raw bytes via `s#` | **str** (`AsciiStrToGuid`) **or 16 bytes** (`uuid.UUID.bytes_le`) |
+| `GetNextVariableName` | Wrote through an unallocated `VariableName` pointer | Proper name buffer sized by `NameSize` |
+| `SetVariable` data | `s#` (rejects `bytearray`) | `y*` — any bytes-like, `bytearray` included |
 | `malloc` failure | NULL with no exception | `PyErr_NoMemory()` |
 | `Py_BEGIN_ALLOW_THREADS` | present | omitted (stubbed threading) |
 
-Return tuple **shapes** match 3.6.8: `GetVariable` → four elements; `GetNextVariableName` → four;
-`SetVariable` → three (Status, DataSize, GUID str).
+Return tuple **shapes and element order** match 3.6.8's `Py_BuildValue` calls — **not** its
+docstrings, which disagree with its own code for `GetNextVariableName`:
+
+| Call | 3.6.8 `Py_BuildValue` | Order |
+|---|---|---|
+| `GetVariable` | `"(IIy#K)"` | Status, Attributes, Data, DataSize |
+| `GetNextVariableName` | `"(IuKs)"` | Status, **Name, NameSize**, GUID |
+| `SetVariable` | `"(IKs)"` | Status, DataSize, GUID |
+
+`Status` is the EFI status truncated to 32 bits, which is what makes CHIPSEC's
+`if Status == 5` test for `EFI_BUFFER_TOO_SMALL` work: `0x8000000000000005` loses its high
+half. Keep the `(unsigned int)` cast.
 
 ### 16.2 Surface inventory — sixteen names
 
@@ -1248,8 +1264,10 @@ ValueError: GUID must be ...
 
 ### 16.4 Enumerate — first step
 
+Note the element order: **Name comes before NameSize**.
+
 ```text
->>> st, nsz, name, g = edk2.GetNextVariableName(512, '', '00000000-0000-0000-0000-000000000000')
+>>> st, name, nsz, g = edk2.GetNextVariableName(512, '', '00000000-0000-0000-0000-000000000000')
 >>> st
 0
 >>> name != ''
@@ -1260,6 +1278,18 @@ True
 
 Feed the returned `name` and `g` back with `nsz` as the next `NameSize` to walk the list (second
 call is optional for sign-off).
+
+The same call in CHIPSEC's spelling — UTF-16LE name bytes and `uuid.UUID.bytes_le` — must work
+too, and is what `list_EFI_variables` actually issues:
+
+```text
+>>> import uuid
+>>> st, name, nsz, g = edk2.GetNextVariableName(200, '\x00'.encode('utf-16-le'), uuid.uuid4().bytes_le)
+>>> st
+0
+>>> uuid.UUID(g) and name != ''
+True
+```
 
 ### 16.5 SetVariable — validation only in default matrix
 
@@ -1402,3 +1432,48 @@ typical multi-processor lab hardware.
 ### 18.5 MIN builds
 
 No `edk2module.c` in MIN — **compile not required** on MIN for this phase.
+
+---
+
+## 19. CHIPSEC v3.10.3 call-site audit (2026-09-10)
+
+Phases 1–9 were written against the **3.6.8 `edk2module.c`**. This section re-checks them
+against a real consumer: the CHIPSEC tree shipped in `PythonEFI_v3.10.3`, whose
+`chipsec/helper/efi/efihelper.py` is the only file in that repo that imports `edk2`.
+
+Every call site there, and how our module answers it:
+
+| CHIPSEC call | Our parse / return | Verdict |
+|---|---|---|
+| `readmem(pa_lo, pa_hi, length)` → bytes | `"IIK"` → bytes | match |
+| `writemem(pa_lo, pa_hi, buf)` with `bytes` | `"IIy#"` | match |
+| `writemem_dword(pa_lo, pa_hi, value)` | `"IIK"` | match |
+| `readpci` / `writepci` (bus, dev, fn, addr[, value], size) | same order | match |
+| `readio(port, size)` / `writeio(port, size, value)` | same order | match |
+| `swsmi(code_data, rax, rbx, rcx, rdx, rsi, rdi)` — 7 args | `"IKKKKKK"` | match |
+| `rdmsr(addr)` → `(eax, edx)`; `wrmsr(addr, eax, edx)` | same | match |
+| `cpuid(eax, ecx)` → 4-tuple | same | match |
+| `allocphysmem(length, max_pa)[0]` | returns `(va,)` | match |
+| `GetVariable(name: str, guid: str, size)` → `(Status, Attributes, Data, DataSize)`, retries when `Status == 5` | `"OOK"` → `"(IIy#K)"`, truncated status, required size on `EFI_BUFFER_TOO_SMALL` | match |
+| `SetVariable(name: str, guid: str, int(attrs), buffer: bytes, buffer_size)` → `(Status, DataSize, GUID)` | `"OOIy*K"` → `"(IKU)"` | match |
+| `GetNextVariableName(size, name: bytes, guid: bytes)` → `(Status, Name, NameSize, GUID)` | **was** str-only, `(Status, NameSize, Name, GUID)` | **fixed here** |
+
+Notes that fall out of the audit:
+
+- **`delete_EFI_variable`** reaches `SetVariable(..., b'\x00'*4, 0)` — `DataSize` 0 with a
+  non-empty buffer. Our `DataSize exceeds len(Data)` guard only fires when `DataSize > len(Data)`,
+  so the delete path is allowed.
+- **`_ex` APIs are unused** by this CHIPSEC version: `get_threads_count()` returns 1 and the
+  helper ignores `cpu_thread_id`. Phase 9 is still correct, just not exercised by CHIPSEC.
+- **Helper selection** goes through `OsHelper.is_efi()`, which tests
+  `platform.system().lower().startswith('efi' | 'uefi')`, while `chipsec/helper/efi/__init__.py`
+  tests `sys.platform`. `sys.platform` is `'uefi'`; `platform.system()` falls back to
+  `sys.platform` only when `os.uname` is absent. Confirm on hardware before running CHIPSEC:
+
+```text
+Python312.efi -S -c "import sys, platform; print(sys.platform, '|', platform.system())"
+```
+
+  Both must start with `uefi`. If `platform.system()` returns something else, CHIPSEC selects
+  `NoneHelper` and every HAL call fails — that is a `platform`/`os.uname` question, not an
+  `edk2` module one.

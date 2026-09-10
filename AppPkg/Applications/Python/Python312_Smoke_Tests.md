@@ -1049,10 +1049,14 @@ The rows that would have shown it are the same four named in §7.9 — row 1 (fa
 prompt returns), row 3 (a read after the fault), row 4 (the `2.0` sleep, i.e. `RFLAGS.IF`), row 6
 (200 faults then a read). All four green here too.
 
-### 7.11 Phase 7 UEFI variables (§16) — CLOSED VS2022 + GCC FULL, 2026-09-10
+### 7.11 Phase 7 UEFI variables (§16) — re-run needed after the CHIPSEC audit, 2026-09-10
 
 **Code:** `6fe11059` or later (`PrintLib.h` in `c4672f8b`; `Py_BuildValue` fix required for
 enumerate). Matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §16.
+
+The rows below were green, but `GetNextVariableName` has since changed to CHIPSEC's actual
+contract — **Name before NameSize**, and `bytes` accepted for name and GUID (§19). Re-run the
+enumerate lines on both toolchains to re-close.
 
 | Toolchain | Observed |
 |---|---|
@@ -1070,13 +1074,27 @@ Expect `True 16`.
 Interactive (paste at `>>>`):
 
 ```text
+import uuid
 G = '8BE4DF61-93CA-11d2-AA0D-00E098032B8C'
 st, attr, data, sz = edk2.GetVariable('PlatformLang', G, 128)
-st, nsz, name, g = edk2.GetNextVariableName(512, '', '00000000-0000-0000-0000-000000000000')
+st, name, nsz, g = edk2.GetNextVariableName(512, '', '00000000-0000-0000-0000-000000000000')
+st, name, nsz, g = edk2.GetNextVariableName(200, '\x00'.encode('utf-16-le'), uuid.uuid4().bytes_le)
 edk2.GetVariable('PlatformLang', 'not-a-guid', 8)   # ValueError
 edk2.SetVariable('X', 'not-a-guid', 0, b'', 0)       # ValueError
 edk2.SetVariable('X', G, 0, b'abc', 10)              # ValueError DataSize
 ```
+
+The second enumerate is CHIPSEC's exact spelling (UTF-16LE name bytes, `uuid.bytes_le` GUID);
+both must return `st == 0` with a non-empty `name` and a `g` that `uuid.UUID()` parses.
+
+CHIPSEC helper selection, worth one line while you are at the prompt:
+
+```text
+Python312.efi -S -c "import sys, platform; print(sys.platform, '|', platform.system())"
+```
+
+Both values must start with `uefi`, or `OsHelper.is_efi()` returns False and CHIPSEC falls back
+to `NoneHelper`.
 
 Tag: **`python312-chipsec-phase7-uefi-vars-2026-09-10`**.
 
