@@ -938,8 +938,9 @@ rather than continuing.
 
 ## 14. Phase 5 acceptance — physical memory, and the point of the whole exercise
 
-**Status: PASSED on VS2022 FULL and GCC FULL, 2026-09-10 — all of §14.2 through §14.6, row for
-row.** Outstanding: §5.9 re-run on GCC FULL, and both MIN builds (§14.7).
+**Status: CLOSED 2026-09-10 on VS2022 FULL and GCC FULL** — §14.2–§14.6, both MIN links, GCC §5.9
+0–3 after the `uefi_set_fault_error` export. Optional: same §5.9 four lines on VS2022 FULL for
+symmetry only.
 
 One defect found and fixed during the VS2022 run: `writemem` raised
 `SystemError: PY_SSIZE_T_CLEAN macro must be defined for '#' formats`. Fixed in `df704dfc` and
@@ -1103,8 +1104,10 @@ includes the new `Modules/edk2fault.h`. So:
   2026-09-10** on the GCC FULL image (`True` / `uefi.FaultError`; faulting read → vector 13 with
   `rip` populated; `mem_probe` → `False True`; clean `exit()`). That is the row that exercises
   `uefi_set_fault_error` after the linkage change — the helper body is unchanged, only no longer
-  `static`. VS2022 FULL re-run of the same four lines is still outstanding if not yet done on
-  that image.
+  `static`. **Confirmed on hardware with the GCC FULL banner** (`Python 3.12.13 ... [GCC 5.3.1 ...]
+  on uefi`). A different `rip` on a VS2022 image would be normal (rebuild relocates code); vector
+  13 and the probe pair are what matter. VS2022 FULL re-run of the same four lines is optional
+  symmetry, not a different code path.
 
 `edk2fault.h` exists because the helper has to be callable from both modules while remaining
 *defined* in `posixmodule.c`: MIN compiles `posixmodule.c` and not `edk2module.c`, yet MIN still
