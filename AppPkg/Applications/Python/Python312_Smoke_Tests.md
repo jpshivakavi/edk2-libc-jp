@@ -1049,12 +1049,16 @@ The rows that would have shown it are the same four named in §7.9 — row 1 (fa
 prompt returns), row 3 (a read after the fault), row 4 (the `2.0` sleep, i.e. `RFLAGS.IF`), row 6
 (200 faults then a read). All four green here too.
 
-### 7.11 VS2022 FULL — phase 7 UEFI variables (§16), 2026-09-10
+### 7.11 Phase 7 UEFI variables (§16) — CLOSED VS2022 + GCC FULL, 2026-09-10
 
-**Image:** rebuild after commit `4e0e0d98` (or later with `PrintLib.h` for `edk2_guid_to_unicode`).
-**Path:** `c:\Users\njayapra\github\edk2\Build\AppPkg\NOOPT_VS2022\X64\Python312.efi`
+**Code:** `6fe11059` or later (`PrintLib.h` in `c4672f8b`; `Py_BuildValue` fix required for
+enumerate). Matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §16.
 
-Full matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §16.
+| Toolchain | Observed |
+|---|---|
+| **VS2022 FULL** | `PlatformLang` read (`st=0`); §16.5 validation errors; enumerate after `6fe11059` |
+| **GCC FULL** | Same session green — banner `[GCC 5.3.1 ...] on uefi`, read + enumerate + validation |
+
 Default run is **read-only** plus `SetVariable` argument validation — no firmware write.
 
 ```text
@@ -1074,9 +1078,7 @@ edk2.SetVariable('X', 'not-a-guid', 0, b'', 0)       # ValueError
 edk2.SetVariable('X', G, 0, b'abc', 10)              # ValueError DataSize
 ```
 
-Sign-off: `st == 0` on GetVariable (or `Lang` / `PlatformLangCodes` if `PlatformLang` absent),
-first enumerate returns non-empty `name` and a GUID string with four hyphens. Record results here
-when green; tag `python312-chipsec-phase7-uefi-vars-2026-09-10`.
+Tag: **`python312-chipsec-phase7-uefi-vars-2026-09-10`**.
 
 ---
 

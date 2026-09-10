@@ -10,7 +10,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-09-10 (CHIPSEC port: phases 1-4 green on VS2022 FULL; phase 5 written — items 46-51)  
+**Updated:** 2026-09-10 (CHIPSEC port: phase 7 closed VS2022 + GCC FULL §16 — items 46-60)  
 **SEH fault recovery design:** [`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) (§2 fixes landed; API not implemented)  
 **Strategy:** **Single line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **`feature/python-3.12.13-apppkg`** kept as **read-only reference** (GCC port / 3.6.8 AppPkg structure alignment) — **no merge back into apppkg**. Same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs in **`PyMod-3.12.13/Modules/`**  
 **Branch:** **`feature/python-3.12.13-vs2022`** — sole manufacturing line (forked from **`feature/python-3.12.13-apppkg`**; apppkg now **reference only**)  
@@ -513,6 +513,8 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 57. **2026-09-10 — phase 6 green on VS2022 FULL: §15.3 without firing an SMI.** Observed: `swsmi()` / wrong arity → **TypeError: takes exactly 7 arguments**; `0x10000` → **ValueError: smi_code_data must fit in 16 bits**; prompt still live. **`dir()` one-liner may truncate on the console** — use `'swsmi' in dir(edk2)` if the sorted list looks incomplete.
 58. **2026-09-10 — phase 6 CLOSED on GCC FULL: §15.3 matches VS2022 row for row.** Same arity and 16-bit checks on the GCC banner image; confirms `_swsmi` resolves and the `ms_abi` declaration matches `cpu_gcc.s`. No live SMI in either run. Tagged **`python312-chipsec-phase6-swsmi-2026-09-10`**. **Remaining CHIPSEC APIs:** phase 7 variables (3), phase 8 `allocphysmem`, phase 9 `_ex` + MP Services (3).
 59. **2026-09-10 — phase 7 written: `GetVariable`, `GetNextVariableName`, `SetVariable`.** Python 3 parse (`UUk`, `kUU`, `UUiy#k`), GUID as str via `AsciiStrToGuid`, names as UTF-16; fixed 3.6.8 `GetNextVariableName` buffer/GUID handling. `UefiRuntimeServicesTableLib` on `Python312.inf`. Default acceptance read-only + validation (§16); no SetVariable write in the matrix.
+60. **2026-09-10 — phase 7 green on VS2022 FULL: §16 read + enumerate + validation.** `PlatformLang` → `st=0`, `b'en-US\\x00'`; bad GUID and `DataSize exceeds len(Data)` raise as documented. **`6fe11059`** fixes missing `Py_BuildValue` `)` (enumerate had raised `SystemError` on builds through `c4672f8b`).
+61. **2026-09-10 — phase 7 CLOSED on GCC FULL: §16 matches VS2022 row for row.** Banner `[GCC 5.3.1 ...] on uefi`; `GetVariable` + `GetNextVariableName` + the three validation calls green in one session. Tagged **`python312-chipsec-phase7-uefi-vars-2026-09-10`**. **Remaining CHIPSEC APIs:** phase 8 `allocphysmem`, phase 9 `_ex` + MP Services (3).
 8. **Next diagnostic (no rebuild needed):** **`/DPY_UEFI_BOOT_TRACE=1`** is already on MSFT **`CC_FLAGS`**, so **`PY312_CONSOLE_TRACE`** lines (**`edk2_console_detach_readline enter/leave`**, **`stop_timer: …`**, **`handoff_to_shell`**) are live in the tested image — read them on a phase 2 re-run before typing **`exit`** to decide whether detach ran and completed. **Do not** try a ConIn `Reset`; **`edk2console.c`** records both directions already failing.
 9. **Policy unchanged:** VS2022 manufacturing stays **stdio**; this run is positive evidence for that decision.
 

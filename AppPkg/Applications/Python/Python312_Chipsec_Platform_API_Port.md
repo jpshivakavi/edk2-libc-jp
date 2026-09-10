@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-6 closed** (tag `python312-chipsec-phase6-swsmi-2026-09-10`). **Phase 7 written,
-not yet built or tested** (§16). 2026-09-10.
+Status: **Phases 1-7 closed** (tag `python312-chipsec-phase7-uefi-vars-2026-09-10`). Phase 8 not
+started (`allocphysmem`). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -300,8 +300,8 @@ the ordering is about getting verified ground under the port early, not about wh
    rather than a safety net.
 6. **`swsmi`**: C wrapper over the `_swsmi` already in the image — **green on VS2022 FULL and GCC
    FULL** (§15.3). `ms_abi` on GCC extern.
-7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable` — **WRITTEN, not yet
-   built or tested.** Acceptance in §16.
+7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable` — **green on VS2022 FULL
+   and GCC FULL** (§16). `Py_BuildValue` tuple formats fixed in `6fe11059`.
 8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
    with a matching free.
 9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
@@ -1191,8 +1191,10 @@ wrong SMI must not be used as a shortcut.
 
 ## 16. Phase 7 acceptance — UEFI variables
 
-**Status: WRITTEN, not yet built or tested.** FULL only. Adds `UefiRuntimeServicesTableLib` to
-`Python312.inf`.
+**Status: CLOSED on VS2022 FULL and GCC FULL (2026-09-10).** FULL only. Adds
+`UefiRuntimeServicesTableLib` to `Python312.inf`. Runtime builds need **`6fe11059`** or later
+(closing `)` on `Py_BuildValue` for `GetNextVariableName` / `SetVariable`; earlier images raise
+`SystemError: unmatched paren in format` on enumerate).
 
 ### 16.1 What changed from 3.6.8
 
