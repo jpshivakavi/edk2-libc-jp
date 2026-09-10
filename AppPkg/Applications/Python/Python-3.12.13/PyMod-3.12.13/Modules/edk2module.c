@@ -837,7 +837,7 @@ edk2_GetNextVariableName(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    result = Py_BuildValue("(IkUU",
+    result = Py_BuildValue("(IkUU)",
                            (unsigned int)status,
                            (unsigned long long)name_size,
                            name_out, guid_out);
@@ -892,7 +892,7 @@ edk2_SetVariable(PyObject *self, PyObject *args)
     guid_out = edk2_guid_to_unicode(&vendor_guid);
     if (guid_out == NULL)
         return NULL;
-    result = Py_BuildValue("(IkU",
+    result = Py_BuildValue("(IkU)",
                            (unsigned int)status,
                            (unsigned long long)data_size,
                            guid_out);
