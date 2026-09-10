@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-8 closed** (tag `python312-chipsec-phase8-allocphysmem-2026-09-10`). **Phase 9 written,
-not yet built or tested** (§18). 2026-09-10.
+Status: **Phases 1-9 closed — all 19 CHIPSEC platform APIs ported** (tag
+`python312-chipsec-phase9-mp-ex-2026-09-10`). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -305,7 +305,7 @@ the ordering is about getting verified ground under the port early, not about wh
 8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
    plus **`freephysmem`** for release — **green on VS2022 FULL and GCC FULL** (§17).
 9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
-   per §6.1 — **WRITTEN, not yet built or tested** (§18). Last phase; completes all 19 names.
+   per §6.1 — **green on VS2022 FULL and GCC FULL** (§18). Completes all 19 names.
 
 ## 9. Decisions taken
 
@@ -1347,9 +1347,9 @@ No `edk2module.c` in MIN — **compile not required** on MIN for this phase.
 
 ## 18. Phase 9 acceptance — MP Services `_ex` APIs
 
-**Status: WRITTEN, not yet built or tested.** FULL only. Adds `gEfiMpServiceProtocolGuid` to
-`Python312.inf` `[Protocols]`. MP Services is located **on first `_ex` call**, not at `import edk2`
-(§6.1).
+**Status: CLOSED 2026-09-10 — VS2022 FULL and GCC FULL, §18.2–§18.3.** FULL only. Adds
+`gEfiMpServiceProtocolGuid` to `Python312.inf` `[Protocols]`. MP Services is located **on first
+`_ex` call**, not at `import edk2` (§6.1). Code at **`6f70c9bf`** or later.
 
 ### 18.1 What changed from 3.6.8
 

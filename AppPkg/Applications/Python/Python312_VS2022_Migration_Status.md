@@ -10,7 +10,7 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-09-10 (CHIPSEC port: phase 9 written — items 46-65)  
+**Updated:** 2026-09-10 (CHIPSEC port complete: phase 9 closed VS2022 + GCC FULL §18 — items 46-66)  
 **SEH fault recovery design:** [`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) (§2 fixes landed; API not implemented)  
 **Strategy:** **Single line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **`feature/python-3.12.13-apppkg`** kept as **read-only reference** (GCC port / 3.6.8 AppPkg structure alignment) — **no merge back into apppkg**. Same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs in **`PyMod-3.12.13/Modules/`**  
 **Branch:** **`feature/python-3.12.13-vs2022`** — sole manufacturing line (forked from **`feature/python-3.12.13-apppkg`**; apppkg now **reference only**)  
@@ -519,6 +519,7 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 63. **2026-09-10 — phase 8 green on VS2022 FULL: §17.2–§17.4.** Surface count 18; allocate below 4 GB, `writemem_dword`/`readmem_dword` round-trip, `freephysmem` + double-free `ValueError`, zero-length `ValueError`.
 64. **2026-09-10 — phase 8 CLOSED on GCC FULL: §17 matches VS2022 row for row.** Same allocate/read/write/free/validation session on the GCC banner image. Tagged **`python312-chipsec-phase8-allocphysmem-2026-09-10`**. **Remaining CHIPSEC APIs:** phase 9 `_ex` + MP Services (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`).
 65. **2026-09-10 — phase 9 written: `rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`.** Lazy `LocateProtocol` for MP Services; AP stubs via `StartupThisAP`; `gEfiMpServiceProtocolGuid` on `Python312.inf`. Fixes 3.6.8 `return Py_None` on error. Acceptance §18.
+66. **2026-09-10 — phase 9 CLOSED on VS2022 FULL and GCC FULL: §18 matches on both banners.** Surface 21 (`dir(edk2)`); `cpuid`/`cpuid_ex` parity and invalid-cpu `ValueError` green. Tagged **`python312-chipsec-phase9-mp-ex-2026-09-10`**. **CHIPSEC platform API port: all 19 functions on Python 3.12.13 FULL (VS2022 + GCC).**
 8. **Next diagnostic (no rebuild needed):** **`/DPY_UEFI_BOOT_TRACE=1`** is already on MSFT **`CC_FLAGS`**, so **`PY312_CONSOLE_TRACE`** lines (**`edk2_console_detach_readline enter/leave`**, **`stop_timer: …`**, **`handoff_to_shell`**) are live in the tested image — read them on a phase 2 re-run before typing **`exit`** to decide whether detach ran and completed. **Do not** try a ConIn `Reset`; **`edk2console.c`** records both directions already failing.
 9. **Policy unchanged:** VS2022 manufacturing stays **stdio**; this run is positive evidence for that decision.
 
