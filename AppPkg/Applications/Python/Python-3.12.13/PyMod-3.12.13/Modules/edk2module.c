@@ -391,6 +391,71 @@ edk2_writepci(PyObject *self, PyObject *args)
 }
 
 /* ---------------------------------------------------------------------------
+ * Software SMI
+ *
+ * _swsmi lives in Modules/cpu.nasm (MSFT) or cpu_gcc.s (GCC), already linked
+ * into every FULL and MIN image but unused until now. The assembly uses the
+ * Microsoft x64 calling convention (first four args in rcx/rdx/r8/r9, rest on
+ * the stack), so the C declaration must match on GCC too.
+ *
+ * 3.6.8 parsed seven unsigned ints and passed them to an entry point that loads
+ * full 64-bit GPR values — anything with meaningful high halves was silently
+ * wrong. Here smi_code_data stays unsigned int (only AX is written to 0xB2);
+ * the six register arguments are unsigned long long (Py "K").
+ *
+ * There is no safe default test: any call enters firmware SMM. Acceptance is
+ * import/signature/arity only unless the operator opts into a known-safe SMI for
+ * their platform (port doc section 15).
+ * ------------------------------------------------------------------------- */
+
+#ifdef _MSC_VER
+void
+_swsmi(unsigned int smi_code_data, UINT64 rax_value, UINT64 rbx_value,
+       UINT64 rcx_value, UINT64 rdx_value, UINT64 rsi_value, UINT64 rdi_value);
+#else
+void
+_swsmi(unsigned int smi_code_data, UINT64 rax_value, UINT64 rbx_value,
+       UINT64 rcx_value, UINT64 rdx_value, UINT64 rsi_value, UINT64 rdi_value)
+    __attribute__((ms_abi));
+#endif
+
+PyDoc_STRVAR(edk2_swsmi__doc__,
+"swsmi(smi_code_data, rax, rbx, rcx, rdx, rsi, rdi) -> None\n\
+\n\
+Trigger a software SMI through port 0xB2 with the given data byte and the GPR\n\
+values the handler sees on entry (full 64-bit values, not 32-bit halves).\n\
+\n\
+This enters System Management Mode. There is no safe value on an arbitrary\n\
+platform — a wrong SMI number can hang or reset the machine. CHIPSEC callers\n\
+know their platform's SMI contract; this wrapper does not validate it.");
+
+static PyObject *
+edk2_swsmi(PyObject *self, PyObject *args)
+{
+    unsigned int smi_code_data;
+    unsigned long long rax_value, rbx_value, rcx_value, rdx_value, rsi_value,
+        rdi_value;
+
+    if (!PyArg_ParseTuple(args, "IKKKKKK:swsmi", &smi_code_data, &rax_value,
+                          &rbx_value, &rcx_value, &rdx_value, &rsi_value,
+                          &rdi_value))
+        return NULL;
+
+    if (smi_code_data > 0xFFFFu) {
+        PyErr_Format(PyExc_ValueError,
+                     "smi_code_data must fit in 16 bits, not 0x%x",
+                     smi_code_data);
+        return NULL;
+    }
+
+    _swsmi(smi_code_data, (UINT64)rax_value, (UINT64)rbx_value,
+           (UINT64)rcx_value, (UINT64)rdx_value, (UINT64)rsi_value,
+           (UINT64)rdi_value);
+
+    Py_RETURN_NONE;
+}
+
+/* ---------------------------------------------------------------------------
  * Physical memory
  *
  * These are the functions phases 1 and 2 were built for. In 3.6.8 readmem()
@@ -593,6 +658,7 @@ static PyMethodDef edk2_methods[] = {
     {"readmem",        edk2_readmem,        METH_VARARGS, edk2_readmem__doc__},
     {"readmem_dword",  edk2_readmem_dword,  METH_VARARGS, edk2_readmem_dword__doc__},
     {"readpci",        edk2_readpci,        METH_VARARGS, edk2_readpci__doc__},
+    {"swsmi",          edk2_swsmi,          METH_VARARGS, edk2_swsmi__doc__},
     {"wrmsr",          edk2_wrmsr,          METH_VARARGS, edk2_wrmsr__doc__},
     {"writeio",        edk2_writeio,        METH_VARARGS, edk2_writeio__doc__},
     {"writemem",       edk2_writemem,       METH_VARARGS, edk2_writemem__doc__},

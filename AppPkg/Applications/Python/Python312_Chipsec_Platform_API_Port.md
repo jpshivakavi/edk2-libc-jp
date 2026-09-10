@@ -1,10 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-5 green on VS2022 FULL; phases 1, 2 and 5 additionally green on GCC FULL.** The
-GCC *runtime* runs for phases 3 and 4 were skipped by decision (§12.8), but the phase 5 GCC build
-compiled `edk2module.c` clean, which closes the only real gap that skipping left. **§5.9 tests 0–3
-green on GCC FULL** after the linkage change; VS2022 FULL same four lines outstanding unless already
-run. Both MIN builds clean (§14.7). 2026-09-10.
+Status: **Phases 1-5 closed** (tag `python312-chipsec-phase5-guarded-mem-2026-09-10`). **Phase 6
+written, not yet built or tested** (§15). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -301,9 +298,9 @@ the ordering is about getting verified ground under the port early, not about wh
    from phase 2, keeping the split `(lo32, hi32)` signature — **green on VS2022 FULL.** Acceptance
    in §14. The one phase where a fault used to end the session, so the guard is the deliverable
    rather than a safety net.
-6. **`swsmi`**: C wrapper over the `_swsmi` already in the image. Widen the arguments to 64-bit
-   (`"K"`), since the asm takes `UINT64` and 3.6.8's `"(IIIIIII)"` narrowed them to 32.
-   Needs care in testing — it triggers a real SMI.
+6. **`swsmi`**: C wrapper over the `_swsmi` already in the image — **WRITTEN, not yet built or
+   tested.** Widen the arguments to 64-bit (`K`); GCC `ms_abi` on the extern. Acceptance in §15
+   (arity/validation only by default — no guessed SMI).
 7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable`. Straightforward `gRT`
    calls, but the 3.6.8 argument parsing (`"uu#K"`) uses formats that changed in Python 3 and must
    be rewritten, not copied.
@@ -1114,3 +1111,75 @@ includes the new `Modules/edk2fault.h`. So:
 has `uefi.mem_read` and so still needs it. Defining it in `edk2module.c` instead would leave MIN
 with an unresolved symbol, and it would point the dependency the wrong way — `uefi` is the `os`
 module and is imported during startup, so it must not depend on a module that may be absent.
+
+---
+
+## 15. Phase 6 acceptance — `swsmi`
+
+**Status: WRITTEN, not yet built or tested.** FULL only. No INF change — `_swsmi` is already in
+`cpu.nasm` / `cpu_gcc.s`.
+
+### 15.1 What changed from 3.6.8
+
+| 3.6.8 | Here |
+|---|---|
+| `PyArg_Parse(args, "(IIIIIII)", ...)` — wrong API for a tuple of seven scalars in Python 3 | `PyArg_ParseTuple(..., "IKKKKKK", ...)` |
+| Seven `unsigned int` arguments to an asm entry that loads **64-bit** GPRs | `smi_code_data` is `I` (16-bit meaningful); six register args are `K` |
+| No `ms_abi` on GCC | `__attribute__((ms_abi))` on the extern, matching the MS-register layout in `cpu_gcc.s` |
+| `Py_BEGIN_ALLOW_THREADS` | omitted — threading is stubbed in this build |
+
+### 15.2 Surface inventory — thirteen names
+
+```text
+Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"
+```
+
+```text
+['FaultError', 'cpuid', 'rdmsr', 'readio', 'readmem', 'readmem_dword', 'readpci', 'swsmi', 'writeio', 'writemem', 'writemem_dword', 'writepci', 'wrmsr']
+```
+
+### 15.3 Default acceptance — no SMI is fired
+
+**Do not call `swsmi` with a guessed SMI number in the default matrix.** Unlike every prior phase,
+there is no platform-independent input that is safe. Default sign-off is:
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> edk2.swsmi()
+>>> edk2.swsmi(0)
+>>> edk2.swsmi(0, 0, 0, 0, 0, 0, 0, 0)
+>>> edk2.swsmi(0x10000, 0, 0, 0, 0, 0, 0)
+>>> print(1+1)
+>>> exit()
+```
+
+| Call | Expected |
+|---|---|
+| `swsmi()` | `TypeError: swsmi() required ...` (exact text varies) |
+| `swsmi(0)` | `TypeError` — wrong arity |
+| `swsmi(..., 8 args)` | `TypeError` — too many |
+| `swsmi(0x10000, 0,0,0,0,0,0)` | `ValueError: smi_code_data must fit in 16 bits...` |
+| `print(1+1)` | `2` |
+
+A successful **link** of FULL on both toolchains is also part of acceptance: if `_swsmi` were
+missing from the image, the module would fail at import with `ImportError`, which the inventory
+row catches indirectly.
+
+### 15.4 Optional — only with a platform-known-safe SMI
+
+If your firmware team documents a no-op or read-only SMI (data port + handler contract), you may
+call it once and confirm the prompt returns. **That number is not in this document.** CHIPSEC
+already carries platform-specific SMI tables; copying one here would be wrong for every other
+machine.
+
+After any real `swsmi`, run `print(1+1)` and Shell `exit` — a handler that leaves the CPU or
+console in a bad state may not fail until teardown.
+
+### 15.5 GCC note
+
+`cpu_gcc.s` is written for the **Microsoft x64 register layout**, not System V. The C wrapper
+marks `_swsmi` with `ms_abi` on GCC so the compiler places arguments where the assembly expects
+them. Without that attribute, GCC FULL would link but a live call would pass garbage registers —
+which is why an optional §15.4 call on **both** toolchains is the only runtime proof, and why a
+wrong SMI must not be used as a shortcut.
