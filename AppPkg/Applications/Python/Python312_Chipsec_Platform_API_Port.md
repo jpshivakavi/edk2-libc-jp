@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-5 closed** (tag `python312-chipsec-phase5-guarded-mem-2026-09-10`). **Phase 6
-closed** on VS2022 FULL and GCC FULL (§15). Phase 7 not started. 2026-09-10.
+Status: **Phases 1-6 closed** (tag `python312-chipsec-phase6-swsmi-2026-09-10`). **Phase 7 written,
+not yet built or tested** (§16). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -300,9 +300,8 @@ the ordering is about getting verified ground under the port early, not about wh
    rather than a safety net.
 6. **`swsmi`**: C wrapper over the `_swsmi` already in the image — **green on VS2022 FULL and GCC
    FULL** (§15.3). `ms_abi` on GCC extern.
-7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable`. Straightforward `gRT`
-   calls, but the 3.6.8 argument parsing (`"uu#K"`) uses formats that changed in Python 3 and must
-   be rewritten, not copied.
+7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable` — **WRITTEN, not yet
+   built or tested.** Acceptance in §16.
 8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
    with a matching free.
 9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
@@ -1187,3 +1186,95 @@ marks `_swsmi` with `ms_abi` on GCC so the compiler places arguments where the a
 them. Without that attribute, GCC FULL would link but a live call would pass garbage registers —
 which is why an optional §15.4 call on **both** toolchains is the only runtime proof, and why a
 wrong SMI must not be used as a shortcut.
+
+---
+
+## 16. Phase 7 acceptance — UEFI variables
+
+**Status: WRITTEN, not yet built or tested.** FULL only. Adds `UefiRuntimeServicesTableLib` to
+`Python312.inf`.
+
+### 16.1 What changed from 3.6.8
+
+| Topic | 3.6.8 | Here |
+|---|---|---|
+| Parse API | `"uu#K"`, `"Ky#s#"`, `"uu#Is#I"` (Python 2 / broken combos) | `"UUk"`, `"kUU"`, `"UUiy#k"` |
+| GUID on input | Unicode / raw bytes | **str**, `AsciiStrToGuid` |
+| `GetNextVariableName` | Unallocated `VariableName`, binary GUID `s#` | Proper name buffer; GUID str in/out |
+| `malloc` failure | NULL with no exception | `PyErr_NoMemory()` |
+| `Py_BEGIN_ALLOW_THREADS` | present | omitted (stubbed threading) |
+
+Return tuple **shapes** match 3.6.8: `GetVariable` → four elements; `GetNextVariableName` → four;
+`SetVariable` → three (Status, DataSize, GUID str).
+
+### 16.2 Surface inventory — sixteen names
+
+```text
+Python312.efi -S -c "import edk2; print(len([n for n in dir(edk2) if not n.startswith('_')]))"
+```
+
+Expect **16**. Prefer `'GetVariable' in dir(edk2)` if the sorted one-liner truncates.
+
+### 16.3 Read a known global variable
+
+EFI global variable namespace GUID (same on essentially all UEFI machines):
+
+```text
+G = '8BE4DF61-93CA-11d2-AA0D-00E098032B8C'
+```
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> st, attr, data, sz = edk2.GetVariable('PlatformLang', G, 128)
+>>> st
+0
+>>> len(data) <= sz
+True
+```
+
+If `PlatformLang` is absent, try `Lang` or `PlatformLangCodes` with the same `G`. **Status `0`
+(EFI_SUCCESS) and non-empty `data`** on at least one name is enough — compare with Shell `set -v`
+if unsure which name exists.
+
+Invalid GUID:
+
+```text
+>>> edk2.GetVariable('PlatformLang', 'not-a-guid', 8)
+ValueError: GUID must be ...
+```
+
+### 16.4 Enumerate — first step
+
+```text
+>>> st, nsz, name, g = edk2.GetNextVariableName(512, '', '00000000-0000-0000-0000-000000000000')
+>>> st
+0
+>>> name != ''
+True
+>>> g.count('-')
+4
+```
+
+Feed the returned `name` and `g` back with `nsz` as the next `NameSize` to walk the list (second
+call is optional for sign-off).
+
+### 16.5 SetVariable — validation only in default matrix
+
+**Do not write firmware variables in the default test** unless you intend to change platform state.
+
+```text
+>>> edk2.SetVariable('X', 'not-a-guid', 0, b'', 0)
+ValueError: ...
+>>> edk2.SetVariable('X', G, 0, b'abc', 10)
+ValueError: DataSize exceeds len(Data)
+>>> print(1+1)
+>>> exit()
+```
+
+Optional (operator choice): round-trip a **custom** non-volatile name in a scratch GUID namespace
+documented by your firmware team — not specified here.
+
+### 16.6 MIN builds
+
+No `edk2module.c` in MIN — **compile not required** on MIN for this phase.

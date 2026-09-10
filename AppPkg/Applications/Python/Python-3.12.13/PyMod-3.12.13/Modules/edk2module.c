@@ -41,6 +41,7 @@
 #include <Library/BaseLib.h>
 #include <Library/IoLib.h>
 #include <Library/PciLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
 
 #include <efi/edk2excep.h>
 #include "edk2fault.h"
@@ -643,6 +644,261 @@ edk2_writemem_dword(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+/* ---------------------------------------------------------------------------
+ * UEFI runtime variables (gRT->GetVariable / GetNextVariableName / SetVariable)
+ *
+ * Signatures and return tuple shapes match Python 3.6.8's edk2module.c so CHIPSEC
+ * call sites stay positional. Parsing is rewritten for Python 3: names and GUIDs
+ * are str, data is bytes, and GetNextVariableName no longer takes a binary GUID
+ * blob (3.6.8's s# copy was both wrong and unusable from Python 3).
+ *
+ * GUID strings use BaseLib StrToGuid / AsciiStrToGuid (standard
+ * XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX). Variable names are UTF-16 via
+ * PyUnicode_AsWideCharString, which matches UEFI CHAR16 on this platform.
+ * ------------------------------------------------------------------------- */
+
+static int
+edk2_check_rt(void)
+{
+    if (gRT == NULL || gRT->GetVariable == NULL) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "UEFI runtime services table is not available");
+        return -1;
+    }
+    return 0;
+}
+
+static int
+edk2_pyunicode_to_char16(PyObject *obj, CHAR16 **out)
+{
+    wchar_t *wide;
+
+    wide = PyUnicode_AsWideCharString(obj, NULL);
+    if (wide == NULL)
+        return -1;
+    *out = (CHAR16 *)wide;
+    return 0;
+}
+
+static int
+edk2_pyunicode_to_guid(PyObject *obj, EFI_GUID *guid)
+{
+    const char *ascii;
+    Py_ssize_t len;
+
+    ascii = PyUnicode_AsUTF8AndSize(obj, &len);
+    if (ascii == NULL)
+        return -1;
+    if (RETURN_ERROR(AsciiStrToGuid(ascii, guid))) {
+        PyErr_SetString(PyExc_ValueError,
+                        "GUID must be XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX");
+        return -1;
+    }
+    return 0;
+}
+
+static PyObject *
+edk2_guid_to_unicode(const EFI_GUID *guid)
+{
+    char buf[37];
+
+    AsciiSPrint(buf, sizeof(buf),
+                "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                guid->Data1, guid->Data2, guid->Data3,
+                guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+                guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+    return PyUnicode_FromString(buf);
+}
+
+PyDoc_STRVAR(edk2_GetVariable__doc__,
+"GetVariable(VariableName, GUID, DataSize) -> (Status, Attributes, Data, DataSize)\n\
+\n\
+Read a UEFI variable. VariableName and GUID are str; DataSize is the caller's\n\
+buffer size in bytes. On EFI_SUCCESS, Data is bytes and the last element is the\n\
+size returned. On EFI_BUFFER_TOO_SMALL, Data is empty and the last element is\n\
+the required size.");
+
+static PyObject *
+edk2_GetVariable(PyObject *self, PyObject *args)
+{
+    PyObject *name_obj, *guid_obj, *result;
+    CHAR16 *name = NULL;
+    EFI_GUID vendor_guid;
+    unsigned long long data_size_in;
+    UINTN data_size;
+    UINT32 attributes = 0;
+    EFI_STATUS status;
+    char *data = NULL;
+
+    if (!PyArg_ParseTuple(args, "UUk:GetVariable",
+                          &name_obj, &guid_obj, &data_size_in))
+        return NULL;
+    if (edk2_check_rt() < 0)
+        return NULL;
+    if (edk2_pyunicode_to_char16(name_obj, &name) < 0)
+        return NULL;
+    if (edk2_pyunicode_to_guid(guid_obj, &vendor_guid) < 0) {
+        PyMem_Free(name);
+        return NULL;
+    }
+
+    data_size = (UINTN)data_size_in;
+    if (data_size > 0) {
+        data = (char *)malloc(data_size);
+        if (data == NULL) {
+            PyMem_Free(name);
+            return PyErr_NoMemory();
+        }
+    }
+
+    status = gRT->GetVariable(name, &vendor_guid, &attributes,
+                              &data_size, data);
+    PyMem_Free(name);
+
+    if (status == EFI_SUCCESS && data != NULL)
+        result = Py_BuildValue("(IIy#K)",
+                               (unsigned int)status, attributes,
+                               data, (Py_ssize_t)data_size,
+                               (unsigned long long)data_size);
+    else
+        result = Py_BuildValue("(IIy#K)",
+                               (unsigned int)status, attributes,
+                               "", (Py_ssize_t)0,
+                               (unsigned long long)data_size);
+    free(data);
+    return result;
+}
+
+PyDoc_STRVAR(edk2_GetNextVariableName__doc__,
+"GetNextVariableName(NameSize, VariableName, GUID) -> (Status, NameSize, Name, GUID)\n\
+\n\
+Enumerate variables. Pass an empty Name and a zero GUID to start; on success the\n\
+returned Name and GUID are the next entry and NameSize is updated. NameSize is\n\
+the VariableName buffer size in bytes (same as the UEFI API).");
+
+static PyObject *
+edk2_GetNextVariableName(PyObject *self, PyObject *args)
+{
+    PyObject *name_obj, *guid_obj, *name_out, *guid_out, *result;
+    CHAR16 *name_buf = NULL;
+    CHAR16 *name_wide = NULL;
+    EFI_GUID vendor_guid;
+    unsigned long long name_size_in;
+    UINTN name_size;
+    EFI_STATUS status;
+    Py_ssize_t name_chars;
+
+    if (!PyArg_ParseTuple(args, "kUU:GetNextVariableName",
+                          &name_size_in, &name_obj, &guid_obj))
+        return NULL;
+    if (edk2_check_rt() < 0)
+        return NULL;
+    if (name_size_in < sizeof(CHAR16)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "NameSize must be at least 2 (one UTF-16 code unit)");
+        return NULL;
+    }
+    if (edk2_pyunicode_to_char16(name_obj, &name_wide) < 0)
+        return NULL;
+    if (edk2_pyunicode_to_guid(guid_obj, &vendor_guid) < 0) {
+        PyMem_Free(name_wide);
+        return NULL;
+    }
+
+    name_size = (UINTN)name_size_in;
+    name_buf = (CHAR16 *)malloc(name_size);
+    if (name_buf == NULL) {
+        PyMem_Free(name_wide);
+        return PyErr_NoMemory();
+    }
+
+    name_chars = 0;
+    while (name_wide[name_chars] != L'\0')
+        name_chars++;
+    if ((size_t)(name_chars + 1) * sizeof(CHAR16) > name_size) {
+        PyMem_Free(name_wide);
+        free(name_buf);
+        PyErr_SetString(PyExc_ValueError,
+                         "VariableName does not fit in NameSize bytes");
+        return NULL;
+    }
+    memcpy(name_buf, name_wide, (size_t)(name_chars + 1) * sizeof(CHAR16));
+    PyMem_Free(name_wide);
+
+    status = gRT->GetNextVariableName(&name_size, name_buf, &vendor_guid);
+
+    name_out = PyUnicode_FromWideChar((const wchar_t *)name_buf, (Py_ssize_t)-1);
+    guid_out = edk2_guid_to_unicode(&vendor_guid);
+    free(name_buf);
+    if (name_out == NULL || guid_out == NULL) {
+        Py_XDECREF(name_out);
+        Py_XDECREF(guid_out);
+        return NULL;
+    }
+
+    result = Py_BuildValue("(IkUU",
+                           (unsigned int)status,
+                           (unsigned long long)name_size,
+                           name_out, guid_out);
+    Py_DECREF(name_out);
+    Py_DECREF(guid_out);
+    return result;
+}
+
+PyDoc_STRVAR(edk2_SetVariable__doc__,
+"SetVariable(VariableName, GUID, Attributes, Data, DataSize) -> (Status, DataSize, GUID)\n\
+\n\
+Write a UEFI variable. Data must be bytes. DataSize may match len(Data) or\n\
+specify a prefix length. Returns the GUID string (unchanged from input) for\n\
+3.6.8 tuple compatibility.");
+
+static PyObject *
+edk2_SetVariable(PyObject *self, PyObject *args)
+{
+    PyObject *name_obj, *guid_obj, *guid_out, *result;
+    CHAR16 *name = NULL;
+    EFI_GUID vendor_guid;
+    unsigned int attributes;
+    const char *data;
+    Py_ssize_t data_len;
+    unsigned long long data_size_in;
+    UINTN data_size;
+    EFI_STATUS status;
+
+    if (!PyArg_ParseTuple(args, "UUiy#k:SetVariable",
+                          &name_obj, &guid_obj, &attributes,
+                          &data, &data_len, &data_size_in))
+        return NULL;
+    if (edk2_check_rt() < 0)
+        return NULL;
+    if ((unsigned long long)data_len < data_size_in) {
+        PyErr_SetString(PyExc_ValueError,
+                        "DataSize exceeds len(Data)");
+        return NULL;
+    }
+    if (edk2_pyunicode_to_char16(name_obj, &name) < 0)
+        return NULL;
+    if (edk2_pyunicode_to_guid(guid_obj, &vendor_guid) < 0) {
+        PyMem_Free(name);
+        return NULL;
+    }
+
+    data_size = (UINTN)data_size_in;
+    status = gRT->SetVariable(name, &vendor_guid, attributes,
+                              data_size, (void *)data);
+    PyMem_Free(name);
+
+    guid_out = edk2_guid_to_unicode(&vendor_guid);
+    if (guid_out == NULL)
+        return NULL;
+    result = Py_BuildValue("(IkU",
+                           (unsigned int)status,
+                           (unsigned long long)data_size,
+                           guid_out);
+    Py_DECREF(guid_out);
+    return result;
+}
+
 /* Single-phase init with m_size = -1, following edk2console.c. This build has
  * one interpreter and no subinterpreter support, so per-module state buys
  * nothing over file statics here.
@@ -652,6 +908,12 @@ edk2_writemem_dword(PyObject *self, PyObject *args)
  * writeio and writepci ('i' < 'm'). Do not "correct" the acceptance lists in
  * Python312_Chipsec_Platform_API_Port.md to match this table. */
 static PyMethodDef edk2_methods[] = {
+    {"GetNextVariableName", edk2_GetNextVariableName, METH_VARARGS,
+     edk2_GetNextVariableName__doc__},
+    {"GetVariable",         edk2_GetVariable,         METH_VARARGS,
+     edk2_GetVariable__doc__},
+    {"SetVariable",         edk2_SetVariable,         METH_VARARGS,
+     edk2_SetVariable__doc__},
     {"cpuid",          edk2_cpuid,          METH_VARARGS, edk2_cpuid__doc__},
     {"rdmsr",          edk2_rdmsr,          METH_VARARGS, edk2_rdmsr__doc__},
     {"readio",         edk2_readio,         METH_VARARGS, edk2_readio__doc__},
