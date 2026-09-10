@@ -41,6 +41,7 @@
 #include <Library/BaseLib.h>
 #include <Library/IoLib.h>
 #include <Library/PciLib.h>
+#include <Library/PrintLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
 #include <efi/edk2excep.h>
