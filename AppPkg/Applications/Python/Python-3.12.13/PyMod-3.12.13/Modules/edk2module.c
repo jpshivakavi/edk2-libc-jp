@@ -42,6 +42,7 @@
 #include <Library/IoLib.h>
 #include <Library/PciLib.h>
 #include <Library/PrintLib.h>
+#include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
 #include <efi/edk2excep.h>
@@ -50,6 +51,9 @@
 PyDoc_STRVAR(module_doc,
 "Platform-level UEFI operations: MSR, CPUID, PCI config, port I/O, physical\n\
 memory, software SMI and UEFI variables.\n\
+\n\
+allocphysmem allocates physically contiguous pages below a maximum physical\n\
+address via Boot Services; freephysmem releases a prior allocphysmem result.\n\
 \n\
 This is the platform half of the module that Python 3.6.8 called `edk2`. The\n\
 operating-system half of that module — open, read, stat, listdir and the rest\n\
@@ -900,6 +904,173 @@ edk2_SetVariable(PyObject *self, PyObject *args)
     return result;
 }
 
+/* ---------------------------------------------------------------------------
+ * Physical memory below max_pa (gBS->AllocatePages / AllocateMaxAddress)
+ *
+ * 3.6.8 used malloc and returned the pointer in an unsigned int (§6.2). Here
+ * pages are EfiBootServicesData, contiguous, and capped by max_pa. Return
+ * value is a 64-bit virtual address in a one-tuple, matching the (va,) shape
+ * callers expect. freephysmem is not in the original 19-name CHIPSEC surface
+ * but is required so acceptance and scripts can release memory without leaking
+ * for the rest of the boot.
+ * ------------------------------------------------------------------------- */
+
+typedef struct {
+    EFI_PHYSICAL_ADDRESS  Address;
+    UINTN                 Pages;
+} edk2_physmem_slot;
+
+static edk2_physmem_slot *edk2_physmem_slots;
+static size_t edk2_physmem_slot_count;
+
+static int
+edk2_check_bs(void)
+{
+    if (gBS == NULL || gBS->AllocatePages == NULL || gBS->FreePages == NULL) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "UEFI boot services table is not available");
+        return -1;
+    }
+    return 0;
+}
+
+static int
+edk2_physmem_track(EFI_PHYSICAL_ADDRESS addr, UINTN pages)
+{
+    edk2_physmem_slot *next;
+
+    next = (edk2_physmem_slot *)PyMem_Realloc(
+        edk2_physmem_slots,
+        (edk2_physmem_slot_count + 1) * sizeof(edk2_physmem_slot));
+    if (next == NULL)
+        return -1;
+    edk2_physmem_slots = next;
+    edk2_physmem_slots[edk2_physmem_slot_count].Address = addr;
+    edk2_physmem_slots[edk2_physmem_slot_count].Pages = pages;
+    edk2_physmem_slot_count++;
+    return 0;
+}
+
+static int
+edk2_physmem_lookup(EFI_PHYSICAL_ADDRESS addr, UINTN *pages_out)
+{
+    size_t i;
+
+    for (i = 0; i < edk2_physmem_slot_count; i++) {
+        if (edk2_physmem_slots[i].Address == addr) {
+            *pages_out = edk2_physmem_slots[i].Pages;
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+static void
+edk2_physmem_forget(size_t index)
+{
+    size_t remain;
+
+    if (index >= edk2_physmem_slot_count)
+        return;
+    remain = edk2_physmem_slot_count - index - 1;
+    if (remain > 0) {
+        memmove(&edk2_physmem_slots[index],
+                &edk2_physmem_slots[index + 1],
+                remain * sizeof(edk2_physmem_slot));
+    }
+    edk2_physmem_slot_count--;
+    if (edk2_physmem_slot_count == 0) {
+        PyMem_Free(edk2_physmem_slots);
+        edk2_physmem_slots = NULL;
+    }
+}
+
+PyDoc_STRVAR(edk2_allocphysmem__doc__,
+"allocphysmem(length, max_pa) -> (va,)\n\
+\n\
+Allocate length bytes of physically contiguous memory at or below max_pa\n\
+(physical address limit). Uses Boot Services AllocatePages. va is the\n\
+virtual address of the mapping (64-bit on X64).");
+
+static PyObject *
+edk2_allocphysmem(PyObject *self, PyObject *args)
+{
+    unsigned long long length_in, max_pa_in;
+    UINTN length;
+    UINTN pages;
+    EFI_PHYSICAL_ADDRESS max_addr;
+    EFI_STATUS status;
+
+    if (!PyArg_ParseTuple(args, "KK:allocphysmem", &length_in, &max_pa_in))
+        return NULL;
+    if (edk2_check_bs() < 0)
+        return NULL;
+    if (length_in == 0) {
+        PyErr_SetString(PyExc_ValueError, "length must be greater than zero");
+        return NULL;
+    }
+    length = (UINTN)length_in;
+    pages = EFI_SIZE_TO_PAGES(length);
+    max_addr = (EFI_PHYSICAL_ADDRESS)max_pa_in;
+
+    status = gBS->AllocatePages(AllocateMaxAddress,
+                                EfiBootServicesData,
+                                pages,
+                                &max_addr);
+    if (EFI_ERROR(status)) {
+        PyErr_Format(PyExc_OSError,
+                     "AllocatePages failed: %u",
+                     (unsigned int)status);
+        return NULL;
+    }
+    if (edk2_physmem_track(max_addr, pages) < 0) {
+        gBS->FreePages(max_addr, pages);
+        return PyErr_NoMemory();
+    }
+
+    return Py_BuildValue("(K)", (unsigned long long)max_addr);
+}
+
+PyDoc_STRVAR(edk2_freephysmem__doc__,
+"freephysmem(va) -> None\n\
+\n\
+Free memory returned by allocphysmem. va must be exactly the address\n\
+returned; other pointers raise ValueError.");
+
+static PyObject *
+edk2_freephysmem(PyObject *self, PyObject *args)
+{
+    unsigned long long va_in;
+    EFI_PHYSICAL_ADDRESS addr;
+    UINTN pages;
+    int slot;
+    EFI_STATUS status;
+
+    if (!PyArg_ParseTuple(args, "K:freephysmem", &va_in))
+        return NULL;
+    if (edk2_check_bs() < 0)
+        return NULL;
+
+    addr = (EFI_PHYSICAL_ADDRESS)va_in;
+    slot = edk2_physmem_lookup(addr, &pages);
+    if (slot < 0) {
+        PyErr_SetString(PyExc_ValueError,
+                        "va is not an allocphysmem allocation");
+        return NULL;
+    }
+
+    status = gBS->FreePages(addr, pages);
+    if (EFI_ERROR(status)) {
+        PyErr_Format(PyExc_OSError,
+                     "FreePages failed: %u",
+                     (unsigned int)status);
+        return NULL;
+    }
+    edk2_physmem_forget((size_t)slot);
+
+    Py_RETURN_NONE;
+}
+
 /* Single-phase init with m_size = -1, following edk2console.c. This build has
  * one interpreter and no subinterpreter support, so per-module state buys
  * nothing over file statics here.
@@ -915,7 +1086,9 @@ static PyMethodDef edk2_methods[] = {
      edk2_GetVariable__doc__},
     {"SetVariable",         edk2_SetVariable,         METH_VARARGS,
      edk2_SetVariable__doc__},
+    {"allocphysmem",   edk2_allocphysmem,   METH_VARARGS, edk2_allocphysmem__doc__},
     {"cpuid",          edk2_cpuid,          METH_VARARGS, edk2_cpuid__doc__},
+    {"freephysmem",    edk2_freephysmem,    METH_VARARGS, edk2_freephysmem__doc__},
     {"rdmsr",          edk2_rdmsr,          METH_VARARGS, edk2_rdmsr__doc__},
     {"readio",         edk2_readio,         METH_VARARGS, edk2_readio__doc__},
     {"readmem",        edk2_readmem,        METH_VARARGS, edk2_readmem__doc__},

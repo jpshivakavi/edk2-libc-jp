@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-7 closed** (tag `python312-chipsec-phase7-uefi-vars-2026-09-10`). Phase 8 not
-started (`allocphysmem`). 2026-09-10.
+Status: **Phases 1-7 closed** (tag `python312-chipsec-phase7-uefi-vars-2026-09-10`). **Phase 8 written,
+not yet built or tested** (§17). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -60,7 +60,7 @@ they must be preserved even where a 64-bit return would be nicer.
 | `writemem` | `writemem(addr_lo, addr_hi, buf) -> None` | byte copy loop | none |
 | `writemem_dword` | `writemem_dword(addr_lo, addr_hi, val) -> None` | raw store | none |
 | `swsmi` | `swsmi(smi_code_data, rax, rbx, rcx, rdx, rsi, rdi) -> None` | `_swsmi` in `cpu.nasm` | **asm (already present, §4)** |
-| `allocphysmem` | `allocphysmem(length, max_pa) -> (va,)` | plain `malloc` — being reimplemented (§6.2) | Boot Services |
+| `allocphysmem` | `allocphysmem(length, max_pa) -> (va,)` | `gBS->AllocatePages` / `AllocateMaxAddress`; `freephysmem` companion | Boot Services |
 | `GetVariable` | `(Status, Attributes, Data, DataSize) = GetVariable(name, guid, size)` | `gRT->GetVariable` | Runtime Services |
 | `GetNextVariableName` | `(Status, NameSize, Name, Guid) = GetNextVariableName(sz, name, guid)` | `gRT->GetNextVariableName` | Runtime Services |
 | `SetVariable` | `(Status, DataSize, Guid) = SetVariable(name, guid, attrs, data, size)` | `gRT->SetVariable` | Runtime Services |
@@ -303,7 +303,7 @@ the ordering is about getting verified ground under the port early, not about wh
 7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable` — **green on VS2022 FULL
    and GCC FULL** (§16). `Py_BuildValue` tuple formats fixed in `6fe11059`.
 8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
-   with a matching free.
+   plus **`freephysmem`** for release — **WRITTEN, not yet built or tested** (§17).
 9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
    per §6.1. Last because it is the highest-risk phase; by then everything else is verified.
 
@@ -1278,5 +1278,67 @@ Optional (operator choice): round-trip a **custom** non-volatile name in a scrat
 documented by your firmware team — not specified here.
 
 ### 16.6 MIN builds
+
+No `edk2module.c` in MIN — **compile not required** on MIN for this phase.
+
+---
+
+## 17. Phase 8 acceptance — `allocphysmem` / `freephysmem`
+
+**Status: WRITTEN, not yet built or tested.** FULL only. Adds `UefiBootServicesTableLib` to
+`Python312.inf` (explicit; `gBS` was previously used only from other translation units).
+
+### 17.1 What changed from 3.6.8
+
+| Topic | 3.6.8 | Here |
+|---|---|---|
+| Backing allocator | `malloc(length)` — ignores `max_pa`, not contiguous pages | `gBS->AllocatePages(AllocateMaxAddress, …)` |
+| Return format | `Py_BuildValue("(I)", va)` — **truncates above 4 GB** | `"(K)"` — full 64-bit VA in the one-tuple |
+| Argument parse | `"II"` | `"KK"` (unsigned; accepts Python `int`) |
+| Release | none — every call leaks | `freephysmem(va)` (companion, not one of the 19 CHIPSEC names) |
+| `Py_BEGIN_ALLOW_THREADS` | present | omitted (stubbed threading) |
+
+Return tuple shape for CHIPSEC: **`(va,)`** unchanged — one element, unpack with `va, = …`.
+
+### 17.2 Surface inventory — eighteen names in `dir(edk2)`
+
+Sixteen CHIPSEC-facing functions from phases 1–7, plus **`allocphysmem`**, plus companion
+**`freephysmem`**, plus **`FaultError`** re-exported from `uefi`:
+
+```text
+Python312.efi -S -c "import edk2; print(len([n for n in dir(edk2) if not n.startswith('_')]))"
+```
+
+Expect **18**. Prefer `'allocphysmem' in dir(edk2)` if the console truncates a long sorted list.
+
+### 17.3 Allocate, touch, free
+
+Use a limit that fits your platform (below 4 GB is typical for CHIPSEC-style buffers):
+
+```text
+Python312.efi -S
+>>> import edk2
+>>> va, = edk2.allocphysmem(4096, 0xFFFFFFFF)
+>>> va > 0
+True
+>>> va <= 0xFFFFFFFF
+True
+>>> lo = va & 0xFFFFFFFF; hi = va >> 32
+>>> edk2.writemem_dword(lo, hi, 0xDEADBEEF)
+>>> edk2.readmem_dword(lo, hi) == 0xDEADBEEF
+True
+>>> edk2.freephysmem(va)
+>>> edk2.freephysmem(va)
+ValueError: va is not an allocphysmem allocation
+```
+
+### 17.4 Validation
+
+```text
+>>> edk2.allocphysmem(0, 0xFFFFFFFF)
+ValueError: length must be greater than zero
+```
+
+### 17.5 MIN builds
 
 No `edk2module.c` in MIN — **compile not required** on MIN for this phase.

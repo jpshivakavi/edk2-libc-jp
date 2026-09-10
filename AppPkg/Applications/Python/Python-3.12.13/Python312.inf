@@ -42,6 +42,7 @@
 # BasePciCf8Lib ASSERT. Remapping this to an ECAM PciLib is what would extend
 # the reach; no code in edk2module.c would need to change.
   PciLib
+  UefiBootServicesTableLib
   UefiRuntimeServicesTableLib
   LibC
   LibString

@@ -1080,6 +1080,20 @@ edk2.SetVariable('X', G, 0, b'abc', 10)              # ValueError DataSize
 
 Tag: **`python312-chipsec-phase7-uefi-vars-2026-09-10`**.
 
+### 7.12 Phase 8 `allocphysmem` / `freephysmem` (§17) — not yet run, 2026-09-10
+
+Matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §17.
+Expect **`len([n for n in dir(edk2) if not n.startswith('_')]) == 18`**.
+
+```text
+va, = edk2.allocphysmem(4096, 0xFFFFFFFF)
+lo = va & 0xFFFFFFFF; hi = va >> 32
+edk2.writemem_dword(lo, hi, 0xDEADBEEF)
+edk2.readmem_dword(lo, hi) == 0xDEADBEEF
+edk2.freephysmem(va)
+edk2.allocphysmem(0, 0xFFFFFFFF)   # ValueError
+```
+
 ---
 
 Re-run this document on **both** toolchains after any shared PyMod or INF change.
