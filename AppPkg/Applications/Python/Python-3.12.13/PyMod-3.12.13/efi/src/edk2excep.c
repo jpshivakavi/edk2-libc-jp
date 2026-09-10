@@ -129,6 +129,44 @@ edk2_guarded_access(int is_write, unsigned long long addr, int size,
   return 1;
 }
 
+int
+edk2_guarded_copy(void *dst, const void *src, size_t len,
+                  uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out)
+{
+  jmp_buf *jb = (jmp_buf *)edk2_seh_try();
+  if (jb == NULL)
+    return -1;
+
+  if (setjmp(*jb) == 0) {
+    /* One setjmp for the whole block rather than one per byte. The alternative
+     * costs a SetJump per byte and buys nothing: a fault anywhere in the range
+     * fails the whole call either way, since a partially filled buffer is not
+     * something a caller can use.
+     *
+     * Byte at a time, and volatile, on purpose. memcpy() is free to use wide or
+     * vector moves and to reorder, and a caller reaching into MMIO may be
+     * talking to a device that cares about access width. Slower than memcpy and
+     * that is the right trade here.
+     *
+     * All three locals are declared inside this block and none is read after
+     * the longjmp, so the usual setjmp rule about non-volatile locals with
+     * indeterminate values does not bite. Only the parameters are used on the
+     * fault path, and nothing in this function writes to them. */
+    volatile uint8_t *d = (volatile uint8_t *)dst;
+    volatile const uint8_t *s = (volatile const uint8_t *)src;
+    size_t i;
+
+    for (i = 0; i < len; i++)
+      d[i] = s[i];
+
+    edk2_seh_catch(0, NULL, NULL, 0);
+    return 0;
+  }
+
+  edk2_seh_catch(1, kind_out, (uint8_t *)ctx_out, sizeof(*ctx_out));
+  return 1;
+}
+
 
 VOID
 EFIAPI

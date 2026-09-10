@@ -66,6 +66,12 @@ int
 edk2_guarded_access(int is_write, unsigned long long addr, int size,
                     volatile unsigned long long *value,
                     uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out);
+/* One guarded byte-at-a-time copy of len bytes. Either side may fault. Return
+ * values match edk2_guarded_access. On a fault the destination holds however
+ * much was copied before it, which is not useful and should be discarded. */
+int
+edk2_guarded_copy(void *dst, const void *src, size_t len,
+                  uint64_t *kind_out, EFI_SYSTEM_CONTEXT_X64 *ctx_out);
 EFI_STATUS
 py_install_idt();
 void

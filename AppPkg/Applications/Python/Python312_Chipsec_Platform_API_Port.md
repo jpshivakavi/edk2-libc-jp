@@ -1,9 +1,10 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1 and 2 closed** — phase 2 verified on VS2022 FULL and GCC FULL and compiled
-clean in both MINs (§11). **Phase 3 green on VS2022 FULL**; its GCC FULL run was deliberately
-skipped, with the reasoning and the residual gap in §12.8. **Phase 4 written, not yet built or
-tested** (§13). 2026-09-09.
+Status: **Phases 1-4 green on VS2022 FULL.** Phase 2 additionally verified on GCC FULL and compiled
+clean in both MINs (§11); the GCC runs for phases 3 and 4 were skipped by decision, with the
+reasoning and residual gap in §12.8. **Phase 5 written, not yet built or tested** (§14) — and it is
+the first phase since 2 to touch code MIN compiles, so both MIN builds are back in scope.
+2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -294,10 +295,12 @@ the ordering is about getting verified ground under the port early, not about wh
 2. **Share the guarded path** (§5.2) — **WRITTEN, not yet built or tested.** Acceptance in §11.
 3. **Zero-dependency APIs**: `rdmsr`, `wrmsr`, `cpuid`, `readio`, `writeio` — **green on VS2022
    FULL**; GCC run skipped by decision (§12.8). Acceptance in §12.
-4. **PCI**: `readpci`, `writepci`. Adds `PciLib` — **WRITTEN, not yet built or tested.** Acceptance
-   in §13, cross-checked against both the Shell's `pci` command and phase 3's manual CF8 read.
+4. **PCI**: `readpci`, `writepci`. Adds `PciLib` — **green on VS2022 FULL.** Acceptance in §13,
+   cross-checked against both the Shell's `pci` command and phase 3's manual CF8 read.
 5. **Guarded memory**: `readmem`, `readmem_dword`, `writemem`, `writemem_dword` on the shared path
-   from phase 2, keeping the split `(lo32, hi32)` signature.
+   from phase 2, keeping the split `(lo32, hi32)` signature — **WRITTEN, not yet built or tested.**
+   Acceptance in §14. The one phase where a fault used to end the session, so the guard is the
+   deliverable rather than a safety net.
 6. **`swsmi`**: C wrapper over the `_swsmi` already in the image. Widen the arguments to 64-bit
    (`"K"`), since the asm takes `UINT64` and 3.6.8's `"(IIIIIII)"` narrowed them to 32.
    Needs care in testing — it triggers a real SMI.
@@ -550,7 +553,7 @@ after.
 
 ## 12. Phase 3 acceptance — MSR, CPUID, port I/O
 
-**Status: PASSED on VS2022 FULL, 2026-09-09 — all of §12.2 through §12.6. GCC FULL outstanding.**
+**Status: PASSED on VS2022 FULL, 2026-09-09 — all of §12.2 through §12.6. GCC run skipped, §12.8.**
 FULL only, as with every phase, so there is no MIN build to do: `Python312_MIN.inf` is untouched
 and does not compile `edk2module.c`.
 
@@ -753,7 +756,13 @@ only. Making MSR access survivable is possible with the same mechanism and is no
 
 ## 13. Phase 4 acceptance — PCI configuration space
 
-**Status: WRITTEN, not yet built or tested.** FULL only; `PciLib` added to `Python312.inf`.
+**Status: PASSED on VS2022 FULL, 2026-09-10 — all of §13.3 through §13.7.** FULL only; `PciLib`
+added to `Python312.inf`.
+
+One correction came out of the run and is recorded in §13.6: the overflow row was originally
+written with `0x10000`, the console dropped a zero, `0x1000` fits in two bytes and so correctly did
+not raise, and it was reported as a defect against working code. Overflow test values now survive
+any single dropped character.
 
 `readpci` and `writepci` in `edk2module.c`, over `PciLib`, which `AppPkg.dsc` already maps to
 `BasePciLibCf8` — so no DSC change was needed, only the INF `[LibraryClasses]` entry.
@@ -917,3 +926,148 @@ proving the write data path as can be done without changing platform state. **`F
 host bridge accepted a write to a read-only register and 00:00.0's vendor ID is now wrong** —
 recoverable by a power cycle, since config space is not persistent, but stop and power-cycle
 rather than continuing.
+
+---
+
+## 14. Phase 5 acceptance — physical memory, and the point of the whole exercise
+
+**Status: WRITTEN, not yet built or tested.** FULL only for the API, but **both MIN builds are
+required this time** — see §14.7.
+
+`readmem`, `readmem_dword`, `writemem`, `writemem_dword`. These are the functions phases 1 and 2
+existed to make safe: in 3.6.8, `readmem` dereferenced a caller-supplied address byte by byte with
+nothing in the way, so a wrong address did not raise — it took a page fault and stopped the
+machine, on a box that was being poked at precisely because something was already suspect about
+it. Here a fault becomes `FaultError` with `vector`, `rip` and `cr2` attached, and the prompt comes
+back.
+
+### 14.1 What changed beyond the guard
+
+| 3.6.8 | Here |
+|---|---|
+| `readmem` `malloc`s a scratch buffer and, on failure, returns NULL **with no exception set** — a confusing `SystemError` instead of `MemoryError` | reads straight into the `bytes` object; allocation failure is an ordinary `MemoryError` |
+| `readmem` takes `int len`; a negative length makes `while(index--)` run about four billion times **writing memory** | `Py_ssize_t`, negative is `ValueError` |
+| `writemem` parses `s#`, so it accepts `str` and writes its UTF-8 encoding — a different byte count than the string has characters, the moment one is non-ASCII | `y#`: bytes only, `TypeError` for `str` |
+
+Two new C primitives back these: `edk2_guarded_copy()` in `efi/src/edk2excep.c` for the
+variable-length pair, and the existing `edk2_guarded_access()` for the `_dword` pair. The copy uses
+**one `setjmp` for the whole block** rather than one per byte — a fault anywhere fails the whole
+call either way, since a partially filled buffer is not usable — and copies byte at a time through
+`volatile` pointers rather than calling `memcpy`, because `memcpy` may use wide or vector moves and
+a caller reaching into MMIO may be talking to a device that cares about access width.
+
+### 14.2 Surface inventory — twelve names
+
+```text
+Python312.efi -S -c "import edk2; print(sorted(n for n in dir(edk2) if not n.startswith('_')))"
+```
+
+```text
+['FaultError', 'cpuid', 'rdmsr', 'readio', 'readmem', 'readmem_dword', 'readpci', 'writeio', 'writemem', 'writemem_dword', 'writepci', 'wrmsr']
+```
+
+### 14.3 The headline: a bad address raises instead of halting
+
+```text
+Python312.efi -S
+>>> import edk2, sys
+>>> edk2.readmem(0, 0x8000, 16)
+uefi.FaultError: CPU exception 13 (rip=0x... cr2=0x...)
+>>> print(sys.last_value.vector, hex(sys.last_value.cr2))
+>>> print(1+1)
+```
+
+`addr_lo=0, addr_hi=0x8000` is physical address 0x8000_00000000, the same non-canonical address
+§5.9 uses. **On 3.6.8 this call ends the session and the machine needs a power cycle.** Here it
+must raise, expose the fault attributes, and leave the prompt working — `print(1+1)` returning `2`
+is as much a part of the test as the exception is.
+
+Repeat the faulting call several times before moving on. A guard that leaks its slot would show up
+as `RuntimeError: fault guard nesting depth (...) exceeded` after a few tries rather than on the
+first.
+
+### 14.4 Reads validated against a buffer whose contents we chose
+
+Rather than reading unknown platform memory and hoping the answer looks plausible, point these at
+a `ctypes` buffer — UEFI is identity-mapped, so its virtual address is its physical address:
+
+```text
+>>> import ctypes, edk2
+>>> buf = ctypes.create_string_buffer(b'DEADBEEF')
+>>> a = ctypes.addressof(buf)
+>>> lo, hi = a & 0xFFFFFFFF, a >> 32
+>>> edk2.readmem(lo, hi, 8)
+b'DEADBEEF'
+```
+
+Exact, known, and it proves the two address halves are assembled in the documented order — get
+that wrong and the address is nonsense, which faults rather than returning the right bytes.
+
+Then the two primitives against each other, which is the check no external reference can give:
+
+```text
+>>> edk2.readmem(lo, hi, 4)
+b'DEAD'
+>>> hex(edk2.readmem_dword(lo, hi))
+'0x44414544'
+>>> int.from_bytes(edk2.readmem(lo, hi, 4), 'little') == edk2.readmem_dword(lo, hi)
+True
+```
+
+`readmem` goes through `edk2_guarded_copy` byte at a time; `readmem_dword` goes through
+`edk2_guarded_access` as a single 4-byte load. **They must agree**, and they reach the same memory
+by different code paths, so this catches a mistake in either one.
+
+### 14.5 Writes, into our own buffer, so nothing is at risk
+
+```text
+>>> edk2.writemem(lo, hi, b'12345678')
+>>> buf.raw[:8]
+b'12345678'
+>>> edk2.writemem_dword(lo, hi, 0x41424344)
+>>> buf.raw[:4]
+b'DCBA'
+>>> edk2.readmem(lo, hi, 4)
+b'DCBA'
+```
+
+Python can see the result independently through `buf.raw`, so the write path is confirmed without
+touching anything the platform depends on. The `b'DCBA'` is little-endian byte order and is the
+expected answer, not a bug.
+
+### 14.6 Argument handling
+
+```text
+>>> edk2.readmem(lo, hi, 0)
+b''
+>>> edk2.readmem(lo, hi, -1)
+ValueError: length must not be negative
+>>> edk2.writemem(lo, hi, 'abcd')
+TypeError: ...
+>>> edk2.readmem(hi, lo, 8)
+uefi.FaultError: ...
+>>> print(1+1)
+>>> exit()
+```
+
+Zero length returns empty bytes without engaging the guard at all. The negative length is the row
+worth dwelling on: on 3.6.8 that call does not raise, it runs a copy loop roughly four billion
+times **writing** into a `malloc(-1)` buffer. The swapped-halves call is a sanity check on §14.4's
+ordering claim — with a normal address, exchanging the halves produces an address in the high
+petabytes, which faults.
+
+### 14.7 Both MIN builds are required for this phase
+
+Unlike phases 3 and 4, this one edits files MIN compiles: `efi/src/edk2excep.c` gains
+`edk2_guarded_copy()`, and `posixmodule.c` has `uefi_set_fault_error` un-`static`'d and now
+includes the new `Modules/edk2fault.h`. So:
+
+- **VS2022 MIN and GCC MIN must at least build**, and a MIN image should re-run §5.9 tests 0-1 to
+  confirm `uefi.mem_read`'s fault path still reports correctly after the helper changed linkage.
+- **FULL must re-run §5.9 in full**, for the same reason.
+
+`edk2fault.h` exists because the helper has to be callable from both modules while remaining
+*defined* in `posixmodule.c`: MIN compiles `posixmodule.c` and not `edk2module.c`, yet MIN still
+has `uefi.mem_read` and so still needs it. Defining it in `edk2module.c` instead would leave MIN
+with an unresolved symbol, and it would point the dependency the wrong way — `uefi` is the `os`
+module and is imported during startup, so it must not depend on a module that may be absent.

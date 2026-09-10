@@ -64,6 +64,7 @@
 #include <efi/unistd.h>
 #include <efi/environ.h>
 #include <efi/edk2excep.h>     // edk2_seh_try/catch, for mem_read/write/probe
+#include "edk2fault.h"         // declares uefi_set_fault_error, defined below
 
 #define _exit _Exit
 #define DT_LNK  0x0000000000000040
@@ -16047,8 +16048,13 @@ uefi_check_access_size(int size)
  * duplicated. Its contract: 0 = ok, 1 = faulted, -1 = guard unavailable.
  *
  * This takes the exception type rather than the module, so that callers outside
- * this file, which have no posix state to look it up in, can use it too. */
-static void
+ * this file, which have no posix state to look it up in, can use it too.
+ *
+ * Not static: the edk2 module's memory APIs call it, so that a fault reported
+ * through either module produces an identical exception. It stays defined here
+ * because MIN compiles this file and not edk2module.c, yet still has
+ * uefi.mem_read. Declared in Modules/edk2fault.h, which see. */
+void
 uefi_set_fault_error(PyObject *exc_type, uint64_t kind,
                      const EFI_SYSTEM_CONTEXT_X64 *ctx)
 {

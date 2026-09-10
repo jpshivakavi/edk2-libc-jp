@@ -34,6 +34,9 @@
 #include <Library/IoLib.h>
 #include <Library/PciLib.h>
 
+#include <efi/edk2excep.h>
+#include "edk2fault.h"
+
 PyDoc_STRVAR(module_doc,
 "Platform-level UEFI operations: MSR, CPUID, PCI config, port I/O, physical\n\
 memory, software SMI and UEFI variables.\n\
@@ -379,6 +382,194 @@ edk2_writepci(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+/* ---------------------------------------------------------------------------
+ * Physical memory
+ *
+ * These are the functions phases 1 and 2 were built for. In 3.6.8 readmem()
+ * dereferenced a caller-supplied address byte by byte with nothing in the way,
+ * so a wrong address did not raise — it took a page fault and stopped the
+ * machine, on a box that by definition was being poked at because something was
+ * already wrong with it. Here every access goes through edk2_guarded_copy() or
+ * edk2_guarded_access(), and a fault becomes FaultError with the vector, rip
+ * and cr2 attached.
+ *
+ * That is the single largest behavioural difference in this port, and it is why
+ * the guarded path was built and verified on both toolchains before any of
+ * these were written rather than after.
+ *
+ * The split addr_lo/addr_hi signature is 3.6.8's and stays. It exists because
+ * the original had an IA32 build to serve; this one does not, but callers pass
+ * positionally.
+ *
+ * A module-level static for the exception type, set in PyInit_edk2 from
+ * uefi.FaultError. Single-phase init with m_size = -1 means there is exactly
+ * one of these per image, matching the module.
+ * ------------------------------------------------------------------------- */
+
+static PyObject *edk2_fault_error = NULL;
+
+static uint64_t
+edk2_addr(unsigned int addr_lo, unsigned int addr_hi)
+{
+    return ((uint64_t)addr_hi << 32) | (uint64_t)addr_lo;
+}
+
+/* Shared tail for the four functions below: turn edk2_guarded_* return codes
+ * into the right Python exception. Returns 0 if the caller should carry on. */
+static int
+edk2_fault_check(int rc, uint64_t kind, const EFI_SYSTEM_CONTEXT_X64 *ctx)
+{
+    if (rc < 0) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "fault guard nesting depth (%d) exceeded",
+                     EDK2_SEH_CONTEXT_SIZE);
+        return -1;
+    }
+    if (rc > 0) {
+        uefi_set_fault_error(edk2_fault_error, kind, ctx);
+        return -1;
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(edk2_readmem__doc__,
+"readmem(addr_lo, addr_hi, length) -> bytes\n\
+\n\
+Read length bytes from the physical address formed by addr_hi:addr_lo.\n\
+\n\
+Raises FaultError if the read takes a CPU fault, so a wrong address is a\n\
+Python exception rather than a dead machine. The read is byte at a time and\n\
+volatile, which matters when the target is MMIO.\n\
+\n\
+On a fault nothing is returned -- a partially read buffer is not useful. Use\n\
+uefi.mem_probe first if you want to test an address without an exception.");
+
+static PyObject *
+edk2_readmem(PyObject *self, PyObject *args)
+{
+    unsigned int addr_lo, addr_hi;
+    Py_ssize_t length;
+    PyObject *result;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "IIn:readmem", &addr_lo, &addr_hi, &length))
+        return NULL;
+    if (length < 0) {
+        PyErr_SetString(PyExc_ValueError, "length must not be negative");
+        return NULL;
+    }
+
+    /* Allocate the bytes object up front and read straight into it. 3.6.8
+     * malloc'd a scratch buffer, copied out of it and — on allocation failure —
+     * returned NULL with no exception set, which surfaces as a confusing
+     * SystemError rather than MemoryError. This has neither problem. */
+    result = PyBytes_FromStringAndSize(NULL, length);
+    if (result == NULL)
+        return NULL;
+    if (length == 0)
+        return result;
+
+    rc = edk2_guarded_copy(PyBytes_AS_STRING(result),
+                           (const void *)(uintptr_t)edk2_addr(addr_lo, addr_hi),
+                           (size_t)length, &kind, &ctx);
+    if (edk2_fault_check(rc, kind, &ctx) < 0) {
+        Py_DECREF(result);
+        return NULL;
+    }
+    return result;
+}
+
+PyDoc_STRVAR(edk2_readmem_dword__doc__,
+"readmem_dword(addr_lo, addr_hi) -> int\n\
+\n\
+Read one 32-bit value from the physical address addr_hi:addr_lo.\n\
+\n\
+A single 4-byte access, not four byte accesses, which is what MMIO registers\n\
+generally require. Raises FaultError if it faults.");
+
+static PyObject *
+edk2_readmem_dword(PyObject *self, PyObject *args)
+{
+    unsigned int addr_lo, addr_hi;
+    volatile unsigned long long value = 0;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "II:readmem_dword", &addr_lo, &addr_hi))
+        return NULL;
+
+    rc = edk2_guarded_access(0, edk2_addr(addr_lo, addr_hi), 4, &value,
+                             &kind, &ctx);
+    if (edk2_fault_check(rc, kind, &ctx) < 0)
+        return NULL;
+    return PyLong_FromUnsignedLongLong((unsigned long long)value);
+}
+
+PyDoc_STRVAR(edk2_writemem__doc__,
+"writemem(addr_lo, addr_hi, buf) -> None\n\
+\n\
+Write the bytes in buf to the physical address addr_hi:addr_lo.\n\
+\n\
+buf must be bytes, not str. 3.6.8 accepted str and wrote its UTF-8 encoding,\n\
+which silently writes a different number of bytes than the string has\n\
+characters as soon as one is non-ASCII.\n\
+\n\
+Raises FaultError if the write faults, in which case an unknown prefix of buf\n\
+has already been written.");
+
+static PyObject *
+edk2_writemem(PyObject *self, PyObject *args)
+{
+    unsigned int addr_lo, addr_hi;
+    const char *buf;
+    Py_ssize_t length;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "IIy#:writemem", &addr_lo, &addr_hi,
+                          &buf, &length))
+        return NULL;
+    if (length == 0)
+        Py_RETURN_NONE;
+
+    rc = edk2_guarded_copy((void *)(uintptr_t)edk2_addr(addr_lo, addr_hi),
+                           buf, (size_t)length, &kind, &ctx);
+    if (edk2_fault_check(rc, kind, &ctx) < 0)
+        return NULL;
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(edk2_writemem_dword__doc__,
+"writemem_dword(addr_lo, addr_hi, value) -> None\n\
+\n\
+Write one 32-bit value to the physical address addr_hi:addr_lo.\n\
+\n\
+A single 4-byte access. Raises FaultError if it faults.");
+
+static PyObject *
+edk2_writemem_dword(PyObject *self, PyObject *args)
+{
+    unsigned int addr_lo, addr_hi, val;
+    volatile unsigned long long value;
+    uint64_t kind = 0;
+    EFI_SYSTEM_CONTEXT_X64 ctx;
+    int rc;
+
+    if (!PyArg_ParseTuple(args, "III:writemem_dword", &addr_lo, &addr_hi, &val))
+        return NULL;
+
+    value = val;
+    rc = edk2_guarded_access(1, edk2_addr(addr_lo, addr_hi), 4, &value,
+                             &kind, &ctx);
+    if (edk2_fault_check(rc, kind, &ctx) < 0)
+        return NULL;
+    Py_RETURN_NONE;
+}
+
 /* Single-phase init with m_size = -1, following edk2console.c. This build has
  * one interpreter and no subinterpreter support, so per-module state buys
  * nothing over file statics here.
@@ -388,13 +579,17 @@ edk2_writepci(PyObject *self, PyObject *args)
  * writeio and writepci ('i' < 'm'). Do not "correct" the acceptance lists in
  * Python312_Chipsec_Platform_API_Port.md to match this table. */
 static PyMethodDef edk2_methods[] = {
-    {"cpuid",    edk2_cpuid,    METH_VARARGS, edk2_cpuid__doc__},
-    {"rdmsr",    edk2_rdmsr,    METH_VARARGS, edk2_rdmsr__doc__},
-    {"readio",   edk2_readio,   METH_VARARGS, edk2_readio__doc__},
-    {"readpci",  edk2_readpci,  METH_VARARGS, edk2_readpci__doc__},
-    {"wrmsr",    edk2_wrmsr,    METH_VARARGS, edk2_wrmsr__doc__},
-    {"writeio",  edk2_writeio,  METH_VARARGS, edk2_writeio__doc__},
-    {"writepci", edk2_writepci, METH_VARARGS, edk2_writepci__doc__},
+    {"cpuid",          edk2_cpuid,          METH_VARARGS, edk2_cpuid__doc__},
+    {"rdmsr",          edk2_rdmsr,          METH_VARARGS, edk2_rdmsr__doc__},
+    {"readio",         edk2_readio,         METH_VARARGS, edk2_readio__doc__},
+    {"readmem",        edk2_readmem,        METH_VARARGS, edk2_readmem__doc__},
+    {"readmem_dword",  edk2_readmem_dword,  METH_VARARGS, edk2_readmem_dword__doc__},
+    {"readpci",        edk2_readpci,        METH_VARARGS, edk2_readpci__doc__},
+    {"wrmsr",          edk2_wrmsr,          METH_VARARGS, edk2_wrmsr__doc__},
+    {"writeio",        edk2_writeio,        METH_VARARGS, edk2_writeio__doc__},
+    {"writemem",       edk2_writemem,       METH_VARARGS, edk2_writemem__doc__},
+    {"writemem_dword", edk2_writemem_dword, METH_VARARGS, edk2_writemem_dword__doc__},
+    {"writepci",       edk2_writepci,       METH_VARARGS, edk2_writepci__doc__},
     {NULL, NULL}            /* Sentinel */
 };
 
@@ -444,7 +639,14 @@ PyInit_edk2(void)
         Py_DECREF(fault_error);
         goto error;
     }
-    Py_DECREF(fault_error);
+
+    /* Hand that reference to the file static instead of releasing it, so the
+     * memory APIs can raise without a dictionary lookup per call and without
+     * depending on the module attribute still being what we set — rebinding
+     * edk2.FaultError from Python must not change what a fault raises. The
+     * module is never unloaded, so holding it for the life of the image is the
+     * intended lifetime rather than a leak. */
+    edk2_fault_error = fault_error;
 
     return m;
 
