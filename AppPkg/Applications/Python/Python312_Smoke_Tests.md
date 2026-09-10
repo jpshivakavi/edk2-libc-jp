@@ -1080,7 +1080,7 @@ edk2.SetVariable('X', G, 0, b'abc', 10)              # ValueError DataSize
 
 Tag: **`python312-chipsec-phase7-uefi-vars-2026-09-10`**.
 
-### 7.12 Phase 8 `allocphysmem` / `freephysmem` (§17), 2026-09-10
+### 7.12 Phase 8 `allocphysmem` / `freephysmem` (§17) — CLOSED VS2022 + GCC FULL, 2026-09-10
 
 Matrix: [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §17.
 Expect **`len([n for n in dir(edk2) if not n.startswith('_')]) == 18`**.
@@ -1088,7 +1088,7 @@ Expect **`len([n for n in dir(edk2) if not n.startswith('_')]) == 18`**.
 | Toolchain | Observed |
 |---|---|
 | **VS2022 FULL** | **Green** — §17.2–§17.4 at `dcf99d52` |
-| **GCC FULL** | pending |
+| **GCC FULL** | **Green** — same matrix, GCC banner |
 
 ```text
 va, = edk2.allocphysmem(4096, 0xFFFFFFFF)
@@ -1099,7 +1099,7 @@ edk2.freephysmem(va)
 edk2.allocphysmem(0, 0xFFFFFFFF)   # ValueError
 ```
 
-Tag when GCC matches: **`python312-chipsec-phase8-allocphysmem-2026-09-10`**.
+Tag: **`python312-chipsec-phase8-allocphysmem-2026-09-10`**.
 
 ---
 

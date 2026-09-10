@@ -1,7 +1,7 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **Phases 1-7 closed** (tag `python312-chipsec-phase7-uefi-vars-2026-09-10`). **Phase 8 green on
-VS2022 FULL** (§17); GCC FULL pending. 2026-09-10.
+Status: **Phases 1-8 closed** (tag `python312-chipsec-phase8-allocphysmem-2026-09-10`). Phase 9 not
+started (`_ex` + MP Services). 2026-09-10.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -303,7 +303,7 @@ the ordering is about getting verified ground under the port early, not about wh
 7. **UEFI variables**: `GetVariable`, `GetNextVariableName`, `SetVariable` — **green on VS2022 FULL
    and GCC FULL** (§16). `Py_BuildValue` tuple formats fixed in `6fe11059`.
 8. **`allocphysmem`**, reimplemented on `gBS->AllocatePages` with `AllocateMaxAddress` per §6.2,
-   plus **`freephysmem`** for release — **green on VS2022 FULL** (§17); GCC FULL pending.
+   plus **`freephysmem`** for release — **green on VS2022 FULL and GCC FULL** (§17).
 9. **`_ex` variants + MP Services** (`rdmsr_ex`, `wrmsr_ex`, `cpuid_ex`), protocol located lazily
    per §6.1. Last because it is the highest-risk phase; by then everything else is verified.
 
@@ -1285,9 +1285,8 @@ No `edk2module.c` in MIN — **compile not required** on MIN for this phase.
 
 ## 17. Phase 8 acceptance — `allocphysmem` / `freephysmem`
 
-**Status: VS2022 FULL green 2026-09-10 (§17.2–§17.4). GCC FULL not yet run.** FULL only. Adds
-`UefiBootServicesTableLib` to `Python312.inf` (explicit; `gBS` was previously used only from other
-translation units). Code at **`dcf99d52`** or later.
+**Status: CLOSED 2026-09-10 — VS2022 FULL and GCC FULL, §17.2–§17.4.** FULL only. Adds
+`UefiBootServicesTableLib` to `Python312.inf`. Code at **`dcf99d52`** or later.
 
 ### 17.1 What changed from 3.6.8
 
