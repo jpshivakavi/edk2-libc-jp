@@ -1006,6 +1006,36 @@ edk2_guid_to_unicode(const EFI_GUID *guid)
     return PyUnicode_FromString(buf);
 }
 
+static void
+edk2_guid_to_ascii(const EFI_GUID *guid, char *buf, UINTN buf_len)
+{
+    AsciiSPrint(buf, buf_len,
+                "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                guid->Data1, guid->Data2, guid->Data3,
+                guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+                guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+}
+
+/* UTF-16LE CHAR16 buffer from GetNextVariableName; name_size is bytes (UEFI API). */
+static PyObject *
+edk2_char16_name_to_unicode(const CHAR16 *buf, UINTN name_size_bytes)
+{
+    Py_ssize_t max_units;
+    Py_ssize_t nunits;
+
+    max_units = (Py_ssize_t)(name_size_bytes / sizeof(CHAR16));
+    if (max_units < 0)
+        max_units = 0;
+    nunits = 0;
+    while (nunits < max_units && buf[nunits] != (CHAR16)0)
+        nunits++;
+    if (nunits == 0)
+        return PyUnicode_New(0, 0);
+    return PyUnicode_Decode((const char *)buf,
+                            nunits * (Py_ssize_t)sizeof(CHAR16),
+                            "utf-16-le", NULL);
+}
+
 PyDoc_STRVAR(edk2_GetVariable__doc__,
 "GetVariable(VariableName, GUID, DataSize) -> (Status, Attributes, Data, DataSize)\n\
 \n\
@@ -1076,10 +1106,12 @@ or UTF-16LE bytes; GUID is a string or uuid.UUID.bytes_le.");
 static PyObject *
 edk2_GetNextVariableName(PyObject *self, PyObject *args)
 {
-    PyObject *name_obj, *guid_obj, *name_out, *guid_out, *result;
+    PyObject *name_obj, *guid_obj, *name_out, *result;
+    PyObject *status_obj, *size_obj, *guid_str_obj;
     CHAR16 *name_buf = NULL;
     CHAR16 *name_wide = NULL;
     EFI_GUID vendor_guid;
+    char guid_ascii[37];
     unsigned long long name_size_in;
     UINTN name_size;
     EFI_STATUS status;
@@ -1108,6 +1140,7 @@ edk2_GetNextVariableName(PyObject *self, PyObject *args)
         PyMem_Free(name_wide);
         return PyErr_NoMemory();
     }
+    memset(name_buf, 0, name_size);
 
     name_chars = 0;
     while (name_wide[name_chars] != L'\0')
@@ -1124,23 +1157,28 @@ edk2_GetNextVariableName(PyObject *self, PyObject *args)
 
     status = gRT->GetNextVariableName(&name_size, name_buf, &vendor_guid);
 
-    name_out = PyUnicode_FromWideChar((const wchar_t *)name_buf, (Py_ssize_t)-1);
-    guid_out = edk2_guid_to_unicode(&vendor_guid);
+    name_out = edk2_char16_name_to_unicode(name_buf, name_size);
+    edk2_guid_to_ascii(&vendor_guid, guid_ascii, sizeof(guid_ascii));
     free(name_buf);
-    if (name_out == NULL || guid_out == NULL) {
-        Py_XDECREF(name_out);
-        Py_XDECREF(guid_out);
+    if (name_out == NULL)
+        return NULL;
+
+    /* 3.6.8 Py_BuildValue("(IuKs)": avoid two U objects in one varargs call. */
+    status_obj = PyLong_FromUnsignedLong((unsigned long)status);
+    size_obj = PyLong_FromUnsignedLongLong((unsigned long long)name_size);
+    guid_str_obj = PyUnicode_FromString(guid_ascii);
+    if (status_obj == NULL || size_obj == NULL || guid_str_obj == NULL) {
+        Py_XDECREF(status_obj);
+        Py_XDECREF(size_obj);
+        Py_XDECREF(guid_str_obj);
+        Py_DECREF(name_out);
         return NULL;
     }
-
-    /* 3.6.8 order: Name before NameSize, whatever its docstring said. */
-    result = Py_BuildValue("(IUKU)",
-                           (unsigned int)status,
-                           name_out,
-                           (unsigned long long)name_size,
-                           guid_out);
+    result = PyTuple_Pack(4, status_obj, name_out, size_obj, guid_str_obj);
+    Py_DECREF(status_obj);
     Py_DECREF(name_out);
-    Py_DECREF(guid_out);
+    Py_DECREF(size_obj);
+    Py_DECREF(guid_str_obj);
     return result;
 }
 
