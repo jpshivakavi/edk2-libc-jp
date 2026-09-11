@@ -10,9 +10,9 @@
 **GCC reference (FULL port):** [`Python312_AppPkg_Migration_Status.md`](./Python312_AppPkg_Migration_Status.md)  
 **GCC regression build:** [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md)  
 **Started:** 2026-07-18  
-**Updated:** 2026-09-10 (CHIPSEC **3.12 vs 3.6.8 UEFI parity** signed off §20 / smoke §7.15 — items 46-69)  
+**Updated:** 2026-09-11 (**external feature readiness closure** — § below; variable enumerate tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`**)  
 **SEH fault recovery design:** [`Python312_SEH_Fault_Recovery_Design.md`](./Python312_SEH_Fault_Recovery_Design.md) (§2 fixes landed; API not implemented)  
-**Strategy:** **Single line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **`feature/python-3.12.13-apppkg`** kept as **read-only reference** (GCC port / 3.6.8 AppPkg structure alignment) — **no merge back into apppkg**. Same `PACKAGES_PATH=<edk2>;<edk2-libc>`; vendored libs in **`PyMod-3.12.13/Modules/`**  
+**Strategy:** **External manufacturing line:** **`feature/python-3.12.13-vs2022`** for **`build -t GCC`** and **`-t VS2022`**. **Internal-only enablement** (e.g. **`cchwapi`**, extra **`edk2`** extensions, sample apps) → **separate branch**, not promoted to the public-facing line until re-scoped (§ **External feature readiness closure**). **`feature/python-3.12.13-apppkg`** = **read-only reference** — **no merge back into apppkg**.  
 **Branch:** **`feature/python-3.12.13-vs2022`** — sole manufacturing line (forked from **`feature/python-3.12.13-apppkg`**; apppkg now **reference only**)  
 **Target repo:** `jpshivakavi/edk2-libc-jp` (push from **`edk2-libc-jp-vsfix`** when ready)  
 **Windows WORKSPACE:** `c:\Users\njayapra\github\edk2` (tianocore/edk2 — `edksetup.bat`, `Build\`)  
@@ -22,6 +22,68 @@
 **3.6.8 VS2022 CI:** [`.github/workflows/build-python-uefi-vs2022.yaml`](../../../.github/workflows/build-python-uefi-vs2022.yaml) (`BUILD_PYTHON368` only today)
 
 Build gate: **`-p AppPkg/AppPkg.dsc`** with `PACKAGES_PATH` including the libc fork — **not** `-p %EDK2_LIBC_PATH%\AppPkg\AppPkg.dsc` alone.
+
+---
+
+## External feature readiness closure (2026-09-11)
+
+**Declared closed for external / manufacturing feature readiness** at tag
+**`python312-chipsec-uefi-var-enumerate-2026-09-11`** (docs **`cff24330`**, code **`4e672f3b`+** on
+**`feature/python-3.12.13-vs2022`**). This is the **Python 3.12.13 UEFI FULL** port aligned with
+**Python 3.6.8 + internal PythonEFI CHIPSEC (`EfiHelper` + 19-name `edk2`)** — not desktop CHIPSEC,
+not internal hardware extensions.
+
+### In scope — closed
+
+| Area | Evidence |
+|------|----------|
+| **Four configs** | VS2022/GCC × MIN/FULL compile; FULL runtime signed on lab hardware (smoke matrix) |
+| **`edk2` — 19 CHIPSEC APIs** | Port doc phases 1–9; guarded mem / **`FaultError`** |
+| **CHIPSEC on UEFI** | **`msr`**, **`cpu info`** (with platform XML on ESP), **`platform.system()` → `uefi`**, **`uefi var-list`** VS2022 + GCC (**WCLRACK20S12**) |
+| **UEFI variables** | **`67184a73`**, **`1ee06e8c`**, **`4e672f3b`**; bin-only **`.efi`** redeploy documented |
+| **Prior tags** | e.g. **`python312-survivable-cpu-faults-2026-09-09`**, **`python312-chipsec-uefi-parity-2026-09-10`**, phase tags — still valid history |
+
+**Reference docs:** [`Python312_Chipsec_Platform_API_Port.md`](./Python312_Chipsec_Platform_API_Port.md) §20,
+[`Python312_Smoke_Tests.md`](./Python312_Smoke_Tests.md) §7.
+
+### Explicitly out of scope (this closure)
+
+| Item | Notes |
+|------|--------|
+| **`ccbhwapi` / `cchwapi`** and internal **`edk2`** extensions | Port doc §20; **next effort** |
+| **Internal sample applications** and non–PythonEFI module set | Enable + compile in **different environment** (details TBD) |
+| **Full desktop CHIPSEC** | Windows driver, optional crypto stacks, etc. |
+| **CHIPSEC platform XML on every SKU** | Environment; driver-only utils show **Unrecognized Platform** by design |
+| **Upstream tianocore edk2-libc PR** | Blocked on **§ Pre-upstream-push cleanup**, not on runtime readiness |
+
+### Outstanding work (deferred — not blocking external closure)
+
+| ID | Work | Owner / when |
+|----|------|----------------|
+| **O1** | **Internal enablement branch** — `cchwapi`, related modules, sample apps, alternate build/INF/DSC layout | **New internal branch** (below); user to share requirements |
+| **O2** | **§ Pre-upstream-push cleanup** — StdLib patches out of git; patches-only; PyMod-only deltas | Before public **edk2-libc** contribution |
+| **O3** | **Phase V7.3 CI** — `build-python312-uefi-vs2022.yaml` matrix GCC + VS2022 FULL/MIN | When CI host ready |
+| **O4** | **PyMod / stock tree hygiene** — `restore_upstream_from_cpython.py` follow-up (status header note) | Optional hardening |
+| **O5** | **RELEASE** flavor manufacturing sign-off | If product requires RELEASE vs NOOPT |
+| **O6** | **GCC MIN §5.9** optional rows | Next GCC MIN on hardware |
+| **O7** | **Public CHIPSEC / `chipsec2` re-audit** | If staging moves off PythonEFI **`efihelper.py`** |
+| **O8** | **Interactive `exit()` / console detach** | Documented open item (2026-09-08); not CHIPSEC blocker |
+
+### Branch policy — external vs internal
+
+| Branch | Purpose | Visibility |
+|--------|---------|------------|
+| **`feature/python-3.12.13-vs2022`** | **External / manufacturing** — Python 3.12.13 UEFI FULL/MIN, **`edk2`** 19 APIs, documented smoke | **Public fork** (`jpshivakavi/edk2-libc-jp`) — **freeze feature scope** at closure tag; only bugfixes / doc / upstream-prep |
+| **`feature/python-3.12.13-internal`** (recommended name) | **Internal enablement** — `cchwapi`, extra builtins, sample INF/apps, alternate toolchain/workspace | **Do not push to public remote** — Intel-internal clone or **private** repo; merge **from** vs2022 regularly, **cherry-pick to** vs2022 only when vetted |
+
+**Suggested workflow when internal work starts:**
+
+1. Branch **`feature/python-3.12.13-internal`** from **`python312-chipsec-uefi-var-enumerate-2026-09-11`** (or **`cff24330`**).
+2. Add a **second remote** (internal) or keep branch **local-only** until publish policy is clear.
+3. Do **not** mix internal DSC flags / packages into **`vs2022`** until scoped for external release.
+4. Record internal milestones in a **separate** doc (e.g. `Python312_Internal_Enablement.md`) when requirements land.
+
+**Tags on `vs2022`:** treat **`python312-chipsec-uefi-var-enumerate-2026-09-11`** as the **external feature-readiness baseline** for manufacturing and customer-facing discussion.
 
 ---
 
@@ -524,7 +586,8 @@ Same **`Python312.inf`** lists vendored **zlib**, **OpenSSL** (libcrypto + libss
 68. **2026-09-10 — audited the port against real CHIPSEC (`PythonEFI_v3.10.3`, `chipsec/helper/efi/efihelper.py`) and found one incompatibility.** Phases 1–9 were validated against the **3.6.8 source**, and for `GetNextVariableName` that source's **docstring contradicts its own `Py_BuildValue`**: the docstring says `(Status, VariableNameSize, VariableName, VendorGuid)`, the code builds `"(IuKs)"` — Name **before** NameSize — and CHIPSEC unpacks it in the code's order. CHIPSEC also passes **bytes** there (`namestr.encode('utf-16-le')` and `uuid.UUID(g).bytes_le`), not `str`, because 3.6.8 parsed `"Ky#s#"`. Our implementation had followed the docstring and required `str`, so `list_EFI_variables()` would have failed on both counts. Fixed in `edk2module.c`: return order is now `(Status, Name, NameSize, GUID)`, and name/GUID converters accept **str or UTF-16LE bytes** and **GUID string or 16-byte `bytes_le`** on all three variable calls; `SetVariable` data moved `y#` → **`y*`** so `bytearray` works. Also corrected two `Py_BuildValue` `k` specifiers that were being fed `unsigned long long` (harmless on x64 LLP64, wrong by contract) → `K`. **The other 18 APIs match CHIPSEC's call sites exactly** — argument order, types, and return shapes — including the detail that `Status` must stay truncated to 32 bits so `EFI_BUFFER_TOO_SMALL` reads as `5`. VS2022 FULL rebuild clean (`edk2module.c` no warnings). Audit table: port doc §19; commit **`294be095`**.
 69. **2026-09-10 — UEFI parity with Python 3.6.8 for CHIPSEC signed off (port §20, smoke §7.15).** On lab hardware (**GCC FULL** image, **`294be095`+**): **`platform.system()` → `uefi`**; **`chipsec_util.py msr 0x0`** with banner **Python 3.12.13**, **Helper: EfiHelper**, **OS: uefi X86_64**. Proves interpreter + **`OsHelper`** + **`edk2.rdmsr`** path — same envelope as 3.6.8 UEFI, not full desktop CHIPSEC. **Unrecognized Platform** = missing CHIPSEC platform config for SKU (environment). Tagged **`python312-chipsec-uefi-parity-2026-09-10`**. **Continue:** optional **`uefi var-list`** / §7.11 enumerate on each new **`Python312.efi`**; VS2022 FULL §7.15 when that image is on hardware; upstream **`chipsec2`** only after **`efihelper`/`edk2`** re-audit.
 70. **2026-09-10 — `help()` / `pydoc` UEFI pager fix verified on hardware (GCC FULL).** After staged **`PyMod-3.12.13/Lib/pydoc.py`** (`5443eb71`), **`help(edk2)`**, **`help(edk2.rdmsr)`**, and **`help(uefi)`** return to the REPL with no **`'(less)' is not recognized`** line and no **`PermissionError`**. Smoke §7.14; runtime notes §10.6.
-71. **2026-09-11 — UEFI variable enumerate + CHIPSEC `uefi var-list` closed on VS2022 and GCC FULL.** Hardware **WCLRACK20S12** (FS1): **`chipsec_util.py uefi var-list`** ~30 s; GCC REPL **`GetNextVariableName`** / **`GetVariable`**. Fixes **`67184a73`** (enumerate tuple), **`1ee06e8c`** (`GetVariable` **`PyTuple_Pack`**), **`4e672f3b`** (**`(UINT32)Status`** — fixes **`KeyError: 9223372036854775813`** in **`efihelper.list_EFI_variables`**). Bin-only **`Python312.efi`** deploy sufficient. Port §16/§20; smoke §7.11/§7.15. Tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`**.
+71. **2026-09-11 — UEFI variable enumerate + CHIPSEC `uefi var-list` closed on VS2022 and GCC FULL.** Hardware **WCLRACK20S12** (FS1): **`chipsec_util.py uefi var-list`** ~30 s; GCC REPL **`GetNextVariableName`** / **`GetVariable`**. Fixes **`67184a73`**, **`1ee06e8c`**, **`4e672f3b`**. Tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`**.
+72. **2026-09-11 — external feature readiness closure declared.** Scope: Python **3.12.13 UEFI FULL/MIN**, **`edk2`** 19-name CHIPSEC surface, documented smoke — **not** **`cchwapi`** / internal extensions / sample apps. Baseline tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`**; deferred work **O1–O8** and internal branch policy in **§ External feature readiness closure**.
 8. **Next diagnostic (no rebuild needed):** **`/DPY_UEFI_BOOT_TRACE=1`** is already on MSFT **`CC_FLAGS`**, so **`PY312_CONSOLE_TRACE`** lines (**`edk2_console_detach_readline enter/leave`**, **`stop_timer: …`**, **`handoff_to_shell`**) are live in the tested image — read them on a phase 2 re-run before typing **`exit`** to decide whether detach ran and completed. **Do not** try a ConIn `Reset`; **`edk2console.c`** records both directions already failing.
 9. **Policy unchanged:** VS2022 manufacturing stays **stdio**; this run is positive evidence for that decision.
 
@@ -882,15 +945,15 @@ Last known green GCC FULL: **2026-09-01** on **`feature/python-3.12.13-vs2022`**
 
 **Follow:** [`Python312_Windows_VS2022_Build_Guide.md`](./Python312_Windows_VS2022_Build_Guide.md) · [`Python312_WSL_GCC_Build_Guide.md`](./Python312_WSL_GCC_Build_Guide.md) · [`Python312_VS2022_UEFI_Runtime_Notes.md`](./Python312_VS2022_UEFI_Runtime_Notes.md) §10 · **§ V6** smoke commands
 
-**Order:**
+**Order (post-closure):**
 
 1. ~~**FULL stdio REPL**~~ — **Done** 2026-09-01 (**GCC** + **VS2022** FULL, no **`PY_UEFI_READLINE`**).
-2. **Upstream / PR** — from **`feature/python-3.12.13-vs2022`** after **§ Pre-upstream-push cleanup**.
-3. **Cleanup (optional):** **`PY_UEFI_BOOT_TRACE`** (or document GCC/MSFT split), StdLib **`Main.c`** probes, **`Py_DEBUG`** in UEFI **`pyconfig.h`**.
-4. **V7:** **`build-python312-uefi-vs2022.yaml`** (matrix **GCC + VS2022**), **`Py312ReadMe.txt`** VS2022 section.
-5. **Before final upstream edk2-libc PR:** **§ Pre-upstream-push cleanup**.
-6. **Later:** host **GCC toolchain upgrade** + one rebuild/smoke (separate from branch validation).
-7. **Future (not manufacturing):** VS2022 **pyreadline** opt-in re-test (GCC opt-in **pass** 2026-09-01).
+2. ~~**CHIPSEC 3.12 UEFI parity + `var-list`**~~ — **Done** 2026-09-11 — tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`** (§ **External feature readiness closure**).
+3. **Internal enablement** — **`feature/python-3.12.13-internal`** (or equivalent), **`cchwapi`** + extensions — **O1**; requirements from user.
+4. **Upstream / PR** — from **`feature/python-3.12.13-vs2022`** after **§ Pre-upstream-push cleanup** (**O2**).
+5. **Cleanup (optional):** **`PY_UEFI_BOOT_TRACE`**, StdLib probes, **`Py_DEBUG`** in UEFI **`pyconfig.h`**.
+6. **V7 CI:** **`build-python312-uefi-vs2022.yaml`** (**O3**).
+7. **Later:** host **GCC toolchain upgrade** + one rebuild/smoke (**O5**/**O6** as needed).
 
 ---
 
