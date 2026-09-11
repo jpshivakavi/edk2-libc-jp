@@ -1016,6 +1016,14 @@ edk2_guid_to_ascii(const EFI_GUID *guid, char *buf, UINTN buf_len)
                 guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
 }
 
+/* 3.6.8 returned (UINT32)Status. CHIPSEC maps small integers (5 = BUFFER_TOO_SMALL);
+ * UINTN error codes like 0x8000000000000005 must not reach Python as 64-bit values. */
+static unsigned int
+edk2_status_for_python(EFI_STATUS status)
+{
+    return (unsigned int)(UINT32)status;
+}
+
 /* UTF-16LE CHAR16 buffer from GetNextVariableName; name_size is bytes (UEFI API). */
 static PyObject *
 edk2_char16_name_to_unicode(const CHAR16 *buf, UINTN name_size_bytes)
@@ -1095,7 +1103,7 @@ edk2_GetVariable(PyObject *self, PyObject *args)
         return NULL;
 
     /* Same rationale as GetNextVariableName: avoid Py_BuildValue varargs (IIy#K). */
-    status_obj = PyLong_FromUnsignedLong((unsigned long)status);
+    status_obj = PyLong_FromUnsignedLong((unsigned long)edk2_status_for_python(status));
     attr_obj = PyLong_FromUnsignedLong((unsigned long)attributes);
     size_obj = PyLong_FromUnsignedLongLong((unsigned long long)data_size);
     if (status_obj == NULL || attr_obj == NULL || size_obj == NULL) {
@@ -1182,7 +1190,7 @@ edk2_GetNextVariableName(PyObject *self, PyObject *args)
         return NULL;
 
     /* 3.6.8 Py_BuildValue("(IuKs)": avoid two U objects in one varargs call. */
-    status_obj = PyLong_FromUnsignedLong((unsigned long)status);
+    status_obj = PyLong_FromUnsignedLong((unsigned long)edk2_status_for_python(status));
     size_obj = PyLong_FromUnsignedLongLong((unsigned long long)name_size);
     guid_str_obj = PyUnicode_FromString(guid_ascii);
     if (status_obj == NULL || size_obj == NULL || guid_str_obj == NULL) {
@@ -1254,7 +1262,7 @@ edk2_SetVariable(PyObject *self, PyObject *args)
     if (guid_out == NULL)
         return NULL;
     result = Py_BuildValue("(IKU)",
-                           (unsigned int)status,
+                           edk2_status_for_python(status),
                            (unsigned long long)data_size,
                            guid_out);
     Py_DECREF(guid_out);
