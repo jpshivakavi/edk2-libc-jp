@@ -1,8 +1,9 @@
 # CHIPSEC platform API: 3.6.8 `edk2` module vs 3.12.13 `uefi` module
 
-Status: **UEFI parity with Python 3.6.8 for CHIPSEC signed off** (§20, tag
-`python312-chipsec-uefi-parity-2026-09-10`). Phases 1–9 closed; **`edk2`** at **`294be095`+**
-matches **`efihelper.py`**. 2026-09-10.
+Status: **UEFI parity with Python 3.6.8 for CHIPSEC signed off** (§20). **UEFI variable
+enumerate + `chipsec_util uefi var-list` closed on VS2022 and GCC FULL** at **`4e672f3b`+**
+(2026-09-11 hardware, tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`**). Phases 1–9
+closed; prior tag **`python312-chipsec-uefi-parity-2026-09-10`** covers MSR/helper/`platform`.
 
 Decisions (§9): **all 19 APIs**, **FULL only** (`Python312.inf`; MIN untouched), and — superseding
 an earlier recommendation in this document — **a separate non-bootstrap builtin module named
@@ -1192,12 +1193,12 @@ wrong SMI must not be used as a shortcut.
 
 ## 16. Phase 7 acceptance — UEFI variables
 
-**Status: CLOSED 2026-09-10 — code at `294be095`+; prior VS2022/GCC FULL §16 matrix plus
-CHIPSEC `uefi var-list` optional follow-up on each new image.** The audit fix (§19) corrected
-`GetNextVariableName` return order and bytes name/GUID inputs. FULL only. Adds
-`UefiRuntimeServicesTableLib` to `Python312.inf`. Runtime builds need **`6fe11059`** or later
-(closing `)` on `Py_BuildValue` for `GetNextVariableName` / `SetVariable`; earlier images raise
-`SystemError: unmatched paren in format` on enumerate).
+**Status: CLOSED 2026-09-11 on VS2022 FULL and GCC FULL** — **`4e672f3b`+** on lab hardware
+(**WCLRACK20S12** / FS1): REPL **`GetNextVariableName`** / **`GetVariable`**, **`chipsec_util.py
+uefi var-list`** (~30 s, **`efi_variables.lst`**). Commits **`67184a73`** (enumerate tuple),
+**`1ee06e8c`** (`GetVariable` **`PyTuple_Pack`**), **`4e672f3b`** (**`(UINT32)Status`** for
+CHIPSEC **`status == 5`** / **`status_dict`**). Prior **`294be095`+** audit + §16 matrix; runtime
+builds need **`6fe11059`** or later for the **`Py_BuildValue` `)`** fix. FULL only.
 
 ### 16.1 What changed from 3.6.8
 
@@ -1220,9 +1221,17 @@ docstrings, which disagree with its own code for `GetNextVariableName`:
 | `GetNextVariableName` | `"(IuKs)"` | Status, **Name, NameSize**, GUID |
 | `SetVariable` | `"(IKs)"` | Status, DataSize, GUID |
 
-`Status` is the EFI status truncated to 32 bits, which is what makes CHIPSEC's
-`if Status == 5` test for `EFI_BUFFER_TOO_SMALL` work: `0x8000000000000005` loses its high
-half. Keep the `(unsigned int)` cast.
+`Status` is the EFI status truncated to 32 bits (**`edk2_status_for_python()` / `(UINT32)Status`**),
+which is what makes CHIPSEC's `if Status == 5` test for `EFI_BUFFER_TOO_SMALL` work:
+`0x8000000000000005` must not reach Python as a 64-bit integer (GCC **`KeyError:
+9223372036854775813`** in **`list_EFI_variables`** before **`4e672f3b`**). Matches 3.6.8
+**`(UINT32)Status`** in **`Py_BuildValue`**.
+
+| 2026-09-11 runtime (post-audit) | Fix |
+|---|---|
+| Broken enumerate tuple on hardware | **`67184a73`** — UTF-16LE name, **`PyTuple_Pack`**, zeroed buffer |
+| `GetVariable` varargs on GCC | **`1ee06e8c`** — **`PyTuple_Pack`** instead of **`"(IIy#K)"`** |
+| **`EFI_BUFFER_TOO_SMALL` as `0x800…0005`** | **`4e672f3b`** — UINT32 status on all three variable APIs |
 
 ### 16.2 Surface inventory — sixteen names
 
@@ -1481,7 +1490,12 @@ Python312.efi -S -c "import sys, platform; print(sys.platform, '|', platform.sys
 
 ## 20. Sign-off — Python 3.12.13 UEFI vs 3.6.8 (CHIPSEC reference)
 
-**Signed off: 2026-09-10.** Tag **`python312-chipsec-uefi-parity-2026-09-10`**.
+**Signed off: 2026-09-10** (MSR / **`EfiHelper`** / **`platform.system()`**). Tag
+**`python312-chipsec-uefi-parity-2026-09-10`**.
+
+**Variable enumerate + `uefi var-list`: 2026-09-11** on **VS2022 and GCC FULL** at **`4e672f3b`+**.
+Tag **`python312-chipsec-uefi-var-enumerate-2026-09-11`**. Deploy: **`Python312.efi`** only for
+these C fixes; Lib restage not required.
 
 ### 20.1 Scope
 
@@ -1495,20 +1509,29 @@ Python312.efi -S -c "import sys, platform; print(sys.platform, '|', platform.sys
 **Bar:** Anything CHIPSEC could do on **3.6.8 UEFI** via **`EfiHelper` + `edk2`** must work the
 same on **3.12.13 FULL**. Anything CHIPSEC never had on UEFI is not a 3.12 regression.
 
-### 20.2 Evidence (2026-09-10)
+### 20.2 Evidence (2026-09-10 — helper / MSR)
 
 | Check | Result |
 |---|---|
 | **GCC FULL** `Python312.efi` built **2026-09-10** (`294be095`+ audit fix in tree) | Deployed on lab hardware (**WCLRACK20S12** / FS1) |
 | **`platform.system()`** | **`uefi`** |
 | **`chipsec_util.py msr 0x0`** | Banner: **Python 3.12.13**, **Helper: EfiHelper**, **OS: uefi X86_64**; MSR path uses **`edk2.rdmsr`** |
-| **Platform “Unrecognized”** | Missing CHIPSEC **platform config** for SKU — same class as 3.6.8 without configs, not an interpreter gap |
-| **VS2022 FULL** | Same **`edk2`** sources; manufacturing line parity — re-run §7.15 on VS2022 when that image is on hardware |
+| **Platform “Unrecognized”** on driver-only utils | Missing CHIPSEC **platform config** for SKU — environment, not a 3.12 gap |
 
-Optional on each new **`Python312.efi`**: smoke §7.11 enumerate + **`chipsec_util uefi var-list`**
-(confirms **`GetNextVariableName`** bytes path end-to-end).
+### 20.3 Evidence (2026-09-11 — variables / `var-list`)
 
-### 20.3 ESP layout (CHIPSEC + Python 3.12)
+| Check | Result |
+|---|---|
+| **Code** | **`67184a73`**, **`1ee06e8c`**, **`4e672f3b`** on **`feature/python-3.12.13-vs2022`** |
+| **VS2022 FULL** | **`chipsec_util.py uefi var-list`** — enumerate + decode, **`efi_variables.lst`**, ~31 s |
+| **GCC FULL** | Same command on same rack (**WCLRACK20S12** / FS1); bin-only **`Python312.efi`** deploy |
+| **REPL (GCC)** | **`GetNextVariableName`** (null + random GUID, second step); **`GetVariable(..., 128)`** |
+| **Failure signature (pre-`4e672f3b`)** | **`KeyError: 9223372036854775813`** (`0x8000000000000005`) in **`efihelper.list_EFI_variables`** |
+
+Optional on each new **`Python312.efi`**: smoke §7.11 REPL block + **`uefi var-list`** when variable
+APIs change.
+
+### 20.3.1 ESP layout (CHIPSEC + Python 3.12)
 
 ```text
 FSn:\EFI\
@@ -1536,6 +1559,7 @@ Expect **`EfiHelper`**.
 
 ### 20.4 Continue after sign-off
 
-- **Manufacturing:** build **FULL** VS2022 + GCC at **`294be095`+**; package; deploy **`EFI\`** + CHIPSEC tree.
+- **Manufacturing:** build **FULL** VS2022 + GCC at **`4e672f3b`+**; **`Python312.efi`** bin-only
+  redeploy suffices for variable-only **`edk2`** fixes; repackage **`EFI\lib`** when staged Lib changes.
 - **Regression:** smoke §7.11–§7.15 on hardware when **`edk2module.c`** or CHIPSEC-facing stdlib changes.
 - **Product:** newer public CHIPSEC only after **`efihelper.py` / `edk2`** re-audit (§19); platform XML for SKU is separate from the port.
