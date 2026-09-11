@@ -1048,6 +1048,7 @@ static PyObject *
 edk2_GetVariable(PyObject *self, PyObject *args)
 {
     PyObject *name_obj, *guid_obj, *result;
+    PyObject *status_obj, *attr_obj, *data_obj, *size_obj;
     CHAR16 *name = NULL;
     EFI_GUID vendor_guid;
     unsigned long long data_size_in;
@@ -1055,6 +1056,7 @@ edk2_GetVariable(PyObject *self, PyObject *args)
     UINT32 attributes = 0;
     EFI_STATUS status;
     char *data = NULL;
+    Py_ssize_t data_len;
 
     if (!PyArg_ParseTuple(args, "OOK:GetVariable",
                           &name_obj, &guid_obj, &data_size_in))
@@ -1081,17 +1083,33 @@ edk2_GetVariable(PyObject *self, PyObject *args)
                               &data_size, data);
     PyMem_Free(name);
 
-    if (status == EFI_SUCCESS && data != NULL)
-        result = Py_BuildValue("(IIy#K)",
-                               (unsigned int)status, attributes,
-                               data, (Py_ssize_t)data_size,
-                               (unsigned long long)data_size);
+    if (status == EFI_SUCCESS && data != NULL && data_size > 0)
+        data_len = (Py_ssize_t)data_size;
     else
-        result = Py_BuildValue("(IIy#K)",
-                               (unsigned int)status, attributes,
-                               "", (Py_ssize_t)0,
-                               (unsigned long long)data_size);
+        data_len = 0;
+
+    data_obj = PyBytes_FromStringAndSize(
+        (data_len > 0) ? data : "", data_len);
     free(data);
+    if (data_obj == NULL)
+        return NULL;
+
+    /* Same rationale as GetNextVariableName: avoid Py_BuildValue varargs (IIy#K). */
+    status_obj = PyLong_FromUnsignedLong((unsigned long)status);
+    attr_obj = PyLong_FromUnsignedLong((unsigned long)attributes);
+    size_obj = PyLong_FromUnsignedLongLong((unsigned long long)data_size);
+    if (status_obj == NULL || attr_obj == NULL || size_obj == NULL) {
+        Py_XDECREF(status_obj);
+        Py_XDECREF(attr_obj);
+        Py_XDECREF(size_obj);
+        Py_DECREF(data_obj);
+        return NULL;
+    }
+    result = PyTuple_Pack(4, status_obj, attr_obj, data_obj, size_obj);
+    Py_DECREF(status_obj);
+    Py_DECREF(attr_obj);
+    Py_DECREF(data_obj);
+    Py_DECREF(size_obj);
     return result;
 }
 
